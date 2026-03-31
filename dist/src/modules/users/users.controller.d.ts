@@ -1,0 +1,81 @@
+import { UsersService } from './users.service';
+import { UserRole } from '@prisma/client';
+export declare class UsersController {
+    private readonly usersService;
+    constructor(usersService: UsersService);
+    findAll(req: any): Promise<{
+        id: string;
+        status: import(".prisma/client").$Enums.UserStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        email: string;
+        organizationId: string;
+        passwordHash: string;
+        firstName: string;
+        lastName: string;
+        role: import(".prisma/client").$Enums.UserRole;
+        avatarUrl: string | null;
+        lastLoginAt: Date | null;
+        refreshToken: string | null;
+    }[]>;
+    create(req: any, createUserDto: any): Promise<{
+        id: string;
+        status: import(".prisma/client").$Enums.UserStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        email: string;
+        organizationId: string;
+        passwordHash: string;
+        firstName: string;
+        lastName: string;
+        role: import(".prisma/client").$Enums.UserRole;
+        avatarUrl: string | null;
+        lastLoginAt: Date | null;
+        refreshToken: string | null;
+    }>;
+    getProfile(req: any): Promise<{
+        id: string;
+        status: import(".prisma/client").$Enums.UserStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        email: string;
+        organizationId: string;
+        passwordHash: string;
+        firstName: string;
+        lastName: string;
+        role: import(".prisma/client").$Enums.UserRole;
+        avatarUrl: string | null;
+        lastLoginAt: Date | null;
+        refreshToken: string | null;
+    } | null>;
+    remove(req: any, id: string): Promise<{
+        id: string;
+        status: import(".prisma/client").$Enums.UserStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        email: string;
+        organizationId: string;
+        passwordHash: string;
+        firstName: string;
+        lastName: string;
+        role: import(".prisma/client").$Enums.UserRole;
+        avatarUrl: string | null;
+        lastLoginAt: Date | null;
+        refreshToken: string | null;
+    }>;
+    updateRole(req: any, id: string, role: UserRole): Promise<{
+        id: string;
+        status: import(".prisma/client").$Enums.UserStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        email: string;
+        organizationId: string;
+        passwordHash: string;
+        firstName: string;
+        lastName: string;
+        role: import(".prisma/client").$Enums.UserRole;
+        avatarUrl: string | null;
+        lastLoginAt: Date | null;
+        refreshToken: string | null;
+    }>;
+}

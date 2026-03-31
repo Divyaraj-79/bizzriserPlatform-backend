@@ -1,0 +1,333 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  ORG_ADMIN
+  AGENT
+  VIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum ContactStatus {
+  ACTIVE
+  BLOCKED
+  UNSUBSCRIBED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  TEMPLATE
+  INTERACTIVE
+  LOCATION
+  STICKER
+  REACTION
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
+enum CampaignLogLevel {
+  INFO
+  WARNING
+  ERROR
+}
+
+enum WhatsAppAccountStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+}
+
+enum WebhookEventType {
+  MESSAGE_RECEIVED
+  MESSAGE_STATUS_UPDATE
+  TEMPLATE_STATUS_UPDATE
+}
+
+// ─── Models ────────────────────────────────────────────────────────────────
+
+model Organization {
+  id          String             @id @default(uuid())
+  name        String
+  slug        String             @unique
+  logoUrl     String?
+  website     String?
+  timezone    String             @default("UTC")
+  status      OrganizationStatus @default(ACTIVE)
+  metadata    Json               @default("{}")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  users           User[]
+  whatsappAccounts WhatsAppAccount[]
+  contacts        Contact[]
+  campaigns       Campaign[]
+  messages        Message[]
+  conversations   Conversation[]
+  webhookEvents   WebhookEvent[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String     @id @default(uuid())
+  organizationId String
+  email          String     @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  role           UserRole   @default(AGENT)
+  status         UserStatus @default(ACTIVE)
+  avatarUrl      String?
+  lastLoginAt    DateTime?
+  refreshToken   String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("users")
+}
+
+model WhatsAppAccount {
+  id                  String                @id @default(uuid())
+  organizationId      String
+  displayName         String
+  phoneNumber         String                @unique
+  phoneNumberId       String                @unique
+  wabaId              String                // WhatsApp Business Account ID
+  accessToken         String                // encrypted at app level
+  verifyToken         String                @unique
+  webhookSecret       String
+  status              WhatsAppAccountStatus @default(ACTIVE)
+  businessProfile     Json                  @default("{}")
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages     Message[]
+  conversations Conversation[]
+  contacts     Contact[]     @relation("WhatsAppContacts")
+
+  @@index([organizationId])
+  @@index([wabaId])
+  @@map("whatsapp_accounts")
+}
+
+model Contact {
+  id              String        @id @default(uuid())
+  organizationId  String
+  whatsappId      String?       // WhatsApp's internal contact ID (wa_id)
+  phone           String
+  firstName       String?
+  lastName        String?
+  email           String?
+  avatarUrl       String?
+  status          ContactStatus @default(ACTIVE)
+  tags            String[]      @default([])
+  customFields    Json          @default("{}")
+  optedInAt       DateTime?
+  optedOutAt      DateTime?
+  lastContactedAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages        Message[]
+  conversations   Conversation[]
+  campaignRecipients CampaignRecipient[]
+  whatsappAccounts WhatsAppAccount[] @relation("WhatsAppContacts")
+
+  @@unique([organizationId, phone])
+  @@index([organizationId])
+  @@index([phone])
+  @@map("contacts")
+}
+
+model Message {
+  id              String           @id @default(uuid())
+  organizationId  String
+  whatsappAccountId String
+  contactId       String
+  waMessageId     String?          @unique // WhatsApp's message ID
+  direction       MessageDirection
+  type            MessageType      @default(TEXT)
+  status          MessageStatus    @default(PENDING)
+  content         Json             // flexible content structure per message type
+  metadata        Json             @default("{}")
+  conversationId  String?
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  failedAt        DateTime?
+  failureReason   String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  whatsappAccount WhatsAppAccount @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  contact         Contact         @relation(fields: [contactId], references: [id])
+  conversation    Conversation?   @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+// failures        Message[]       @relation("MessageFailures")
+
+  @@index([organizationId])
+  @@index([whatsappAccountId])
+  @@index([contactId])
+  @@index([conversationId])
+  @@index([waMessageId])
+  @@index([direction, status])
+  @@map("messages")
+}
+
+model Conversation {
+  id                String   @id @default(uuid())
+  organizationId    String
+  whatsappAccountId String
+  contactId         String
+  lastMessageBody   String?
+  lastMessageAt     DateTime @default(now())
+  metadata          Json     @default("{}")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  whatsappAccount WhatsAppAccount @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  contact         Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages        Message[]
+
+  @@unique([organizationId, whatsappAccountId, contactId])
+  @@index([organizationId])
+  @@index([whatsappAccountId])
+  @@index([contactId])
+  @@map("conversations")
+}
+
+model Campaign {
+  id             String         @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  status         CampaignStatus @default(DRAFT)
+  templateName   String?
+  templateParams Json           @default("[]")
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  totalRecipients Int           @default(0)
+  sentCount      Int            @default(0)
+  deliveredCount Int            @default(0)
+  readCount      Int            @default(0)
+  failedCount    Int            @default(0)
+  metadata       Json           @default("{}")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipients   CampaignRecipient[]
+  logs         CampaignLog[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id         String        @id @default(uuid())
+  campaignId String
+  contactId  String
+  status     MessageStatus @default(PENDING)
+  sentAt     DateTime?
+  createdAt  DateTime      @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  Contact  @relation(fields: [contactId], references: [id])
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId])
+  @@index([contactId])
+  @@map("campaign_recipients")
+}
+
+model CampaignLog {
+  id         String           @id @default(uuid())
+  campaignId String
+  message    String
+  level      CampaignLogLevel @default(INFO)
+  metadata   Json             @default("{}")
+  createdAt  DateTime         @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([level])
+  @@map("campaign_logs")
+}
+
+model WebhookEvent {
+  id             String           @id @default(uuid())
+  organizationId String
+  eventType      WebhookEventType
+  payload        Json
+  processed      Boolean          @default(false)
+  processedAt    DateTime?
+  error          String?
+  retryCount     Int              @default(0)
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([processed])
+  @@index([eventType])
+  @@map("webhook_events")
+}

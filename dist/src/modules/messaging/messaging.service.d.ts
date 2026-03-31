@@ -1,0 +1,175 @@
+import { PrismaService } from '../../prisma/prisma.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { ContactsService } from '../contacts/contacts.service';
+import { MessageDirection, MessageType, MessageStatus } from '@prisma/client';
+export declare class MessagingService {
+    private readonly prisma;
+    private readonly whatsapp;
+    private readonly realtimeGateway;
+    private readonly contactsService;
+    private readonly logger;
+    constructor(prisma: PrismaService, whatsapp: WhatsappService, realtimeGateway: RealtimeGateway, contactsService: ContactsService);
+    findOrCreateConversation(orgId: string, accountId: string, contactId: string): Promise<{
+        id: string;
+        organizationId: string;
+        whatsappAccountId: string;
+        contactId: string;
+        lastMessageBody: string | null;
+        lastMessageAt: Date;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+    }>;
+    createMessage(data: {
+        organizationId: string;
+        whatsappAccountId: string;
+        contactId: string;
+        direction: MessageDirection;
+        type: MessageType;
+        content: any;
+        waMessageId?: string;
+        status?: MessageStatus;
+        sentAt?: Date;
+    }): Promise<{
+        id: string;
+        organizationId: string;
+        whatsappAccountId: string;
+        contactId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
+        status: import(".prisma/client").$Enums.MessageStatus;
+        content: import("@prisma/client/runtime/library").JsonValue;
+        sentAt: Date | null;
+        deliveredAt: Date | null;
+        readAt: Date | null;
+        failedAt: Date | null;
+        failureReason: string | null;
+        conversationId: string | null;
+    }>;
+    sendTextMessage(orgId: string, accountId: string, contactId: string, text: string): Promise<{
+        id: string;
+        organizationId: string;
+        whatsappAccountId: string;
+        contactId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
+        status: import(".prisma/client").$Enums.MessageStatus;
+        content: import("@prisma/client/runtime/library").JsonValue;
+        sentAt: Date | null;
+        deliveredAt: Date | null;
+        readAt: Date | null;
+        failedAt: Date | null;
+        failureReason: string | null;
+        conversationId: string | null;
+    }>;
+    sendTemplateMessage(orgId: string, accountId: string, contactId: string, templateName: string, language?: string, components?: any[]): Promise<{
+        id: string;
+        organizationId: string;
+        whatsappAccountId: string;
+        contactId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
+        status: import(".prisma/client").$Enums.MessageStatus;
+        content: import("@prisma/client/runtime/library").JsonValue;
+        sentAt: Date | null;
+        deliveredAt: Date | null;
+        readAt: Date | null;
+        failedAt: Date | null;
+        failureReason: string | null;
+        conversationId: string | null;
+    }>;
+    updateMessageStatus(waMessageId: string, status: MessageStatus): Promise<{
+        id: string;
+        organizationId: string;
+        whatsappAccountId: string;
+        contactId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
+        status: import(".prisma/client").$Enums.MessageStatus;
+        content: import("@prisma/client/runtime/library").JsonValue;
+        sentAt: Date | null;
+        deliveredAt: Date | null;
+        readAt: Date | null;
+        failedAt: Date | null;
+        failureReason: string | null;
+        conversationId: string | null;
+    }>;
+    getConversationMessages(conversationId: string): Promise<{
+        id: string;
+        organizationId: string;
+        whatsappAccountId: string;
+        contactId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
+        status: import(".prisma/client").$Enums.MessageStatus;
+        content: import("@prisma/client/runtime/library").JsonValue;
+        sentAt: Date | null;
+        deliveredAt: Date | null;
+        readAt: Date | null;
+        failedAt: Date | null;
+        failureReason: string | null;
+        conversationId: string | null;
+    }[]>;
+    getConversations(orgId: string): Promise<({
+        contact: {
+            id: string;
+            phone: string;
+            firstName: string | null;
+            lastName: string | null;
+            avatarUrl: string | null;
+        };
+    } & {
+        id: string;
+        organizationId: string;
+        whatsappAccountId: string;
+        contactId: string;
+        lastMessageBody: string | null;
+        lastMessageAt: Date;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+    })[]>;
+    startNewConversation(orgId: string, accountId: string, phoneNumber: string, contactInfo?: {
+        firstName?: string;
+        lastName?: string;
+    }): Promise<({
+        contact: {
+            id: string;
+            phone: string;
+            firstName: string | null;
+            lastName: string | null;
+            avatarUrl: string | null;
+        };
+    } & {
+        id: string;
+        organizationId: string;
+        whatsappAccountId: string;
+        contactId: string;
+        lastMessageBody: string | null;
+        lastMessageAt: Date;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+    }) | null>;
+}
