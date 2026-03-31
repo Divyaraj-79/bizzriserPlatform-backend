@@ -16,7 +16,7 @@ export class WhatsappService {
     private readonly prisma: PrismaService,
     private readonly securityService: SecurityService,
   ) {
-    this.apiVersion = this.configService.get<string>('whatsapp.apiVersion') ?? 'v20.0';
+    this.apiVersion = this.configService.get<string>('whatsapp.apiVersion') ?? 'v22.0';
     this.graphBaseUrl = this.configService.get<string>('whatsapp.graphBaseUrl') ?? 'https://graph.facebook.com';
     const appSecret = this.configService.get<string>('whatsapp.appSecret');
     const appId = this.configService.get<string>('whatsapp.appId');
