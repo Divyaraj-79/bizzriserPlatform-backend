@@ -47,6 +47,7 @@ export class WhatsappService {
     if (code) {
       this.logger.log(`Attempting token exchange with code: ${code.substring(0, 10)}... (Redirect URI: ${redirectUri})`);
       try {
+        this.logger.log(`Calling Meta Token Exchange: ${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`);
         const tokenRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
           params: {
             client_id: appId,
@@ -58,8 +59,11 @@ export class WhatsappService {
         accessToken = tokenRes.data.access_token;
         this.logger.log('Token exchange successful');
       } catch (tokenErr: any) {
-        this.logger.error(`Token exchange failed: ${tokenErr.response?.data?.error?.message || tokenErr.message}`);
-        throw new HttpException(`Meta Token Exchange Failed: ${tokenErr.response?.data?.error?.message || tokenErr.message}`, HttpStatus.BAD_REQUEST);
+        const errorMsg = tokenErr.response?.data?.error?.message || tokenErr.message;
+        const errorDetail = JSON.stringify(tokenErr.response?.data || {}, null, 2);
+        this.logger.error(`Token exchange failed: ${errorMsg}`);
+        this.logger.error(`Full error details: ${errorDetail}`);
+        throw new HttpException(`Meta Token Exchange Failed: ${errorMsg}`, HttpStatus.BAD_REQUEST);
       }
     }
 
