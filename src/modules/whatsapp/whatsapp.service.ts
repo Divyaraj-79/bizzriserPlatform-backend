@@ -32,8 +32,8 @@ export class WhatsappService {
   /**
    * Connects a new WhatsApp Business Account using the code from Embedded Signup.
    */
-  async connectAccount(orgId: string, data: { code?: string; accessToken?: string }) {
-    const { code, accessToken: providedToken } = data;
+  async connectAccount(orgId: string, data: { code?: string; accessToken?: string; redirectUri?: string }) {
+    const { code, accessToken: providedToken, redirectUri } = data;
     const appId = this.configService.get<string>('whatsapp.appId');
     const appSecret = this.configService.get<string>('whatsapp.appSecret');
 
@@ -45,13 +45,14 @@ export class WhatsappService {
 
     // 1. Exchange code for Token (only if code is provided)
     if (code) {
-      this.logger.log(`Attempting token exchange with code: ${code.substring(0, 10)}...`);
+      this.logger.log(`Attempting token exchange with code: ${code.substring(0, 10)}... (Redirect URI: ${redirectUri})`);
       try {
         const tokenRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
           params: {
             client_id: appId,
             client_secret: appSecret,
             code,
+            redirect_uri: redirectUri,
           },
         });
         accessToken = tokenRes.data.access_token;
