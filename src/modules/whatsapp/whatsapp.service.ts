@@ -110,29 +110,40 @@ export class WhatsappService {
 
     // 4. Final Fallback: Webhook-Aided Connection (Most Robust for Pro-Tech Providers)
     if (!wabaId) {
-       this.logger.log(`Performing Webhook-Aided discovery for App ${appId}...`);
-       try {
-         // Look for WABA_CONNECTED events from the last 5 minutes
-         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-         const recentEvents = await this.prisma.webhookEvent.findMany({
-           where: {
-             eventType: WebhookEventType.WABA_CONNECTED,
-             createdAt: { gte: fiveMinutesAgo }
-           },
-           orderBy: { createdAt: 'desc' }
-         });
-
-         // Find an event that matches our appId in the payload
-         for (const event of recentEvents) {
-           const payload = event.payload as any;
-           if (payload.waba_info?.partner_app_id === appId) {
-             wabaId = payload.waba_info?.waba_id;
-             this.logger.log(`Successfully intercepted WABA ID from recent webhook: ${wabaId}`);
-             break;
-           }
+       this.logger.log(`Performing Webhook-Aided discovery for App ${appId} (Retrying for 5s)...`);
+       
+       // Meta webhooks can be delayed by a few seconds. We retry 5 times with 1s delays.
+       for (let i = 0; i < 5; i++) {
+         if (i > 0) {
+            this.logger.log(`Retry ${i} for webhook discovery...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
          }
-       } catch (err: any) {
-         this.logger.warn(`Webhook discovery fallback failed: ${err.message}`);
+
+         try {
+           const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+           const recentEvents = await this.prisma.webhookEvent.findMany({
+             where: {
+               eventType: WebhookEventType.WABA_CONNECTED,
+               createdAt: { gte: fiveMinutesAgo }
+             },
+             orderBy: { createdAt: 'desc' }
+           });
+
+           for (const event of recentEvents) {
+             const payload = event.payload as any;
+             const partnerAppId = String(payload.waba_info?.partner_app_id || '');
+             
+             if (partnerAppId === String(appId)) {
+               wabaId = payload.waba_info?.waba_id;
+               this.logger.log(`SUCCESS: Intercepted WABA ID from webhook on attempt ${i + 1}: ${wabaId}`);
+               break;
+             }
+           }
+           
+           if (wabaId) break;
+         } catch (err: any) {
+           this.logger.warn(`Webhook discovery attempt ${i + 1} failed: ${err.message}`);
+         }
        }
     }
 
