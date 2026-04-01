@@ -43,8 +43,12 @@ export class WhatsappService {
 
     let accessToken: string | undefined = providedToken;
 
-    // 1. Exchange code for Token (only if code is provided)
-    if (code) {
+    // 1. If accessToken is already provided (from FB.login() without response_type:code), use it directly
+    if (accessToken) {
+      this.logger.log(`Using accessToken directly from FB SDK (no code exchange needed).`);
+    }
+    // 2. Exchange code for Token ONLY if no accessToken was provided
+    else if (code) {
       this.logger.log(`Attempting token exchange with code: ${code.substring(0, 10)}... (No redirect_uri — Embedded Signup flow)`);
       try {
         this.logger.log(`Calling Meta Token Exchange: ${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`);
