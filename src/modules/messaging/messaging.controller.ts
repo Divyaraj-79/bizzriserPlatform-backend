@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Req, Version } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Req, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { MessagingService } from './messaging.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -20,6 +21,22 @@ export class MessagingController {
       body.accountId,
       body.contactId,
       body.text,
+    );
+  }
+
+  @Post('send-media')
+  @UseInterceptors(FileInterceptor('file'))
+  async sendMedia(
+    @Req() req: any,
+    @Body() body: { accountId: string; contactId: string; caption?: string },
+    @UploadedFile() file: any,
+  ) {
+    return this.messagingService.sendMediaMessage(
+      req.user.orgId,
+      body.accountId,
+      body.contactId,
+      file,
+      body.caption,
     );
   }
 

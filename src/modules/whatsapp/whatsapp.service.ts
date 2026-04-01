@@ -2,7 +2,7 @@ import { Injectable, Logger, ConflictException, HttpException, HttpStatus } from
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SecurityService } from '../../common/services/security.service';
-import { WebhookEventType } from '@prisma/client';
+import { WebhookEventType, MessageType } from '@prisma/client';
 import axios, { AxiosInstance } from 'axios';
 
 @Injectable()
@@ -336,6 +336,78 @@ export class WhatsappService {
       return response.data;
     } catch (error) {
       this.handleError(error, `Failed to send template message via account ${accountId}`);
+    }
+  }
+
+  /**
+   * Uploads a file to Meta's media endpoint to get a media_id.
+   */
+  async uploadMedia(orgId: string, accountId: string, file: any) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/media`;
+
+    const formData = new FormData();
+    formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+    formData.append('type', file.mimetype);
+    formData.append('messaging_product', 'whatsapp');
+
+    try {
+      this.logger.log(`Uploading media to Meta for org ${orgId} via account ${accountId}...`);
+      const response = await axios.post(url, formData, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to upload media via account ${accountId}`);
+    }
+  }
+
+  /**
+   * Sends a media message (image, video, document, audio) using a media_id.
+   */
+  async sendMediaMessage(orgId: string, accountId: string, to: string, type: MessageType, mediaId: string, caption?: string) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const mediaTypeKey = type.toLowerCase();
+    const payload: any = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: mediaTypeKey,
+      [mediaTypeKey]: {
+        id: mediaId,
+      },
+    };
+
+    if (caption && (type === MessageType.IMAGE || type === MessageType.VIDEO)) {
+      payload[mediaTypeKey].caption = caption;
+    }
+
+    try {
+      this.logger.log(`Sending WhatsApp ${type} message for org ${orgId} to ${to}`);
+      const response = await axios.post(url, payload, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to send ${type} message via account ${accountId}`);
     }
   }
 

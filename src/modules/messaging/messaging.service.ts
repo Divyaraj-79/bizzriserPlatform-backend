@@ -137,6 +137,69 @@ export class MessagingService {
   }
 
   /**
+   * Sends an outbound media message and records it.
+   */
+  async sendMediaMessage(orgId: string, accountId: string, contactId: string, file: any, caption?: string) {
+    const contact = await this.prisma.contact.findUnique({
+      where: { id: contactId },
+    });
+    if (!contact) throw new Error('Contact not found');
+
+    // Determine MessageType
+    let type: MessageType = MessageType.DOCUMENT;
+    if (file.mimetype.startsWith('image/')) type = MessageType.IMAGE;
+    else if (file.mimetype.startsWith('video/')) type = MessageType.VIDEO;
+    else if (file.mimetype.startsWith('audio/')) type = MessageType.AUDIO;
+
+    // 1. Create message in PENDING state
+    const message = await this.createMessage({
+      organizationId: orgId,
+      whatsappAccountId: accountId,
+      contactId,
+      direction: MessageDirection.OUTBOUND,
+      type,
+      content: { 
+        filename: file.originalname,
+        mimetype: file.mimetype,
+        caption: caption || '',
+        body: caption || `[${type}] ${file.originalname}`
+      },
+      status: MessageStatus.PENDING,
+    });
+
+    try {
+      // 2. Upload and send via WhatsApp API
+      // First upload media to Meta to get media_id
+      const uploadRes = await this.whatsapp.uploadMedia(orgId, accountId, file);
+      const mediaId = uploadRes.id;
+
+      // Then send the message using that media_id
+      const response = await this.whatsapp.sendMediaMessage(orgId, accountId, contact.phone, type, mediaId, caption);
+      const waMessageId = response.messages?.[0]?.id;
+
+      return await this.prisma.message.update({
+        where: { id: message.id },
+        data: {
+          waMessageId,
+          status: MessageStatus.SENT,
+          sentAt: new Date(),
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send media message: ${error.message}`);
+      await this.prisma.message.update({
+        where: { id: message.id },
+        data: {
+          status: MessageStatus.FAILED,
+          failureReason: error.message,
+          failedAt: new Date(),
+        },
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Sends an outbound template message and records it.
    */
   async sendTemplateMessage(orgId: string, accountId: string, contactId: string, templateName: string, language: string = 'en_US', components: any[] = []) {
