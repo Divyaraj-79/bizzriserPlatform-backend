@@ -255,20 +255,18 @@ export class WhatsappService {
 
   /**
    * Sends a simple text message via WhatsApp Cloud API.
-   * NOTE: In a multi-tenant system, you'd usually pass the account's specific token.
    */
   async sendTextMessage(orgId: string, accountId: string, to: string, message: string) {
-    // Fetch the account to get the token
-    const adminAccount = await this.prisma.whatsAppAccount.findUnique({
+    const account = await this.prisma.whatsAppAccount.findUnique({
       where: { id: accountId, organizationId: orgId },
     });
 
-    if (!adminAccount) {
+    if (!account) {
       throw new ConflictException('WhatsApp account not found or access denied');
     }
 
-    const { token: validatedToken } = await this.getValidToken(adminAccount);
-    const url = `${this.graphBaseUrl}/${this.apiVersion}/${adminAccount.phoneNumberId}/messages`;
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
 
     const payload = {
       messaging_product: 'whatsapp',
@@ -300,19 +298,20 @@ export class WhatsappService {
    * Sends a template message via WhatsApp Cloud API.
    */
   async sendTemplateMessage(orgId: string, accountId: string, to: string, templateName: string, languageCode: string = 'en_US', components: any[] = []) {
-    const adminAccount = await this.prisma.whatsAppAccount.findUnique({
+    const account = await this.prisma.whatsAppAccount.findUnique({
       where: { id: accountId, organizationId: orgId },
     });
 
-    if (!adminAccount) {
+    if (!account) {
       throw new ConflictException('WhatsApp account not found or access denied');
     }
 
-    const { token: validatedToken } = await this.getValidToken(adminAccount);
-    const url = `${this.graphBaseUrl}/${this.apiVersion}/${adminAccount.phoneNumberId}/messages`;
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
 
     const payload: any = {
       messaging_product: 'whatsapp',
+      recipient_type: 'individual',
       to,
       type: 'template',
       template: {
@@ -327,7 +326,6 @@ export class WhatsappService {
 
     try {
       this.logger.log(`Sending WhatsApp template (${templateName}) for org ${orgId} to ${to}`);
-      this.logger.debug(`Template Payload: ${JSON.stringify(payload)}`);
       const response = await axios.post(url, payload, {
         headers: {
           Authorization: `Bearer ${validatedToken}`,
@@ -339,22 +337,6 @@ export class WhatsappService {
     } catch (error) {
       this.handleError(error, `Failed to send template message via account ${accountId}`);
     }
-  }
-
-  async listAccounts(orgId: string) {
-    return this.prisma.whatsAppAccount.findMany({
-      where: { organizationId: orgId },
-      select: {
-        id: true,
-        phoneNumberId: true,
-        wabaId: true,
-        displayName: true,
-        phoneNumber: true,
-        status: true,
-        businessProfile: true,
-        createdAt: true,
-      },
-    });
   }
 
   /**
@@ -405,7 +387,7 @@ export class WhatsappService {
       const phoneInfo = phoneData.find((p: any) => p.id === account.phoneNumberId);
       
       if (!phoneInfo) {
-        this.logger.error(`Phone number ${account.phoneNumberId} not found in WABA ${account.wabaId}. Available IDs: ${phoneData.map((p: any) => p.id).join(', ')}`);
+        this.logger.error(`Phone number ${account.phoneNumberId} not found in WABA ${account.wabaId}.`);
         throw new Error('Phone number no longer associated with this WABA');
       }
 
@@ -441,9 +423,6 @@ export class WhatsappService {
     if (!account) {
       throw new ConflictException('WhatsApp account not found or access denied');
     }
-
-    // Optional: Unsubscribe from Meta webhooks if needed
-    // However, for total disconnection, we usually just delete the record.
     
     return this.prisma.whatsAppAccount.delete({
       where: { id: accountId },
@@ -452,14 +431,13 @@ export class WhatsappService {
 
   /**
    * Robustly gets a valid access token for an account.
-   * If the stored token fails (401), it tries the global fallback and updates DB.
    */
   private async getValidToken(account: any): Promise<{ token: string; wasUpdated: boolean }> {
     const storedToken = this.securityService.decrypt(account.accessToken);
     const globalToken = this.configService.get<string>('whatsapp.accessToken');
 
     try {
-      // 1. Test the stored token with a simple debug request
+      // 1. Test the stored token
       await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
         params: { input_token: storedToken },
         headers: { Authorization: `Bearer ${storedToken}` },
@@ -468,14 +446,13 @@ export class WhatsappService {
     } catch (error: any) {
       // 2. If 401 and global token is different, try global
       if (error.response?.status === 401 && globalToken && globalToken !== storedToken) {
-        this.logger.warn(`Stored token for account ${account.id} failed (401). Trying global token...`);
+        this.logger.warn(`Token for account ${account.id} failed (401). Retrying with global token...`);
         try {
           await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
             params: { input_token: globalToken },
             headers: { Authorization: `Bearer ${globalToken}` },
           });
           
-          this.logger.log(`Global token validated! Updating database for account ${account.id}...`);
           await this.prisma.whatsAppAccount.update({
             where: { id: account.id },
             data: { accessToken: this.securityService.encrypt(globalToken) },
@@ -483,8 +460,7 @@ export class WhatsappService {
           
           return { token: globalToken, wasUpdated: true };
         } catch (globalErr) {
-          this.logger.error(`Global token also failed verification.`);
-          throw error; // throw original 401
+          throw error;
         }
       }
       throw error;
@@ -495,18 +471,13 @@ export class WhatsappService {
     const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
     const errorData = error.response?.data?.error || error.response?.data || { message: 'Unknown WhatsApp API error' };
     
-    // Extract Meta's specific message to surface it to the UI
     const metaMessage = errorData.message || 'WhatsApp API Error';
     const enhancedMessage = `${contextMessage}: ${metaMessage}`;
 
     this.logger.error(`${contextMessage}:`, JSON.stringify(errorData));
     
     throw new HttpException(
-      {
-        success: false,
-        message: enhancedMessage,
-        details: errorData,
-      },
+      { success: false, message: enhancedMessage, details: errorData },
       status,
     );
   }

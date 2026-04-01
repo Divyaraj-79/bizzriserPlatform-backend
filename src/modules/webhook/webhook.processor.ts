@@ -60,9 +60,30 @@ export class WebhookProcessor {
         content = { body: messageData.text.body };
       } else if (messageData.type === 'image') {
         messageType = MessageType.IMAGE;
-        content = { image: messageData.image };
+        content = { image: messageData.image, body: messageData.image.caption || '[Image]' };
+      } else if (messageData.type === 'video') {
+        messageType = MessageType.VIDEO;
+        content = { video: messageData.video, body: messageData.video.caption || '[Video]' };
+      } else if (messageData.type === 'audio') {
+        messageType = MessageType.AUDIO;
+        content = { audio: messageData.audio, body: '[Audio]' };
+      } else if (messageData.type === 'document') {
+        messageType = MessageType.DOCUMENT;
+        content = { document: messageData.document, body: messageData.document.filename || '[Document]' };
+      } else if (messageData.type === 'location') {
+        messageType = MessageType.LOCATION;
+        content = { location: messageData.location, body: '[Location Shared]' };
+      } else if (messageData.type === 'button') {
+        messageType = MessageType.TEXT;
+        content = { body: messageData.button.text, payload: messageData.button.payload };
+      } else if (messageData.type === 'interactive') {
+        messageType = MessageType.TEXT;
+        const interactiveType = messageData.interactive.type;
+        content = { 
+          body: messageData.interactive[interactiveType]?.title || '[Interactive Message]',
+          payload: messageData.interactive[interactiveType]?.id 
+        };
       }
-      // Add more types as needed
 
       await this.messagingService.createMessage({
         organizationId,
