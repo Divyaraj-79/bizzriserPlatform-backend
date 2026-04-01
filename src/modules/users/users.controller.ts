@@ -5,6 +5,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 
+import { CreateUserDto } from './dto/create-user.dto';
+
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
@@ -21,7 +23,7 @@ export class UsersController {
 
   @Post()
   @Roles(UserRole.ORG_ADMIN, UserRole.SUPER_ADMIN)
-  async create(@Req() req: any, @Body() createUserDto: any) {
+  async create(@Req() req: any, @Body() createUserDto: CreateUserDto) {
     const currentUser = req.user;
 
     // RBAC: Org Admin can only create users for their own organization
