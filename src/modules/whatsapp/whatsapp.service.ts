@@ -177,7 +177,8 @@ export class WhatsappService {
       throw new HttpException('No phone numbers found in the connected WABA.', HttpStatus.BAD_REQUEST);
     }
 
-    const { id: phoneNumberId, display_phone_number: phoneNumber, verified_name: displayName } = phoneData;
+    const { id: extractedPhoneId, display_phone_number: phoneNumber, verified_name: displayName } = phoneData;
+    phoneNumberId = extractedPhoneId;
 
     // 5. Store the powerful System Access Token directly, as it doesn't expire and grants access to this WABA
     const encryptedToken = this.securityService.encrypt(systemAccessToken);
@@ -185,6 +186,10 @@ export class WhatsappService {
     // 5. Generate security tokens for webhooks
     const verifyToken = this.securityService.generateRandomToken(16);
     const webhookSecret = this.securityService.generateRandomToken(32);
+
+    if (!phoneNumberId) {
+      throw new HttpException('Failed to resolve Phone Number ID from Meta.', HttpStatus.BAD_REQUEST);
+    }
 
     try {
       this.logger.log(`Linking WhatsApp Account: ${phoneNumber} (${phoneNumberId}) to Org: ${orgId}`);
