@@ -46,7 +46,8 @@ let GlobalExceptionFilter = GlobalExceptionFilter_1 = class GlobalExceptionFilte
         }
         const isServerError = status >= 500;
         if (isServerError) {
-            this.logger.error(`[${request.method}] ${request.url} - ${status} - ${message}`, exception instanceof Error ? exception.stack : String(exception));
+            const prismaCode = exception?.code ? ` [Code: ${exception.code}]` : '';
+            this.logger.error(`[${request.method}] ${request.url} - ${status} - ${message}${prismaCode}`, exception instanceof Error ? exception.stack : String(exception));
         }
         else {
             this.logger.warn(`[${request.method}] ${request.url} - ${status} - ${message}`);

@@ -46,8 +46,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const isServerError = status >= 500;
     if (isServerError) {
+      const prismaCode = (exception as any)?.code ? ` [Code: ${(exception as any).code}]` : '';
       this.logger.error(
-        `[${request.method}] ${request.url} - ${status} - ${message}`,
+        `[${request.method}] ${request.url} - ${status} - ${message}${prismaCode}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     } else {
