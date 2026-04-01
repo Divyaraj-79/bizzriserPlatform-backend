@@ -36,13 +36,37 @@ export class WebhookService {
     this.validateSignature(signature, payload, rawBody);
 
     // 2. Identify event type and organization
-    // WhatsApp payloads are complex; we look for 'messages' in 'changes'
     const entries = payload.entry || [];
     for (const entry of entries) {
       const changes = entry.changes || [];
       for (const change of changes) {
+        // A. Handle standard message events
         if (change.field === 'messages') {
           await this.processMessageEvent(entry.id, change.value);
+        }
+        
+        // B. Handle partner installation events (Automated Account Link Fallback)
+        if (change.field === 'account_update' && change.value?.event === 'PARTNER_APP_INSTALLED') {
+          const wabaId = change.value?.waba_info?.waba_id;
+          if (wabaId) {
+            this.logger.log(`Detected WABA installation via webhook: ${wabaId}`);
+            // We store this event as WABA_CONNECTED to allow WhatsappService to find it
+            // We use 'SYSTEM' or a dummy org ID initially as we don't know the org yet
+            // Wait, we need an organizationId for the DB. Let's find one if possible, or just skip it if we can't find it.
+            // Actually, we can just save it with a null or specific system organization ID if the schema allows.
+            // Looking at the schema, organizationId is required.
+            // Let's use the Super Admin organization if we have one or just find the first organization for now.
+            const firstOrg = await this.prisma.organization.findFirst();
+            if (firstOrg) {
+              await this.prisma.webhookEvent.create({
+                data: {
+                  organizationId: firstOrg.id,
+                  eventType: WebhookEventType.WABA_CONNECTED,
+                  payload: change.value,
+                }
+              });
+            }
+          }
         }
       }
     }

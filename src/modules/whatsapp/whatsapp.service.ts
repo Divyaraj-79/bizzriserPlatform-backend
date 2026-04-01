@@ -2,6 +2,7 @@ import { Injectable, Logger, ConflictException, HttpException, HttpStatus } from
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SecurityService } from '../../common/services/security.service';
+import { WebhookEventType } from '@prisma/client';
 import axios, { AxiosInstance } from 'axios';
 
 @Injectable()
@@ -107,9 +108,36 @@ export class WhatsappService {
       }
     }
 
-    // 4. Final Fallback: App-level scan
+    // 4. Final Fallback: Webhook-Aided Connection (Most Robust for Pro-Tech Providers)
     if (!wabaId) {
-       this.logger.log(`Scanning client WABAs as final fallback...`);
+       this.logger.log(`Performing Webhook-Aided discovery for App ${appId}...`);
+       try {
+         // Look for WABA_CONNECTED events from the last 5 minutes
+         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+         const recentEvents = await this.prisma.webhookEvent.findMany({
+           where: {
+             eventType: WebhookEventType.WABA_CONNECTED,
+             createdAt: { gte: fiveMinutesAgo }
+           },
+           orderBy: { createdAt: 'desc' }
+         });
+
+         // Find an event that matches our appId in the payload
+         for (const event of recentEvents) {
+           const payload = event.payload as any;
+           if (payload.waba_info?.partner_app_id === appId) {
+             wabaId = payload.waba_info?.waba_id;
+             this.logger.log(`Successfully intercepted WABA ID from recent webhook: ${wabaId}`);
+             break;
+           }
+         }
+       } catch (err: any) {
+         this.logger.warn(`Webhook discovery fallback failed: ${err.message}`);
+       }
+    }
+
+    if (!wabaId) {
+       this.logger.log(`Wait... scanning client WABAs manually as absolute final fallback...`);
        try {
          const clientWabasRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/client_whatsapp_business_accounts`, {
            headers: { Authorization: `Bearer ${systemAccessToken}` }
@@ -117,15 +145,15 @@ export class WhatsappService {
          const clientWabas = clientWabasRes.data.data;
          if (clientWabas && clientWabas.length > 0) {
             wabaId = clientWabas[0].id;
-            this.logger.log(`Found WABA ID via app scan: ${wabaId}`);
+            this.logger.log(`Found WABA ID via direct app scan: ${wabaId}`);
          }
        } catch (err: any) {
-         this.logger.warn(`Final scan failed: ${err.message}`);
+         this.logger.warn(`Final direct scan failed: ${err.message}`);
        }
     }
 
     if (!wabaId) {
-      this.logger.error(`CRITICAL: No WABA ID found at the end of discovery. Check if Embedded Signup was finished and if App ID ${appId} has permissions.`);
+      this.logger.error(`CRITICAL: No WABA ID found. App ID: ${appId}`);
       throw new HttpException(
         'Could not determine WhatsApp Business Account ID. Please ensure the Meta embedded signup was completed.',
         HttpStatus.BAD_REQUEST
