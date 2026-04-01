@@ -33,35 +33,28 @@ export class WhatsappService {
   /**
    * Connects a new WhatsApp Business Account using the code from Embedded Signup.
    */
-  async connectAccount(orgId: string, data: { code?: string; accessToken?: string; wabaId?: string; redirectUri?: string }) {
-    const { code, accessToken: providedToken, wabaId: providedWabaId, redirectUri } = data;
+  async connectAccount(orgId: string, data: { code?: string; accessToken?: string; wabaId?: string; phoneNumberId?: string }) {
+    const { code, accessToken: providedToken, wabaId: providedWabaId, phoneNumberId: providedPhoneId } = data;
     const appId = this.configService.get<string>('whatsapp.appId');
     const appSecret = this.configService.get<string>('whatsapp.appSecret');
-    const systemAccessToken = this.configService.get<string>('whatsapp.accessToken'); // The EAAu... token from env
+    const systemAccessToken = this.configService.get<string>('whatsapp.accessToken');
 
     if (!appId || !appSecret || !systemAccessToken) {
-      throw new HttpException('Meta App ID, Secret, or System Access Token is not configured in the backend environment.', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException('Meta App ID, Secret, or System Access Token is not configured.', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     let accessToken: string | undefined = providedToken;
 
-    // 1. If accessToken already provided (e.g. from a flow that doesn't use code), use it
-    if (accessToken) {
-      this.logger.log(`Using user accessToken from FB SDK as fallback.`);
-    }
-    // 2. Exchange code for Token
-    else if (code) {
-      // Use the exact same hardcoded URI used in the frontend's window.open
-      const finalRedirectUri = data.redirectUri || 'https://bizzriser-platform-frontend-yw8n-sand.vercel.app/whatsapp-account';
-      this.logger.log(`Received OAuth code. Exchanging with redirect_uri: ${finalRedirectUri}`);
-      
+    // 1. Exchange code for Token
+    if (code && !accessToken) {
+      this.logger.log(`Exchanging code for token (Official Tech Provider Flow)...`);
       try {
         const tokenRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
           params: { 
             client_id: appId, 
             client_secret: appSecret, 
             code,
-            redirect_uri: finalRedirectUri 
+            // ATTENTION: For Tech Providers using FB.login, do NOT include redirect_uri
           },
         });
         accessToken = tokenRes.data.access_token;
@@ -69,16 +62,12 @@ export class WhatsappService {
       } catch (tokenErr: any) {
         const errorMsg = tokenErr.response?.data?.error?.message || tokenErr.message;
         this.logger.error(`Code exchange failed: ${errorMsg}`);
-        // Log details if redirect_uri mismatch
-        if (errorMsg.includes('redirect_uri')) {
-          this.logger.error(`REDIRECT URI MISMATCH. Sent: ${finalRedirectUri}. Check Meta Dashboard setup.`);
-        }
+        // Fallback to system token is still possible if we have the WABA ID
       }
     }
 
-    // 3. Discover WABA ID
-    this.logger.log('Discovering WABA IDs...');
-    let wabaId: string | undefined = providedWabaId;
+    let wabaId = providedWabaId;
+    let phoneNumberId = providedPhoneId;
 
     if (!wabaId && accessToken) {
       try {
