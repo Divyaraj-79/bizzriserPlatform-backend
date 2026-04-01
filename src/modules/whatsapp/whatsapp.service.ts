@@ -32,8 +32,8 @@ export class WhatsappService {
   /**
    * Connects a new WhatsApp Business Account using the code from Embedded Signup.
    */
-  async connectAccount(orgId: string, data: { code?: string; accessToken?: string }) {
-    const { code, accessToken: providedToken } = data;
+  async connectAccount(orgId: string, data: { code?: string; accessToken?: string; wabaId?: string }) {
+    const { code, accessToken: providedToken, wabaId: providedWabaId } = data;
     const appId = this.configService.get<string>('whatsapp.appId');
     const appSecret = this.configService.get<string>('whatsapp.appSecret');
 
@@ -41,74 +41,80 @@ export class WhatsappService {
       throw new HttpException('Meta App ID or Secret is not configured in the backend environment.', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    // App-level access token (App ID | App Secret) — does not require user interaction
+    const appToken = `${appId}|${appSecret}`;
+
     let accessToken: string | undefined = providedToken;
 
-    // 1. If accessToken is already provided (from FB.login() without response_type:code), use it directly
+    // 1. If accessToken already provided (FB SDK without response_type:code), use it directly
     if (accessToken) {
-      this.logger.log(`Using accessToken directly from FB SDK (no code exchange needed).`);
+      this.logger.log(`Using accessToken directly from FB SDK.`);
     }
-    // 2. Exchange code for Token ONLY if no accessToken was provided
+    // 2. Try code exchange as secondary option 
     else if (code) {
-      this.logger.log(`Attempting token exchange with code: ${code.substring(0, 10)}... (No redirect_uri — Embedded Signup flow)`);
+      this.logger.log(`Attempting token exchange with code: ${code.substring(0, 10)}...`);
       try {
-        this.logger.log(`Calling Meta Token Exchange: ${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`);
         const tokenRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
-          params: {
-            client_id: appId,
-            client_secret: appSecret,
-            code,
-          },
+          params: { client_id: appId, client_secret: appSecret, code },
         });
         accessToken = tokenRes.data.access_token;
-        this.logger.log('Token exchange successful');
+        this.logger.log('Token exchange successful.');
       } catch (tokenErr: any) {
         const errorMsg = tokenErr.response?.data?.error?.message || tokenErr.message;
-        const errorDetail = JSON.stringify(tokenErr.response?.data || {}, null, 2);
-        this.logger.error(`Token exchange failed: ${errorMsg}`);
-        this.logger.error(`Full error details: ${errorDetail}`);
-        throw new HttpException(`Meta Token Exchange Failed: ${errorMsg}`, HttpStatus.BAD_REQUEST);
+        this.logger.warn(`Code exchange failed: ${errorMsg}. Will attempt app-token fallback if wabaId is provided.`);
+        // Don't throw here — fall through to app-token approach if wabaId is known
       }
     }
 
-    if (!accessToken) {
-      throw new HttpException('Missing authorization code or access token from Meta signup.', HttpStatus.BAD_REQUEST);
-    }
-
-    // 2. Discover WABA and Phone Number
+    // 2. Discover WABA ID — either from debug_token or from the provided wabaId (sent by frontend after embedded signup)
     this.logger.log('Discovering WABA IDs...');
-    let wabaId: string;
-    try {
-      const debugRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
-        params: {
-          input_token: accessToken,
-          access_token: `${appId}|${appSecret}`,
-        },
-      });
-      wabaId = debugRes.data.data.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_management')?.target_ids?.[0];
-      this.logger.log(`Found WABA ID: ${wabaId}`);
-    } catch (debugErr: any) {
-      this.logger.error(`WABA Discovery failed: ${debugErr.response?.data?.error?.message || debugErr.message}`);
-      throw new HttpException('Failed to discover WhatsApp Business Account assets.', HttpStatus.BAD_REQUEST);
+    let wabaId: string | undefined = providedWabaId;
+
+    if (!wabaId && accessToken) {
+      // Try to discover WABA via debug_token with user accessToken
+      try {
+        const debugRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
+          params: {
+            input_token: accessToken,
+            access_token: appToken,
+          },
+        });
+        wabaId = debugRes.data.data.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_management')?.target_ids?.[0];
+        this.logger.log(`Discovered WABA ID via debug_token: ${wabaId}`);
+      } catch (debugErr: any) {
+        this.logger.warn(`WABA discovery via debug_token failed: ${debugErr.response?.data?.error?.message || debugErr.message}`);
+      }
     }
-    
+
     if (!wabaId) {
-      throw new HttpException('Could not find a WhatsApp Business Account associated with this token. Please ensure you have completed the Meta signup flow.', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'Could not determine WhatsApp Business Account ID. Please complete the Meta signup flow and try again.',
+        HttpStatus.BAD_REQUEST
+      );
     }
 
-    // 3. Get Phone Numbers for this WABA
-    const phoneRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${wabaId}/phone_numbers`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    // 3. Use app token to get phone numbers — reliable regardless of user token issues
+    this.logger.log(`Fetching phone numbers for WABA ${wabaId} using app token...`);
+    let phoneData: any;
+    try {
+      const phoneRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${wabaId}/phone_numbers`, {
+        params: { access_token: appToken },
+      });
+      phoneData = phoneRes.data.data?.[0];
+    } catch (phoneErr: any) {
+      this.logger.error(`Phone number fetch failed: ${phoneErr.response?.data?.error?.message || phoneErr.message}`);
+      throw new HttpException('Failed to fetch phone numbers for this WhatsApp Business Account.', HttpStatus.BAD_REQUEST);
+    }
 
-    const phoneData = phoneRes.data.data?.[0]; // Take the first one for simplicity
     if (!phoneData) {
       throw new HttpException('No phone numbers found in the connected WABA.', HttpStatus.BAD_REQUEST);
     }
 
     const { id: phoneNumberId, display_phone_number: phoneNumber, verified_name: displayName } = phoneData;
 
-    // 4. Encrypt sensitive token
-    const encryptedToken = this.securityService.encrypt(accessToken);
+    // 4. Use app token as stored token (system-level, doesn't expire like user tokens)
+    const tokenToStore = accessToken || appToken;
+    const encryptedToken = this.securityService.encrypt(tokenToStore);
 
     // 5. Generate security tokens for webhooks
     const verifyToken = this.securityService.generateRandomToken(16);
