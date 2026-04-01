@@ -78,21 +78,28 @@ export class WhatsappService {
 
     // Attempt to query client WABAs owned by the system user if still not found
     if (!wabaId) {
+       this.logger.log(`Scanning client WABAs for App ${appId} using System Token...`);
        try {
-         const clientWabasRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/client_whatsapp_business_accounts`, {
+         // Correct URL: https://graph.facebook.com/{version}/{app-id}/client_whatsapp_business_accounts
+         const clientWabasRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/client_whatsapp_business_accounts`, {
            headers: { Authorization: `Bearer ${systemAccessToken}` }
          });
-         // Pick the most recently connected WABA if available
-         if (clientWabasRes.data.data && clientWabasRes.data.data.length > 0) {
-            wabaId = clientWabasRes.data.data[0].id;
-            this.logger.log(`Found WABA ID from client_whatsapp_business_accounts: ${wabaId}`);
+         
+         const clientWabas = clientWabasRes.data.data;
+         this.logger.log(`Meta API found ${clientWabas?.length || 0} client WABAs.`);
+         
+         if (clientWabas && clientWabas.length > 0) {
+            // Pick most recent WABA
+            wabaId = clientWabas[0].id;
+            this.logger.log(`Successfully discovered Client WABA ID: ${wabaId}`);
          }
        } catch (err: any) {
-         this.logger.warn('Failed to fetch client WABAs: ' + err.message);
+         this.logger.warn(`Failed to scan client_whatsapp_business_accounts: ${err.response?.data?.error?.message || err.message}`);
        }
     }
 
     if (!wabaId) {
+      this.logger.error(`CRITICAL: No WABA ID found at the end of discovery. Check if Embedded Signup was finished and if App ID ${appId} has permissions.`);
       throw new HttpException(
         'Could not determine WhatsApp Business Account ID. Please ensure the Meta embedded signup was completed.',
         HttpStatus.BAD_REQUEST
