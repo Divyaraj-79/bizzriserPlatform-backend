@@ -32,8 +32,8 @@ export class WhatsappService {
   /**
    * Connects a new WhatsApp Business Account using the code from Embedded Signup.
    */
-  async connectAccount(orgId: string, data: { code?: string; accessToken?: string; wabaId?: string }) {
-    const { code, accessToken: providedToken, wabaId: providedWabaId } = data;
+  async connectAccount(orgId: string, data: { code?: string; accessToken?: string; wabaId?: string; redirectUri?: string }) {
+    const { code, accessToken: providedToken, wabaId: providedWabaId, redirectUri } = data;
     const appId = this.configService.get<string>('whatsapp.appId');
     const appSecret = this.configService.get<string>('whatsapp.appSecret');
     const systemAccessToken = this.configService.get<string>('whatsapp.accessToken'); // The EAAu... token from env
@@ -44,20 +44,28 @@ export class WhatsappService {
 
     let accessToken: string | undefined = providedToken;
 
-    // 1. If accessToken already provided (FB SDK without response_type:code), we can note it but we don't strictly need it
+    // 1. If accessToken already provided (e.g. from a flow that doesn't use code), use it
     if (accessToken) {
       this.logger.log(`Using user accessToken from FB SDK as fallback.`);
     }
-    // 2. Try code exchange just to see if we get a user token, but ignore errors
+    // 2. Exchange code for Token
     else if (code) {
-      this.logger.log(`Received OAuth code: ${code.substring(0, 10)}... (Ignoring exchange errors for embedded signup)`);
+      this.logger.log(`Received OAuth code: ${code.substring(0, 5)}... Exchanging with redirect_uri: ${redirectUri}`);
       try {
         const tokenRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
-          params: { client_id: appId, client_secret: appSecret, code },
+          params: { 
+            client_id: appId, 
+            client_secret: appSecret, 
+            code,
+            redirect_uri: redirectUri // This must EXACTLY match the one in the frontend window.open
+          },
         });
         accessToken = tokenRes.data.access_token;
+        this.logger.log('Token exchange successful.');
       } catch (tokenErr: any) {
-        this.logger.warn(`Code exchange skipped/failed. Proceeding with System User Token.`);
+        const errorMsg = tokenErr.response?.data?.error?.message || tokenErr.message;
+        this.logger.warn(`Code exchange failed: ${errorMsg}. Proceeding with System User Token.`);
+        // Note: Even if code exchange fails, we can still succeed if we have a WABA ID
       }
     }
 
