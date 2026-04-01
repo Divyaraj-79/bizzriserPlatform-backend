@@ -63,8 +63,16 @@ let AuthService = class AuthService {
         return null;
     }
     async login(user, ip) {
-        if (ip) {
-            await this.usersService.update(user.id, { lastIp: ip });
+        if (ip && user.id) {
+            try {
+                await this.usersService.update(user.id, {
+                    lastIp: ip,
+                    lastLoginAt: new Date()
+                });
+            }
+            catch (err) {
+                console.error('[Auth Service] Failed to update login audit:', err);
+            }
         }
         const payload = {
             email: user.email,

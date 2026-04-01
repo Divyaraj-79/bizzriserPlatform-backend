@@ -20,9 +20,16 @@ export class AuthService {
   }
 
   async login(user: any, ip?: string) {
-    // Audit Trail: Update last IP
-    if (ip) {
-      await this.usersService.update(user.id, { lastIp: ip });
+    // Audit Trail: Update last IP (Non-blocking for login)
+    if (ip && user.id) {
+      try {
+        await this.usersService.update(user.id, { 
+          lastIp: ip,
+          lastLoginAt: new Date()
+        });
+      } catch (err) {
+        console.error('[Auth Service] Failed to update login audit:', err);
+      }
     }
 
     const payload = { 

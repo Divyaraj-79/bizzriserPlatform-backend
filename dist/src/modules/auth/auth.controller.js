@@ -25,12 +25,19 @@ let AuthController = class AuthController {
         this.authService = authService;
     }
     async login(req, loginDto) {
-        const user = await this.authService.validateUser(loginDto.email, loginDto.password);
-        if (!user) {
-            throw new common_1.UnauthorizedException('Invalid credentials');
+        try {
+            const user = await this.authService.validateUser(loginDto.email, loginDto.password);
+            if (!user) {
+                throw new common_1.UnauthorizedException('Invalid credentials');
+            }
+            const ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+            console.log(`[Auth] Attempting login for ${loginDto.email} from IP: ${ip}`);
+            return await this.authService.login(user, ip);
         }
-        const ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-        return this.authService.login(user, ip);
+        catch (error) {
+            console.error('[Auth Error]', error);
+            throw error;
+        }
     }
     async switchTenant(req, orgId) {
         return this.authService.switchTenant(req.user, orgId);
