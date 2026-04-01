@@ -59,7 +59,35 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
             }
             else if (messageData.type === 'image') {
                 messageType = client_1.MessageType.IMAGE;
-                content = { image: messageData.image };
+                content = { image: messageData.image, body: messageData.image.caption || '[Image]' };
+            }
+            else if (messageData.type === 'video') {
+                messageType = client_1.MessageType.VIDEO;
+                content = { video: messageData.video, body: messageData.video.caption || '[Video]' };
+            }
+            else if (messageData.type === 'audio') {
+                messageType = client_1.MessageType.AUDIO;
+                content = { audio: messageData.audio, body: '[Audio]' };
+            }
+            else if (messageData.type === 'document') {
+                messageType = client_1.MessageType.DOCUMENT;
+                content = { document: messageData.document, body: messageData.document.filename || '[Document]' };
+            }
+            else if (messageData.type === 'location') {
+                messageType = client_1.MessageType.LOCATION;
+                content = { location: messageData.location, body: '[Location Shared]' };
+            }
+            else if (messageData.type === 'button') {
+                messageType = client_1.MessageType.TEXT;
+                content = { body: messageData.button.text, payload: messageData.button.payload };
+            }
+            else if (messageData.type === 'interactive') {
+                messageType = client_1.MessageType.TEXT;
+                const interactiveType = messageData.interactive.type;
+                content = {
+                    body: messageData.interactive[interactiveType]?.title || '[Interactive Message]',
+                    payload: messageData.interactive[interactiveType]?.id
+                };
             }
             await this.messagingService.createMessage({
                 organizationId,

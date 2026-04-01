@@ -67,12 +67,18 @@ let OrganizationsService = class OrganizationsService {
         const userExists = await this.prisma.user.findUnique({ where: { email: adminData.email } });
         if (userExists)
             throw new common_1.ConflictException(`User with email ${adminData.email} already exists`);
-        const passwordHash = await bcrypt.hash(adminData.password || 'BizzRiser@2026', 10);
+        const passwordHash = await bcrypt.hash(adminData.password || 'BizzRiser@79', 10);
         return this.prisma.$transaction(async (tx) => {
             const org = await tx.organization.create({
                 data: {
                     name: orgData.name,
                     slug: orgData.slug,
+                    address: orgData.address,
+                    whatsappNumber: orgData.whatsappNumber,
+                    expiryDate: orgData.expiryDate ? new Date(orgData.expiryDate) : null,
+                    package: orgData.package,
+                    isPhoneVerified: orgData.isPhoneVerified || false,
+                    status: orgData.status || 'ACTIVE',
                 },
             });
             const admin = await tx.user.create({
@@ -99,14 +105,54 @@ let OrganizationsService = class OrganizationsService {
     async findAll() {
         return this.prisma.organization.findMany({
             include: {
+                users: {
+                    where: { role: client_1.UserRole.ORG_ADMIN },
+                    take: 1,
+                    select: {
+                        email: true,
+                        firstName: true,
+                        lastName: true,
+                        lastIp: true,
+                        lastLoginAt: true,
+                    }
+                },
                 _count: {
                     select: { users: true }
                 }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+    }
+    async update(id, data) {
+        return this.prisma.organization.update({
+            where: { id },
+            data: {
+                name: data.name,
+                slug: data.slug,
+                address: data.address,
+                whatsappNumber: data.whatsappNumber,
+                expiryDate: data.expiryDate ? new Date(data.expiryDate) : undefined,
+                package: data.package,
+                isPhoneVerified: data.isPhoneVerified,
+                status: data.status,
             }
         });
     }
+    async delete(id) {
+        return this.prisma.organization.delete({
+            where: { id }
+        });
+    }
     async findOne(id) {
-        return this.findById(id);
+        return this.prisma.organization.findUnique({
+            where: { id },
+            include: {
+                users: {
+                    where: { role: client_1.UserRole.ORG_ADMIN },
+                    take: 1,
+                }
+            }
+        });
     }
 };
 exports.OrganizationsService = OrganizationsService;

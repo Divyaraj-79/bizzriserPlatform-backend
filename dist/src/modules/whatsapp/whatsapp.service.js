@@ -53,21 +53,27 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         }
         let accessToken = providedToken;
         if (code && !accessToken) {
-            this.logger.log(`Exchanging code for token (Official V4 Tech Provider Flow)...`);
+            this.logger.log(`STEP 1: Exchanging code for token...`);
             try {
                 const tokenRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
-                    params: {
-                        client_id: appId,
-                        client_secret: appSecret,
-                        code,
-                    },
+                    params: { client_id: appId, client_secret: appSecret, code },
                 });
                 accessToken = tokenRes.data.access_token;
-                this.logger.log('Token exchange successful.');
+                this.logger.log('SUCCESS: Clean Token exchange achieved.');
             }
             catch (tokenErr) {
-                const errorMsg = tokenErr.response?.data?.error?.message || tokenErr.message;
-                this.logger.error(`Code exchange failed: ${errorMsg}`);
+                this.logger.warn(`NOTICE: Clean exchange failed. Retrying with production redirect_uri fallback...`);
+                const prodRedirectUri = 'https://bizzriser-platform-frontend-yw8n-sand.vercel.app/whatsapp-account';
+                try {
+                    const tokenRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
+                        params: { client_id: appId, client_secret: appSecret, code, redirect_uri: prodRedirectUri },
+                    });
+                    accessToken = tokenRes.data.access_token;
+                    this.logger.log('SUCCESS: Fallback Token exchange achieved.');
+                }
+                catch (fallbackErr) {
+                    this.logger.error(`CRITICAL: All exchange paths failed. Meta response: ${fallbackErr.response?.data?.error?.message || fallbackErr.message}`);
+                }
             }
         }
         let wabaId = providedWabaId;
@@ -78,43 +84,35 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     params: { input_token: accessToken, access_token: `${appId}|${appSecret}` },
                 });
                 const debugData = debugRes.data.data;
-                this.logger.log('META DEBUG_TOKEN RESPONSE: ' + JSON.stringify(debugData));
-                wabaId = debugData.granular_scopes?.find((s) => s.scope === 'whatsapp_business_management')?.target_ids?.[0];
-                if (!wabaId) {
-                    wabaId = debugData.granular_scopes?.find((s) => s.scope === 'whatsapp_business_messaging')?.target_ids?.[0];
-                }
-                if (!wabaId) {
-                    wabaId = debugData.target_ids?.[0] || debugData.profile_id;
-                }
+                wabaId = debugData.granular_scopes?.find((s) => s.scope === 'whatsapp_business_management')?.target_ids?.[0] ||
+                    debugData.granular_scopes?.find((s) => s.scope === 'whatsapp_business_messaging')?.target_ids?.[0] ||
+                    debugData.target_ids?.[0] || debugData.profile_id;
                 if (wabaId)
                     this.logger.log(`Discovered WABA ID via debug_token: ${wabaId}`);
             }
             catch (debugErr) {
-                this.logger.warn(`WABA discovery via debug_token failed: ${debugErr.response?.data?.error?.message || debugErr.message}`);
+                this.logger.warn(`Debug token discovery skipped: ${debugErr.message}`);
             }
         }
         if (!wabaId) {
-            this.logger.log(`Performing Webhook-Aided discovery for App ${appId} (Retrying for 5s)...`);
+            this.logger.log(`Performing Safe Webhook discovery for App ${appId} (Retrying for 5s)...`);
             for (let i = 0; i < 5; i++) {
-                if (i > 0) {
-                    this.logger.log(`Retry ${i} for webhook discovery...`);
+                if (i > 0)
                     await new Promise(resolve => setTimeout(resolve, 1000));
-                }
                 try {
                     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
                     const recentEvents = await this.prisma.webhookEvent.findMany({
                         where: {
-                            eventType: client_1.WebhookEventType.WABA_CONNECTED,
+                            eventType: client_1.WebhookEventType.MESSAGE_RECEIVED,
                             createdAt: { gte: fiveMinutesAgo }
                         },
                         orderBy: { createdAt: 'desc' }
                     });
                     for (const event of recentEvents) {
                         const payload = event.payload;
-                        const partnerAppId = String(payload.waba_info?.partner_app_id || '');
-                        if (partnerAppId === String(appId)) {
+                        if (payload.isSignupEvent && payload.waba_info?.partner_app_id === String(appId)) {
                             wabaId = payload.waba_info?.waba_id;
-                            this.logger.log(`SUCCESS: Intercepted WABA ID from webhook on attempt ${i + 1}: ${wabaId}`);
+                            this.logger.log(`SUCCESS: Intercepted WABA ID via safe webhook on attempt ${i + 1}: ${wabaId}`);
                             break;
                         }
                     }
@@ -122,8 +120,24 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                         break;
                 }
                 catch (err) {
-                    this.logger.warn(`Webhook discovery attempt ${i + 1} failed: ${err.message}`);
+                    this.logger.warn(`Safe Discovery attempt ${i + 1} failed: ${err.message}`);
                 }
+            }
+        }
+        if (!wabaId) {
+            this.logger.log(`Wait... scanning client WABAs manually as absolute final fallback...`);
+            try {
+                const clientWabasRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/client_whatsapp_business_accounts`, {
+                    headers: { Authorization: `Bearer ${systemAccessToken}` }
+                });
+                const clientWabas = clientWabasRes.data.data;
+                if (clientWabas && clientWabas.length > 0) {
+                    wabaId = clientWabas[0].id;
+                    this.logger.log(`Found WABA ID via direct app scan: ${wabaId}`);
+                }
+            }
+            catch (err) {
+                this.logger.warn(`Final direct scan failed: ${err.message}`);
             }
         }
         if (!wabaId) {
@@ -222,14 +236,14 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         }
     }
     async sendTextMessage(orgId, accountId, to, message) {
-        const adminAccount = await this.prisma.whatsAppAccount.findUnique({
+        const account = await this.prisma.whatsAppAccount.findUnique({
             where: { id: accountId, organizationId: orgId },
         });
-        if (!adminAccount) {
+        if (!account) {
             throw new common_1.ConflictException('WhatsApp account not found or access denied');
         }
-        const { token: validatedToken } = await this.getValidToken(adminAccount);
-        const url = `${this.graphBaseUrl}/${this.apiVersion}/${adminAccount.phoneNumberId}/messages`;
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
         const payload = {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
@@ -255,16 +269,17 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         }
     }
     async sendTemplateMessage(orgId, accountId, to, templateName, languageCode = 'en_US', components = []) {
-        const adminAccount = await this.prisma.whatsAppAccount.findUnique({
+        const account = await this.prisma.whatsAppAccount.findUnique({
             where: { id: accountId, organizationId: orgId },
         });
-        if (!adminAccount) {
+        if (!account) {
             throw new common_1.ConflictException('WhatsApp account not found or access denied');
         }
-        const { token: validatedToken } = await this.getValidToken(adminAccount);
-        const url = `${this.graphBaseUrl}/${this.apiVersion}/${adminAccount.phoneNumberId}/messages`;
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
         const payload = {
             messaging_product: 'whatsapp',
+            recipient_type: 'individual',
             to,
             type: 'template',
             template: {
@@ -277,7 +292,6 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         }
         try {
             this.logger.log(`Sending WhatsApp template (${templateName}) for org ${orgId} to ${to}`);
-            this.logger.debug(`Template Payload: ${JSON.stringify(payload)}`);
             const response = await axios_1.default.post(url, payload, {
                 headers: {
                     Authorization: `Bearer ${validatedToken}`,
@@ -288,6 +302,67 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         }
         catch (error) {
             this.handleError(error, `Failed to send template message via account ${accountId}`);
+        }
+    }
+    async uploadMedia(orgId, accountId, file) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/media`;
+        const formData = new FormData();
+        formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+        formData.append('type', file.mimetype);
+        formData.append('messaging_product', 'whatsapp');
+        try {
+            this.logger.log(`Uploading media to Meta for org ${orgId} via account ${accountId}...`);
+            const response = await axios_1.default.post(url, formData, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.handleError(error, `Failed to upload media via account ${accountId}`);
+        }
+    }
+    async sendMediaMessage(orgId, accountId, to, type, mediaId, caption) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+        const mediaTypeKey = type.toLowerCase();
+        const payload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: mediaTypeKey,
+            [mediaTypeKey]: {
+                id: mediaId,
+            },
+        };
+        if (caption && (type === client_1.MessageType.IMAGE || type === client_1.MessageType.VIDEO)) {
+            payload[mediaTypeKey].caption = caption;
+        }
+        try {
+            this.logger.log(`Sending WhatsApp ${type} message for org ${orgId} to ${to}`);
+            const response = await axios_1.default.post(url, payload, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.handleError(error, `Failed to send ${type} message via account ${accountId}`);
         }
     }
     async listAccounts(orgId) {
@@ -342,7 +417,7 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             const phoneData = phoneRes.data?.data || [];
             const phoneInfo = phoneData.find((p) => p.id === account.phoneNumberId);
             if (!phoneInfo) {
-                this.logger.error(`Phone number ${account.phoneNumberId} not found in WABA ${account.wabaId}. Available IDs: ${phoneData.map((p) => p.id).join(', ')}`);
+                this.logger.error(`Phone number ${account.phoneNumberId} not found in WABA ${account.wabaId}.`);
                 throw new Error('Phone number no longer associated with this WABA');
             }
             const updatedAccount = await this.prisma.whatsAppAccount.update({
@@ -388,13 +463,12 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         }
         catch (error) {
             if (error.response?.status === 401 && globalToken && globalToken !== storedToken) {
-                this.logger.warn(`Stored token for account ${account.id} failed (401). Trying global token...`);
+                this.logger.warn(`Token for account ${account.id} failed (401). Retrying with global token...`);
                 try {
                     await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
                         params: { input_token: globalToken },
                         headers: { Authorization: `Bearer ${globalToken}` },
                     });
-                    this.logger.log(`Global token validated! Updating database for account ${account.id}...`);
                     await this.prisma.whatsAppAccount.update({
                         where: { id: account.id },
                         data: { accessToken: this.securityService.encrypt(globalToken) },
@@ -402,7 +476,6 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     return { token: globalToken, wasUpdated: true };
                 }
                 catch (globalErr) {
-                    this.logger.error(`Global token also failed verification.`);
                     throw error;
                 }
             }
@@ -415,11 +488,7 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         const metaMessage = errorData.message || 'WhatsApp API Error';
         const enhancedMessage = `${contextMessage}: ${metaMessage}`;
         this.logger.error(`${contextMessage}:`, JSON.stringify(errorData));
-        throw new common_1.HttpException({
-            success: false,
-            message: enhancedMessage,
-            details: errorData,
-        }, status);
+        throw new common_1.HttpException({ success: false, message: enhancedMessage, details: errorData }, status);
     }
 };
 exports.WhatsappService = WhatsappService;

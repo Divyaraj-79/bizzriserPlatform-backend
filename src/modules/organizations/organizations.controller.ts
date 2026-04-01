@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req, Param, Patch, Delete } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -19,7 +19,7 @@ export class OrganizationsController {
   @Post('onboard')
   @Roles(UserRole.SUPER_ADMIN)
   async onboard(
-    @Body('organization') orgData: { name: string; slug: string },
+    @Body('organization') orgData: any,
     @Body('admin') adminData: { email: string; firstName: string; lastName: string; password?: string }
   ) {
     return this.orgsService.createWithAdmin(orgData, adminData);
@@ -27,7 +27,18 @@ export class OrganizationsController {
 
   @Get(':id')
   async findOne(@Req() req: any) {
-    // If not super admin, must match their own org
     return this.orgsService.findOne(req.params.id);
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.SUPER_ADMIN)
+  async update(@Param('id') id: string, @Body() updateData: any) {
+    return this.orgsService.update(id, updateData);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.SUPER_ADMIN)
+  async delete(@Param('id') id: string) {
+    return this.orgsService.delete(id);
   }
 }

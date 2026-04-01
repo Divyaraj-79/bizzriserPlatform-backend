@@ -62,7 +62,10 @@ let AuthService = class AuthService {
         }
         return null;
     }
-    async login(user) {
+    async login(user, ip) {
+        if (ip) {
+            await this.usersService.update(user.id, { lastIp: ip });
+        }
         const payload = {
             email: user.email,
             sub: user.id,

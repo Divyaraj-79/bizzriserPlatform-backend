@@ -19,7 +19,12 @@ export class AuthService {
     return null;
   }
 
-  async login(user: any) {
+  async login(user: any, ip?: string) {
+    // Audit Trail: Update last IP
+    if (ip) {
+      await this.usersService.update(user.id, { lastIp: ip });
+    }
+
     const payload = { 
       email: user.email, 
       sub: user.id, 

@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MessagingController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const messaging_service_1 = require("./messaging.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 let MessagingController = class MessagingController {
@@ -23,6 +24,9 @@ let MessagingController = class MessagingController {
     }
     async sendMessage(req, body) {
         return this.messagingService.sendTextMessage(req.user.orgId, body.accountId, body.contactId, body.text);
+    }
+    async sendMedia(req, body, file) {
+        return this.messagingService.sendMediaMessage(req.user.orgId, body.accountId, body.contactId, file, body.caption);
     }
     async sendTemplate(req, body) {
         return this.messagingService.sendTemplateMessage(req.user.orgId, body.accountId, body.contactId, body.templateName, body.language || 'en_US', body.components || []);
@@ -46,6 +50,16 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], MessagingController.prototype, "sendMessage", null);
+__decorate([
+    (0, common_1.Post)('send-media'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MessagingController.prototype, "sendMedia", null);
 __decorate([
     (0, common_1.Post)('template'),
     __param(0, (0, common_1.Req)()),

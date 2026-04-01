@@ -33,6 +33,12 @@ let OrganizationsController = class OrganizationsController {
     async findOne(req) {
         return this.orgsService.findOne(req.params.id);
     }
+    async update(id, updateData) {
+        return this.orgsService.update(id, updateData);
+    }
+    async delete(id) {
+        return this.orgsService.delete(id);
+    }
 };
 exports.OrganizationsController = OrganizationsController;
 __decorate([
@@ -58,6 +64,23 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], OrganizationsController.prototype, "findOne", null);
+__decorate([
+    (0, common_1.Patch)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.UserRole.SUPER_ADMIN),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "update", null);
+__decorate([
+    (0, common_1.Delete)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.UserRole.SUPER_ADMIN),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "delete", null);
 exports.OrganizationsController = OrganizationsController = __decorate([
     (0, common_1.Controller)('organizations'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),

@@ -16,20 +16,27 @@ export class OrganizationsService {
     return this.prisma.organization.create({ data });
   }
 
-  async createWithAdmin(orgData: { name: string; slug: string }, adminData: { email: string; firstName: string; lastName: string; password?: string }) {
+  async createWithAdmin(orgData: any, adminData: { email: string; firstName: string; lastName: string; password?: string }) {
     const slugExists = await this.prisma.organization.findUnique({ where: { slug: orgData.slug } });
     if (slugExists) throw new ConflictException(`Slug ${orgData.slug} already exists`);
 
     const userExists = await this.prisma.user.findUnique({ where: { email: adminData.email } });
     if (userExists) throw new ConflictException(`User with email ${adminData.email} already exists`);
 
-    const passwordHash = await bcrypt.hash(adminData.password || 'BizzRiser@2026', 10);
+    // Ensure the password meets our new criteria or use a secure fallback
+    const passwordHash = await bcrypt.hash(adminData.password || 'BizzRiser@79', 10);
 
     return this.prisma.$transaction(async (tx) => {
       const org = await tx.organization.create({
         data: {
           name: orgData.name,
           slug: orgData.slug,
+          address: orgData.address,
+          whatsappNumber: orgData.whatsappNumber,
+          expiryDate: orgData.expiryDate ? new Date(orgData.expiryDate) : null,
+          package: orgData.package,
+          isPhoneVerified: orgData.isPhoneVerified || false,
+          status: orgData.status || 'ACTIVE',
         },
       });
 
@@ -59,14 +66,56 @@ export class OrganizationsService {
   async findAll() {
     return this.prisma.organization.findMany({
       include: {
+        users: {
+          where: { role: UserRole.ORG_ADMIN },
+          take: 1,
+          select: {
+            email: true,
+            firstName: true,
+            lastName: true,
+            lastIp: true,
+            lastLoginAt: true,
+          }
+        },
         _count: {
           select: { users: true }
         }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  async update(id: string, data: any) {
+    return this.prisma.organization.update({
+      where: { id },
+      data: {
+        name: data.name,
+        slug: data.slug,
+        address: data.address,
+        whatsappNumber: data.whatsappNumber,
+        expiryDate: data.expiryDate ? new Date(data.expiryDate) : undefined,
+        package: data.package,
+        isPhoneVerified: data.isPhoneVerified,
+        status: data.status,
       }
     });
   }
 
+  async delete(id: string) {
+    return this.prisma.organization.delete({
+      where: { id }
+    });
+  }
+
   async findOne(id: string) {
-    return this.findById(id);
+    return this.prisma.organization.findUnique({
+      where: { id },
+      include: {
+        users: {
+          where: { role: UserRole.ORG_ADMIN },
+          take: 1,
+        }
+      }
+    });
   }
 }

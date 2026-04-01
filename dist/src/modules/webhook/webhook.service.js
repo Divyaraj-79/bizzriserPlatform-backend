@@ -91,8 +91,11 @@ let WebhookService = WebhookService_1 = class WebhookService {
                             await this.prisma.webhookEvent.create({
                                 data: {
                                     organizationId: firstOrg.id,
-                                    eventType: client_1.WebhookEventType.WABA_CONNECTED,
-                                    payload: change.value,
+                                    eventType: client_1.WebhookEventType.MESSAGE_RECEIVED,
+                                    payload: {
+                                        ...change.value,
+                                        isSignupEvent: true,
+                                    },
                                 }
                             });
                         }

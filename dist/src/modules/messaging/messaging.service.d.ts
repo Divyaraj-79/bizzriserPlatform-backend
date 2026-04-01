@@ -71,6 +71,26 @@ export declare class MessagingService {
         contactId: string;
         conversationId: string | null;
     }>;
+    sendMediaMessage(orgId: string, accountId: string, contactId: string, file: any, caption?: string): Promise<{
+        id: string;
+        organizationId: string;
+        status: import(".prisma/client").$Enums.MessageStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
+        content: import("@prisma/client/runtime/library").JsonValue;
+        sentAt: Date | null;
+        deliveredAt: Date | null;
+        readAt: Date | null;
+        failedAt: Date | null;
+        failureReason: string | null;
+        whatsappAccountId: string;
+        contactId: string;
+        conversationId: string | null;
+    }>;
     sendTemplateMessage(orgId: string, accountId: string, contactId: string, templateName: string, language?: string, components?: any[]): Promise<{
         id: string;
         organizationId: string;

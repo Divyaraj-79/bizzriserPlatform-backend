@@ -1,5 +1,6 @@
 import { UsersService } from './users.service';
 import { UserRole } from '@prisma/client';
+import { CreateUserDto } from './dto/create-user.dto';
 export declare class UsersController {
     private readonly usersService;
     constructor(usersService: UsersService);
@@ -13,12 +14,13 @@ export declare class UsersController {
         role: import(".prisma/client").$Enums.UserRole;
         status: import(".prisma/client").$Enums.UserStatus;
         avatarUrl: string | null;
+        lastIp: string | null;
         lastLoginAt: Date | null;
         refreshToken: string | null;
         createdAt: Date;
         updatedAt: Date;
     }[]>;
-    create(req: any, createUserDto: any): Promise<{
+    create(req: any, createUserDto: CreateUserDto): Promise<{
         id: string;
         organizationId: string;
         email: string;
@@ -28,6 +30,7 @@ export declare class UsersController {
         role: import(".prisma/client").$Enums.UserRole;
         status: import(".prisma/client").$Enums.UserStatus;
         avatarUrl: string | null;
+        lastIp: string | null;
         lastLoginAt: Date | null;
         refreshToken: string | null;
         createdAt: Date;
@@ -43,6 +46,7 @@ export declare class UsersController {
         role: import(".prisma/client").$Enums.UserRole;
         status: import(".prisma/client").$Enums.UserStatus;
         avatarUrl: string | null;
+        lastIp: string | null;
         lastLoginAt: Date | null;
         refreshToken: string | null;
         createdAt: Date;
@@ -58,6 +62,7 @@ export declare class UsersController {
         role: import(".prisma/client").$Enums.UserRole;
         status: import(".prisma/client").$Enums.UserStatus;
         avatarUrl: string | null;
+        lastIp: string | null;
         lastLoginAt: Date | null;
         refreshToken: string | null;
         createdAt: Date;
@@ -73,6 +78,7 @@ export declare class UsersController {
         role: import(".prisma/client").$Enums.UserRole;
         status: import(".prisma/client").$Enums.UserStatus;
         avatarUrl: string | null;
+        lastIp: string | null;
         lastLoginAt: Date | null;
         refreshToken: string | null;
         createdAt: Date;

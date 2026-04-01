@@ -91,17 +91,30 @@ enum WebhookEventType {
   TEMPLATE_STATUS_UPDATE
 }
 
+enum SubscriptionPackage {
+  FREE
+  BASIC
+  ADVANCE
+  ADVANCE_5L
+  ENTERPRISE
+}
+
 // ─── Models ────────────────────────────────────────────────────────────────
 
 model Organization {
   id          String             @id @default(uuid())
   name        String
   slug        String             @unique
-  logoUrl     String?
-  website     String?
-  timezone    String             @default("UTC")
-  status      OrganizationStatus @default(ACTIVE)
-  metadata    Json               @default("{}")
+  logoUrl         String?
+  website         String?
+  address         String?
+  whatsappNumber  String?
+  expiryDate      DateTime?
+  package         SubscriptionPackage @default(FREE)
+  isPhoneVerified Boolean             @default(false)
+  timezone        String              @default("UTC")
+  status          OrganizationStatus  @default(ACTIVE)
+  metadata        Json                @default("{}")
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
@@ -126,6 +139,7 @@ model User {
   role           UserRole   @default(AGENT)
   status         UserStatus @default(ACTIVE)
   avatarUrl      String?
+  lastIp         String?
   lastLoginAt    DateTime?
   refreshToken   String?
   createdAt      DateTime   @default(now())

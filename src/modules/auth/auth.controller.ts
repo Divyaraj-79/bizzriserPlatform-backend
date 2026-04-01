@@ -14,12 +14,13 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: { email: string; password: 'password123' }) {
+  async login(@Req() req: any, @Body() loginDto: any) {
     const user = await this.authService.validateUser(loginDto.email, loginDto.password);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    return this.authService.login(user);
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    return this.authService.login(user, ip);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

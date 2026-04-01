@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SecurityService } from '../../common/services/security.service';
+import { MessageType } from '@prisma/client';
 export declare class WhatsappService {
     private readonly configService;
     private readonly prisma;
@@ -32,6 +33,8 @@ export declare class WhatsappService {
     }>;
     sendTextMessage(orgId: string, accountId: string, to: string, message: string): Promise<any>;
     sendTemplateMessage(orgId: string, accountId: string, to: string, templateName: string, languageCode?: string, components?: any[]): Promise<any>;
+    uploadMedia(orgId: string, accountId: string, file: any): Promise<any>;
+    sendMediaMessage(orgId: string, accountId: string, to: string, type: MessageType, mediaId: string, caption?: string): Promise<any>;
     listAccounts(orgId: string): Promise<{
         id: string;
         status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
