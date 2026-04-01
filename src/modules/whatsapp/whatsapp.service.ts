@@ -340,6 +340,25 @@ export class WhatsappService {
   }
 
   /**
+   * Lists all WhatsApp accounts belonging to an organization.
+   */
+  async listAccounts(orgId: string) {
+    return this.prisma.whatsAppAccount.findMany({
+      where: { organizationId: orgId },
+      select: {
+        id: true,
+        phoneNumberId: true,
+        wabaId: true,
+        displayName: true,
+        phoneNumber: true,
+        status: true,
+        businessProfile: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  /**
    * Fetches message templates for a WhatsApp Business Account from Meta.
    */
   async getTemplates(orgId: string, accountId: string) {
