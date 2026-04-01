@@ -53,9 +53,6 @@ export class WhatsappService {
             client_id: appId,
             client_secret: appSecret,
             code,
-            // The Facebook JS SDK internally registers this as the redirect_uri
-            // when using FB.login() with response_type: 'code'
-            redirect_uri: 'https://www.facebook.com/connect/login_success.html',
           },
         });
         accessToken = tokenRes.data.access_token;
