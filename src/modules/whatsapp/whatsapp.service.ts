@@ -36,74 +36,80 @@ export class WhatsappService {
     const { code, accessToken: providedToken, wabaId: providedWabaId } = data;
     const appId = this.configService.get<string>('whatsapp.appId');
     const appSecret = this.configService.get<string>('whatsapp.appSecret');
+    const systemAccessToken = this.configService.get<string>('whatsapp.accessToken'); // The EAAu... token from env
 
-    if (!appId || !appSecret || appSecret.includes('your_facebook_app_secret')) {
-      throw new HttpException('Meta App ID or Secret is not configured in the backend environment.', HttpStatus.INTERNAL_SERVER_ERROR);
+    if (!appId || !appSecret || !systemAccessToken) {
+      throw new HttpException('Meta App ID, Secret, or System Access Token is not configured in the backend environment.', HttpStatus.INTERNAL_SERVER_ERROR);
     }
-
-    // App-level access token (App ID | App Secret) — does not require user interaction
-    const appToken = `${appId}|${appSecret}`;
 
     let accessToken: string | undefined = providedToken;
 
-    // 1. If accessToken already provided (FB SDK without response_type:code), use it directly
+    // 1. If accessToken already provided (FB SDK without response_type:code), we can note it but we don't strictly need it
     if (accessToken) {
-      this.logger.log(`Using accessToken directly from FB SDK.`);
+      this.logger.log(`Using user accessToken from FB SDK as fallback.`);
     }
-    // 2. Try code exchange as secondary option 
+    // 2. Try code exchange just to see if we get a user token, but ignore errors
     else if (code) {
-      this.logger.log(`Attempting token exchange with code: ${code.substring(0, 10)}...`);
+      this.logger.log(`Received OAuth code: ${code.substring(0, 10)}... (Ignoring exchange errors for embedded signup)`);
       try {
         const tokenRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
           params: { client_id: appId, client_secret: appSecret, code },
         });
         accessToken = tokenRes.data.access_token;
-        this.logger.log('Token exchange successful.');
       } catch (tokenErr: any) {
-        const errorMsg = tokenErr.response?.data?.error?.message || tokenErr.message;
-        this.logger.warn(`Code exchange failed: ${errorMsg}. Will attempt app-token fallback if wabaId is provided.`);
-        // Don't throw here — fall through to app-token approach if wabaId is known
+        this.logger.warn(`Code exchange skipped/failed. Proceeding with System User Token.`);
       }
     }
 
-    // 2. Discover WABA ID — either from debug_token or from the provided wabaId (sent by frontend after embedded signup)
+    // 3. Discover WABA ID
     this.logger.log('Discovering WABA IDs...');
     let wabaId: string | undefined = providedWabaId;
 
     if (!wabaId && accessToken) {
-      // Try to discover WABA via debug_token with user accessToken
       try {
         const debugRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
-          params: {
-            input_token: accessToken,
-            access_token: appToken,
-          },
+          params: { input_token: accessToken, access_token: `${appId}|${appSecret}` },
         });
         wabaId = debugRes.data.data.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_management')?.target_ids?.[0];
-        this.logger.log(`Discovered WABA ID via debug_token: ${wabaId}`);
       } catch (debugErr: any) {
         this.logger.warn(`WABA discovery via debug_token failed: ${debugErr.response?.data?.error?.message || debugErr.message}`);
       }
     }
 
+    // Attempt to query client WABAs owned by the system user if still not found
+    if (!wabaId) {
+       try {
+         const clientWabasRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/client_whatsapp_business_accounts`, {
+           headers: { Authorization: `Bearer ${systemAccessToken}` }
+         });
+         // Pick the most recently connected WABA if available
+         if (clientWabasRes.data.data && clientWabasRes.data.data.length > 0) {
+            wabaId = clientWabasRes.data.data[0].id;
+            this.logger.log(`Found WABA ID from client_whatsapp_business_accounts: ${wabaId}`);
+         }
+       } catch (err: any) {
+         this.logger.warn('Failed to fetch client WABAs: ' + err.message);
+       }
+    }
+
     if (!wabaId) {
       throw new HttpException(
-        'Could not determine WhatsApp Business Account ID. Please complete the Meta signup flow and try again.',
+        'Could not determine WhatsApp Business Account ID. Please ensure the Meta embedded signup was completed.',
         HttpStatus.BAD_REQUEST
       );
     }
 
-    // 3. Use app token to get phone numbers — reliable regardless of user token issues
-    this.logger.log(`Fetching phone numbers for WABA ${wabaId} using app token...`);
+    // 4. Use SYSTEM USER TOKEN to get phone numbers — This is officially supported by Meta for Embedded Signup
+    this.logger.log(`Fetching phone numbers for WABA ${wabaId} using System User Access Token...`);
     let phoneData: any;
     try {
       const phoneRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${wabaId}/phone_numbers`, {
-        params: { access_token: appToken },
+        headers: { Authorization: `Bearer ${systemAccessToken}` },
       });
       phoneData = phoneRes.data.data?.[0];
     } catch (phoneErr: any) {
       this.logger.error(`Phone number fetch failed: ${phoneErr.response?.data?.error?.message || phoneErr.message}`);
-      throw new HttpException('Failed to fetch phone numbers for this WhatsApp Business Account.', HttpStatus.BAD_REQUEST);
+      throw new HttpException('Failed to fetch phone numbers utilizing the System Access Token.', HttpStatus.BAD_REQUEST);
     }
 
     if (!phoneData) {
@@ -112,9 +118,8 @@ export class WhatsappService {
 
     const { id: phoneNumberId, display_phone_number: phoneNumber, verified_name: displayName } = phoneData;
 
-    // 4. Use app token as stored token (system-level, doesn't expire like user tokens)
-    const tokenToStore = accessToken || appToken;
-    const encryptedToken = this.securityService.encrypt(tokenToStore);
+    // 5. Store the powerful System Access Token directly, as it doesn't expire and grants access to this WABA
+    const encryptedToken = this.securityService.encrypt(systemAccessToken);
 
     // 5. Generate security tokens for webhooks
     const verifyToken = this.securityService.generateRandomToken(16);
