@@ -4,14 +4,14 @@ export declare class ContactsService {
     constructor(prisma: PrismaService);
     createOrUpdate(orgId: string, phone: string, data: any): Promise<{
         id: string;
-        status: import(".prisma/client").$Enums.ContactStatus;
-        createdAt: Date;
-        updatedAt: Date;
-        email: string | null;
         organizationId: string;
+        email: string | null;
         firstName: string | null;
         lastName: string | null;
+        status: import(".prisma/client").$Enums.ContactStatus;
         avatarUrl: string | null;
+        createdAt: Date;
+        updatedAt: Date;
         whatsappId: string | null;
         phone: string;
         tags: string[];

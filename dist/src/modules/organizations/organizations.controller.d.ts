@@ -8,15 +8,15 @@ export declare class OrganizationsController {
         };
     } & {
         id: string;
-        slug: string;
+        status: import(".prisma/client").$Enums.OrganizationStatus;
+        createdAt: Date;
+        updatedAt: Date;
         name: string;
+        slug: string;
         logoUrl: string | null;
         website: string | null;
         timezone: string;
-        status: import(".prisma/client").$Enums.OrganizationStatus;
         metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
     })[]>;
     onboard(orgData: {
         name: string;
@@ -29,42 +29,42 @@ export declare class OrganizationsController {
     }): Promise<{
         org: {
             id: string;
-            slug: string;
+            status: import(".prisma/client").$Enums.OrganizationStatus;
+            createdAt: Date;
+            updatedAt: Date;
             name: string;
+            slug: string;
             logoUrl: string | null;
             website: string | null;
             timezone: string;
-            status: import(".prisma/client").$Enums.OrganizationStatus;
             metadata: import("@prisma/client/runtime/library").JsonValue;
-            createdAt: Date;
-            updatedAt: Date;
         };
         admin: {
             id: string;
-            status: import(".prisma/client").$Enums.UserStatus;
-            createdAt: Date;
-            updatedAt: Date;
-            email: string;
             organizationId: string;
+            email: string;
             passwordHash: string;
             firstName: string;
             lastName: string;
             role: import(".prisma/client").$Enums.UserRole;
+            status: import(".prisma/client").$Enums.UserStatus;
             avatarUrl: string | null;
             lastLoginAt: Date | null;
             refreshToken: string | null;
+            createdAt: Date;
+            updatedAt: Date;
         };
     }>;
     findOne(req: any): Promise<{
         id: string;
-        slug: string;
+        status: import(".prisma/client").$Enums.OrganizationStatus;
+        createdAt: Date;
+        updatedAt: Date;
         name: string;
+        slug: string;
         logoUrl: string | null;
         website: string | null;
         timezone: string;
-        status: import(".prisma/client").$Enums.OrganizationStatus;
         metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
 }

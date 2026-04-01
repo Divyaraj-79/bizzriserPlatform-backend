@@ -89,7 +89,6 @@ enum WebhookEventType {
   MESSAGE_RECEIVED
   MESSAGE_STATUS_UPDATE
   TEMPLATE_STATUS_UPDATE
-  WABA_CONNECTED
 }
 
 // ─── Models ────────────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const security_service_1 = require("../../common/services/security.service");
+const client_1 = require("@prisma/client");
 const axios_1 = __importDefault(require("axios"));
 let WhatsappService = WhatsappService_1 = class WhatsappService {
     configService;
@@ -31,7 +32,7 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         this.configService = configService;
         this.prisma = prisma;
         this.securityService = securityService;
-        this.apiVersion = this.configService.get('whatsapp.apiVersion') ?? 'v20.0';
+        this.apiVersion = this.configService.get('whatsapp.apiVersion') ?? 'v22.0';
         this.graphBaseUrl = this.configService.get('whatsapp.graphBaseUrl') ?? 'https://graph.facebook.com';
         const appSecret = this.configService.get('whatsapp.appSecret');
         const appId = this.configService.get('whatsapp.appId');
@@ -43,15 +44,16 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         });
     }
     async connectAccount(orgId, data) {
-        const { code, accessToken: providedToken } = data;
+        const { code, accessToken: providedToken, wabaId: providedWabaId, phoneNumberId: providedPhoneId } = data;
         const appId = this.configService.get('whatsapp.appId');
         const appSecret = this.configService.get('whatsapp.appSecret');
-        if (!appId || !appSecret || appSecret.includes('your_facebook_app_secret')) {
-            throw new common_1.HttpException('Meta App ID or Secret is not configured in the backend environment.', common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+        const systemAccessToken = this.configService.get('whatsapp.accessToken');
+        if (!appId || !appSecret || !systemAccessToken) {
+            throw new common_1.HttpException('Meta App ID, Secret, or System Access Token is not configured.', common_1.HttpStatus.INTERNAL_SERVER_ERROR);
         }
         let accessToken = providedToken;
-        if (code) {
-            this.logger.log(`Attempting token exchange with code: ${code.substring(0, 10)}...`);
+        if (code && !accessToken) {
+            this.logger.log(`Exchanging code for token (Official V4 Tech Provider Flow)...`);
             try {
                 const tokenRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
                     params: {
@@ -61,46 +63,116 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     },
                 });
                 accessToken = tokenRes.data.access_token;
-                this.logger.log('Token exchange successful');
+                this.logger.log('Token exchange successful.');
             }
             catch (tokenErr) {
-                this.logger.error(`Token exchange failed: ${tokenErr.response?.data?.error?.message || tokenErr.message}`);
-                throw new common_1.HttpException(`Meta Token Exchange Failed: ${tokenErr.response?.data?.error?.message || tokenErr.message}`, common_1.HttpStatus.BAD_REQUEST);
+                const errorMsg = tokenErr.response?.data?.error?.message || tokenErr.message;
+                this.logger.error(`Code exchange failed: ${errorMsg}`);
             }
         }
-        if (!accessToken) {
-            throw new common_1.HttpException('Missing authorization code or access token from Meta signup.', common_1.HttpStatus.BAD_REQUEST);
-        }
-        this.logger.log('Discovering WABA IDs...');
-        let wabaId;
-        try {
-            const debugRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
-                params: {
-                    input_token: accessToken,
-                    access_token: `${appId}|${appSecret}`,
-                },
-            });
-            wabaId = debugRes.data.data.granular_scopes?.find((s) => s.scope === 'whatsapp_business_management')?.target_ids?.[0];
-            this.logger.log(`Found WABA ID: ${wabaId}`);
-        }
-        catch (debugErr) {
-            this.logger.error(`WABA Discovery failed: ${debugErr.response?.data?.error?.message || debugErr.message}`);
-            throw new common_1.HttpException('Failed to discover WhatsApp Business Account assets.', common_1.HttpStatus.BAD_REQUEST);
+        let wabaId = providedWabaId;
+        let phoneNumberId = providedPhoneId;
+        if (!wabaId && accessToken) {
+            try {
+                const debugRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
+                    params: { input_token: accessToken, access_token: `${appId}|${appSecret}` },
+                });
+                const debugData = debugRes.data.data;
+                this.logger.log('META DEBUG_TOKEN RESPONSE: ' + JSON.stringify(debugData));
+                wabaId = debugData.granular_scopes?.find((s) => s.scope === 'whatsapp_business_management')?.target_ids?.[0];
+                if (!wabaId) {
+                    wabaId = debugData.granular_scopes?.find((s) => s.scope === 'whatsapp_business_messaging')?.target_ids?.[0];
+                }
+                if (!wabaId) {
+                    wabaId = debugData.target_ids?.[0] || debugData.profile_id;
+                }
+                if (wabaId)
+                    this.logger.log(`Discovered WABA ID via debug_token: ${wabaId}`);
+            }
+            catch (debugErr) {
+                this.logger.warn(`WABA discovery via debug_token failed: ${debugErr.response?.data?.error?.message || debugErr.message}`);
+            }
         }
         if (!wabaId) {
-            throw new common_1.HttpException('Could not find a WhatsApp Business Account associated with this token. Please ensure you have completed the Meta signup flow.', common_1.HttpStatus.BAD_REQUEST);
+            this.logger.log(`Performing Webhook-Aided discovery for App ${appId} (Retrying for 5s)...`);
+            for (let i = 0; i < 5; i++) {
+                if (i > 0) {
+                    this.logger.log(`Retry ${i} for webhook discovery...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+                try {
+                    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+                    const recentEvents = await this.prisma.webhookEvent.findMany({
+                        where: {
+                            eventType: client_1.WebhookEventType.WABA_CONNECTED,
+                            createdAt: { gte: fiveMinutesAgo }
+                        },
+                        orderBy: { createdAt: 'desc' }
+                    });
+                    for (const event of recentEvents) {
+                        const payload = event.payload;
+                        const partnerAppId = String(payload.waba_info?.partner_app_id || '');
+                        if (partnerAppId === String(appId)) {
+                            wabaId = payload.waba_info?.waba_id;
+                            this.logger.log(`SUCCESS: Intercepted WABA ID from webhook on attempt ${i + 1}: ${wabaId}`);
+                            break;
+                        }
+                    }
+                    if (wabaId)
+                        break;
+                }
+                catch (err) {
+                    this.logger.warn(`Webhook discovery attempt ${i + 1} failed: ${err.message}`);
+                }
+            }
         }
-        const phoneRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/${wabaId}/phone_numbers`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const phoneData = phoneRes.data.data?.[0];
+        if (!wabaId) {
+            this.logger.log(`Wait... scanning client WABAs manually as absolute final fallback...`);
+            try {
+                const clientWabasRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/client_whatsapp_business_accounts`, {
+                    headers: { Authorization: `Bearer ${systemAccessToken}` }
+                });
+                const clientWabas = clientWabasRes.data.data;
+                if (clientWabas && clientWabas.length > 0) {
+                    wabaId = clientWabas[0].id;
+                    this.logger.log(`Found WABA ID via direct app scan: ${wabaId}`);
+                }
+            }
+            catch (err) {
+                this.logger.warn(`Final direct scan failed: ${err.message}`);
+            }
+        }
+        if (!wabaId) {
+            this.logger.error(`CRITICAL: No WABA ID found. App ID: ${appId}`);
+            throw new common_1.HttpException('Could not determine WhatsApp Business Account ID. Please ensure the Meta embedded signup was completed.', common_1.HttpStatus.BAD_REQUEST);
+        }
+        this.logger.log(`STEP 2: Fetching phone numbers for WABA ${wabaId} using System Token...`);
+        let phoneData;
+        try {
+            const phoneRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/${wabaId}/phone_numbers`, {
+                headers: { Authorization: `Bearer ${systemAccessToken}` },
+            });
+            phoneData = phoneRes.data.data?.[0];
+        }
+        catch (phoneErr) {
+            const errorMsg = phoneErr.response?.data?.error?.message || phoneErr.message;
+            this.logger.error(`CRITICAL FAILURE: System Token Fetch failed. Message: ${errorMsg}`);
+            if (errorMsg.toLowerCase().includes('expired') || errorMsg.toLowerCase().includes('session')) {
+                this.logger.error('ACTION REQUIRED: Your WHATSAPP_ACCESS_TOKEN has EXPIRED. Please generate a new one in Meta Business Suite.');
+            }
+            throw new common_1.HttpException(`WhatsApp connection failed: ${errorMsg}`, common_1.HttpStatus.BAD_REQUEST);
+        }
         if (!phoneData) {
             throw new common_1.HttpException('No phone numbers found in the connected WABA.', common_1.HttpStatus.BAD_REQUEST);
         }
-        const { id: phoneNumberId, display_phone_number: phoneNumber, verified_name: displayName } = phoneData;
-        const encryptedToken = this.securityService.encrypt(accessToken);
+        const { id: extractedPhoneId, display_phone_number: phoneNumber, verified_name: displayName } = phoneData;
+        phoneNumberId = extractedPhoneId;
+        const encryptedToken = this.securityService.encrypt(systemAccessToken);
         const verifyToken = this.securityService.generateRandomToken(16);
         const webhookSecret = this.securityService.generateRandomToken(32);
+        if (!phoneNumberId) {
+            throw new common_1.HttpException('Failed to resolve Phone Number ID from Meta.', common_1.HttpStatus.BAD_REQUEST);
+        }
         try {
             this.logger.log(`Linking WhatsApp Account: ${phoneNumber} (${phoneNumberId}) to Org: ${orgId}`);
             const account = await this.prisma.whatsAppAccount.upsert({

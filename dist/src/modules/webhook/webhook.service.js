@@ -82,6 +82,22 @@ let WebhookService = WebhookService_1 = class WebhookService {
                 if (change.field === 'messages') {
                     await this.processMessageEvent(entry.id, change.value);
                 }
+                if (change.field === 'account_update' && change.value?.event === 'PARTNER_APP_INSTALLED') {
+                    const wabaId = change.value?.waba_info?.waba_id;
+                    if (wabaId) {
+                        this.logger.log(`Detected WABA installation via webhook: ${wabaId}`);
+                        const firstOrg = await this.prisma.organization.findFirst();
+                        if (firstOrg) {
+                            await this.prisma.webhookEvent.create({
+                                data: {
+                                    organizationId: firstOrg.id,
+                                    eventType: client_1.WebhookEventType.WABA_CONNECTED,
+                                    payload: change.value,
+                                }
+                            });
+                        }
+                    }
+                }
             }
         }
         return { status: 'received' };

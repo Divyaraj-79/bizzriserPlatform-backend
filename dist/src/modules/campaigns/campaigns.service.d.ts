@@ -8,12 +8,12 @@ export declare class CampaignsService {
     constructor(prisma: PrismaService, campaignQueue: Queue);
     create(orgId: string, data: any): Promise<{
         id: string;
-        name: string;
+        organizationId: string;
         status: import(".prisma/client").$Enums.CampaignStatus;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
         createdAt: Date;
         updatedAt: Date;
-        organizationId: string;
+        name: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
         description: string | null;
         templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
@@ -36,21 +36,21 @@ export declare class CampaignsService {
             campaignId: string;
         }[];
         logs: {
-            id: string;
-            metadata: import("@prisma/client/runtime/library").JsonValue;
-            createdAt: Date;
             message: string;
+            id: string;
+            createdAt: Date;
+            metadata: import("@prisma/client/runtime/library").JsonValue;
             level: import(".prisma/client").$Enums.CampaignLogLevel;
             campaignId: string;
         }[];
     } & {
         id: string;
-        name: string;
+        organizationId: string;
         status: import(".prisma/client").$Enums.CampaignStatus;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
         createdAt: Date;
         updatedAt: Date;
-        organizationId: string;
+        name: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
         description: string | null;
         templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
@@ -65,10 +65,10 @@ export declare class CampaignsService {
     }>;
     addRecipients(orgId: string, campaignId: string, contactIds: string[]): Promise<import(".prisma/client").Prisma.BatchPayload>;
     log(campaignId: string, message: string, level?: CampaignLogLevel, metadata?: any): Promise<{
-        id: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
         message: string;
+        id: string;
+        createdAt: Date;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
         level: import(".prisma/client").$Enums.CampaignLogLevel;
         campaignId: string;
     }>;

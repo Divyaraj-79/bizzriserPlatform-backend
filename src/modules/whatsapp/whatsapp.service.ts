@@ -45,73 +45,62 @@ export class WhatsappService {
 
     let accessToken: string | undefined = providedToken;
 
-    // 1. Exchange code for Token (v4 Proper Method)
+    // 1. Exchange code for Token (v4 Flow with Automatic Fallback)
     if (code && !accessToken) {
-      this.logger.log(`Exchanging code for token (Official V4 Tech Provider Flow)...`);
+      this.logger.log(`STEP 1: Exchanging code for token...`);
       try {
+        // Path A: Modern Clean Exchange (v4 Standard)
         const tokenRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
-          params: { 
-            client_id: appId, 
-            client_secret: appSecret, 
-            code,
-            // ATTENTION: For official v4 SDK flow, omit redirect_uri entirely
-          },
+          params: { client_id: appId, client_secret: appSecret, code },
         });
         accessToken = tokenRes.data.access_token;
-        this.logger.log('Token exchange successful.');
+        this.logger.log('SUCCESS: Clean Token exchange achieved.');
       } catch (tokenErr: any) {
-        const errorMsg = tokenErr.response?.data?.error?.message || tokenErr.message;
-        this.logger.error(`Code exchange failed: ${errorMsg}`);
+        // Path B: Fallback with Redirect URI (Required for some legacy/custom configs)
+        this.logger.warn(`NOTICE: Clean exchange failed. Retrying with production redirect_uri fallback...`);
+        const prodRedirectUri = 'https://bizzriser-platform-frontend-yw8n-sand.vercel.app/whatsapp-account';
+        try {
+          const tokenRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
+            params: { client_id: appId, client_secret: appSecret, code, redirect_uri: prodRedirectUri },
+          });
+          accessToken = tokenRes.data.access_token;
+          this.logger.log('SUCCESS: Fallback Token exchange achieved.');
+        } catch (fallbackErr: any) {
+          this.logger.error(`CRITICAL: All exchange paths failed. Meta response: ${fallbackErr.response?.data?.error?.message || fallbackErr.message}`);
+        }
       }
     }
 
     let wabaId = providedWabaId;
     let phoneNumberId = providedPhoneId;
 
+    // 2. Discover WABA ID via Debug Token (if not provided)
     if (!wabaId && accessToken) {
       try {
         const debugRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
           params: { input_token: accessToken, access_token: `${appId}|${appSecret}` },
         });
-        
         const debugData = debugRes.data.data;
-        this.logger.log('META DEBUG_TOKEN RESPONSE: ' + JSON.stringify(debugData));
-
-        // Attempt 1: Standard granular_scopes lookup
-        wabaId = debugData.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_management')?.target_ids?.[0];
-        
-        // Attempt 2: Alternative scopes (sometimes it's under messaging)
-        if (!wabaId) {
-          wabaId = debugData.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_messaging')?.target_ids?.[0];
-        }
-
-        // Attempt 3: Root level target_ids or profile_id
-        if (!wabaId) {
-          wabaId = debugData.target_ids?.[0] || debugData.profile_id;
-        }
-
+        wabaId = debugData.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_management')?.target_ids?.[0] ||
+                 debugData.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_messaging')?.target_ids?.[0] ||
+                 debugData.target_ids?.[0] || debugData.profile_id;
         if (wabaId) this.logger.log(`Discovered WABA ID via debug_token: ${wabaId}`);
       } catch (debugErr: any) {
-        this.logger.warn(`WABA discovery via debug_token failed: ${debugErr.response?.data?.error?.message || debugErr.message}`);
+        this.logger.warn(`Debug token discovery skipped: ${debugErr.message}`);
       }
     }
 
-    // 4. Final Fallback: Webhook-Aided Connection (Most Robust for Pro-Tech Providers)
+    // 3. Final Discovery Fallback: Safe Webhook Lookup (No-Migration needed)
     if (!wabaId) {
-       this.logger.log(`Performing Webhook-Aided discovery for App ${appId} (Retrying for 5s)...`);
-       
-       // Meta webhooks can be delayed by a few seconds. We retry 5 times with 1s delays.
+       this.logger.log(`Performing Safe Webhook discovery for App ${appId} (Retrying for 5s)...`);
        for (let i = 0; i < 5; i++) {
-         if (i > 0) {
-            this.logger.log(`Retry ${i} for webhook discovery...`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-         }
-
+         if (i > 0) await new Promise(resolve => setTimeout(resolve, 1000));
          try {
            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
            const recentEvents = await this.prisma.webhookEvent.findMany({
              where: {
-               eventType: WebhookEventType.WABA_CONNECTED,
+               // We use the safe, existing type to avoid DB errors
+               eventType: WebhookEventType.MESSAGE_RECEIVED,
                createdAt: { gte: fiveMinutesAgo }
              },
              orderBy: { createdAt: 'desc' }
@@ -119,19 +108,32 @@ export class WhatsappService {
 
            for (const event of recentEvents) {
              const payload = event.payload as any;
-             const partnerAppId = String(payload.waba_info?.partner_app_id || '');
-             
-             if (partnerAppId === String(appId)) {
+             if (payload.isSignupEvent && payload.waba_info?.partner_app_id === String(appId)) {
                wabaId = payload.waba_info?.waba_id;
-               this.logger.log(`SUCCESS: Intercepted WABA ID from webhook on attempt ${i + 1}: ${wabaId}`);
+               this.logger.log(`SUCCESS: Intercepted WABA ID via safe webhook on attempt ${i + 1}: ${wabaId}`);
                break;
              }
            }
-           
            if (wabaId) break;
          } catch (err: any) {
-           this.logger.warn(`Webhook discovery attempt ${i + 1} failed: ${err.message}`);
+           this.logger.warn(`Safe Discovery attempt ${i + 1} failed: ${err.message}`);
          }
+       }
+    }
+
+    if (!wabaId) {
+       this.logger.log(`Wait... scanning client WABAs manually as absolute final fallback...`);
+       try {
+         const clientWabasRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/client_whatsapp_business_accounts`, {
+           headers: { Authorization: `Bearer ${systemAccessToken}` }
+         });
+         const clientWabas = clientWabasRes.data.data;
+         if (clientWabas && clientWabas.length > 0) {
+            wabaId = clientWabas[0].id;
+            this.logger.log(`Found WABA ID via direct app scan: ${wabaId}`);
+         }
+       } catch (err: any) {
+         this.logger.warn(`Final direct scan failed: ${err.message}`);
        }
     }
 
