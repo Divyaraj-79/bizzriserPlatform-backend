@@ -159,8 +159,8 @@ export class WhatsappService {
       );
     }
 
-    // 4. Use SYSTEM USER TOKEN to get phone numbers — This is officially supported by Meta for Embedded Signup
-    this.logger.log(`Fetching phone numbers for WABA ${wabaId} using System User Access Token...`);
+    // 4. Use SYSTEM USER TOKEN to get phone numbers
+    this.logger.log(`STEP 2: Fetching phone numbers for WABA ${wabaId} using System Token...`);
     let phoneData: any;
     try {
       const phoneRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${wabaId}/phone_numbers`, {
@@ -168,8 +168,14 @@ export class WhatsappService {
       });
       phoneData = phoneRes.data.data?.[0];
     } catch (phoneErr: any) {
-      this.logger.error(`Phone number fetch failed: ${phoneErr.response?.data?.error?.message || phoneErr.message}`);
-      throw new HttpException('Failed to fetch phone numbers utilizing the System Access Token.', HttpStatus.BAD_REQUEST);
+      const errorMsg = phoneErr.response?.data?.error?.message || phoneErr.message;
+      this.logger.error(`CRITICAL FAILURE: System Token Fetch failed. Message: ${errorMsg}`);
+      
+      if (errorMsg.toLowerCase().includes('expired') || errorMsg.toLowerCase().includes('session')) {
+        this.logger.error('ACTION REQUIRED: Your WHATSAPP_ACCESS_TOKEN has EXPIRED. Please generate a new one in Meta Business Suite.');
+      }
+      
+      throw new HttpException(`WhatsApp connection failed: ${errorMsg}`, HttpStatus.BAD_REQUEST);
     }
 
     if (!phoneData) {
