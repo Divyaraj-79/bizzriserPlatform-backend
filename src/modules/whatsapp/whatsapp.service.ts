@@ -45,16 +45,16 @@ export class WhatsappService {
 
     let accessToken: string | undefined = providedToken;
 
-    // 1. Exchange code for Token
+    // 1. Exchange code for Token (v4 Proper Method)
     if (code && !accessToken) {
-      this.logger.log(`Exchanging code for token (Official Tech Provider Flow)...`);
+      this.logger.log(`Exchanging code for token (Official V4 Tech Provider Flow)...`);
       try {
         const tokenRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
           params: { 
             client_id: appId, 
             client_secret: appSecret, 
             code,
-            // ATTENTION: For Tech Providers using FB.login, do NOT include redirect_uri
+            // ATTENTION: For official v4 SDK flow, omit redirect_uri entirely
           },
         });
         accessToken = tokenRes.data.access_token;
@@ -62,7 +62,6 @@ export class WhatsappService {
       } catch (tokenErr: any) {
         const errorMsg = tokenErr.response?.data?.error?.message || tokenErr.message;
         this.logger.error(`Code exchange failed: ${errorMsg}`);
-        // Fallback to system token is still possible if we have the WABA ID
       }
     }
 
