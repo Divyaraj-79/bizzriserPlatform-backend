@@ -50,22 +50,28 @@ export class WhatsappService {
     }
     // 2. Exchange code for Token
     else if (code) {
-      this.logger.log(`Received OAuth code: ${code.substring(0, 5)}... Exchanging with redirect_uri: ${redirectUri}`);
+      // Use the exact same hardcoded URI used in the frontend's window.open
+      const finalRedirectUri = data.redirectUri || 'https://bizzriser-platform-frontend-yw8n-sand.vercel.app/whatsapp-account';
+      this.logger.log(`Received OAuth code. Exchanging with redirect_uri: ${finalRedirectUri}`);
+      
       try {
         const tokenRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/oauth/access_token`, {
           params: { 
             client_id: appId, 
             client_secret: appSecret, 
             code,
-            redirect_uri: redirectUri // This must EXACTLY match the one in the frontend window.open
+            redirect_uri: finalRedirectUri 
           },
         });
         accessToken = tokenRes.data.access_token;
         this.logger.log('Token exchange successful.');
       } catch (tokenErr: any) {
         const errorMsg = tokenErr.response?.data?.error?.message || tokenErr.message;
-        this.logger.warn(`Code exchange failed: ${errorMsg}. Proceeding with System User Token.`);
-        // Note: Even if code exchange fails, we can still succeed if we have a WABA ID
+        this.logger.error(`Code exchange failed: ${errorMsg}`);
+        // Log details if redirect_uri mismatch
+        if (errorMsg.includes('redirect_uri')) {
+          this.logger.error(`REDIRECT URI MISMATCH. Sent: ${finalRedirectUri}. Check Meta Dashboard setup.`);
+        }
       }
     }
 
@@ -78,31 +84,43 @@ export class WhatsappService {
         const debugRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
           params: { input_token: accessToken, access_token: `${appId}|${appSecret}` },
         });
-        wabaId = debugRes.data.data.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_management')?.target_ids?.[0];
+        
+        const debugData = debugRes.data.data;
+        this.logger.log('META DEBUG_TOKEN RESPONSE: ' + JSON.stringify(debugData));
+
+        // Attempt 1: Standard granular_scopes lookup
+        wabaId = debugData.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_management')?.target_ids?.[0];
+        
+        // Attempt 2: Alternative scopes (sometimes it's under messaging)
+        if (!wabaId) {
+          wabaId = debugData.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_messaging')?.target_ids?.[0];
+        }
+
+        // Attempt 3: Root level target_ids or profile_id
+        if (!wabaId) {
+          wabaId = debugData.target_ids?.[0] || debugData.profile_id;
+        }
+
+        if (wabaId) this.logger.log(`Discovered WABA ID via debug_token: ${wabaId}`);
       } catch (debugErr: any) {
         this.logger.warn(`WABA discovery via debug_token failed: ${debugErr.response?.data?.error?.message || debugErr.message}`);
       }
     }
 
-    // Attempt to query client WABAs owned by the system user if still not found
+    // 4. Final Fallback: App-level scan
     if (!wabaId) {
-       this.logger.log(`Scanning client WABAs for App ${appId} using System Token...`);
+       this.logger.log(`Scanning client WABAs as final fallback...`);
        try {
-         // Correct URL: https://graph.facebook.com/{version}/{app-id}/client_whatsapp_business_accounts
          const clientWabasRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/client_whatsapp_business_accounts`, {
            headers: { Authorization: `Bearer ${systemAccessToken}` }
          });
-         
          const clientWabas = clientWabasRes.data.data;
-         this.logger.log(`Meta API found ${clientWabas?.length || 0} client WABAs.`);
-         
          if (clientWabas && clientWabas.length > 0) {
-            // Pick most recent WABA
             wabaId = clientWabas[0].id;
-            this.logger.log(`Successfully discovered Client WABA ID: ${wabaId}`);
+            this.logger.log(`Found WABA ID via app scan: ${wabaId}`);
          }
        } catch (err: any) {
-         this.logger.warn(`Failed to scan client_whatsapp_business_accounts: ${err.response?.data?.error?.message || err.message}`);
+         this.logger.warn(`Final scan failed: ${err.message}`);
        }
     }
 
