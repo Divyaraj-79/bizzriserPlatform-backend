@@ -560,15 +560,26 @@ export class WhatsappService {
         throw new Error('Phone number no longer associated with this WABA');
       }
 
+      const tierMapping: any = {
+        'TIER_1000': 1000,
+        'TIER_10000': 10000,
+        'TIER_100000': 100000,
+        'TIER_UNLIMITED': 1000000
+      };
+
+      const tier = phoneInfo.messaging_limit_tier || 'TIER_1000';
+      const count = tierMapping[tier] || 1000;
+
       const updatedAccount = await this.prisma.whatsAppAccount.update({
         where: { id: accountId },
         data: {
           displayName: phoneInfo.verified_name || account.displayName,
           status: phoneInfo.code_verification_status === 'VERIFIED' ? 'ACTIVE' : 'INACTIVE',
+          messagingLimitTier: tier,
+          messagingLimitCount: count,
           businessProfile: {
             ...(typeof account.businessProfile === 'object' ? (account.businessProfile as any) : {}),
             qualityRating: (phoneInfo.quality_rating || 'UNKNOWN').toUpperCase(),
-            messagingLimit: phoneInfo.messaging_limit_tier || 'UNKNOWN',
             nameStatus: phoneInfo.name_status || 'UNKNOWN',
             lastSyncAt: new Date().toISOString(),
           },
