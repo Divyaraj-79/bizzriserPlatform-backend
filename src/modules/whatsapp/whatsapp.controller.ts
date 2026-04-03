@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards, Req, Version, Param } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Req, Version, Param, Patch, Delete } from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -31,6 +31,21 @@ export class WhatsappController {
   @Get('accounts/:id/templates')
   async getTemplates(@Req() req: any, @Param('id') id: string) {
     return this.whatsappService.getTemplates(req.user.orgId, id);
+  }
+
+  @Post('accounts/:id/templates')
+  async createTemplate(@Req() req: any, @Param('id') id: string, @Body() data: any) {
+    return this.whatsappService.createTemplate(req.user.orgId, id, data);
+  }
+
+  @Patch('accounts/:id/templates/:templateId')
+  async updateTemplate(@Req() req: any, @Param('id') id: string, @Param('templateId') templateId: string, @Body() data: any) {
+    return this.whatsappService.updateTemplate(req.user.orgId, id, templateId, data);
+  }
+
+  @Delete('accounts/:id/templates/:templateName')
+  async deleteTemplate(@Req() req: any, @Param('id') id: string, @Param('templateName') templateName: string) {
+    return this.whatsappService.deleteTemplate(req.user.orgId, id, templateName);
   }
 
   @Post('sync/:id')

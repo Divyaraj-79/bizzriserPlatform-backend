@@ -458,6 +458,84 @@ export class WhatsappService {
   }
 
   /**
+   * Creates a new message template in Meta.
+   */
+  async createTemplate(orgId: string, accountId: string, data: any) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;
+
+    try {
+      this.logger.log(`Creating WhatsApp template for org ${orgId} via account ${accountId}`);
+      const response = await axios.post(url, data, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to create template via account ${accountId}`);
+    }
+  }
+
+  /**
+   * Updates an existing message template in Meta.
+   */
+  async updateTemplate(orgId: string, accountId: string, templateId: string, data: any) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${templateId}`;
+
+    try {
+      this.logger.log(`Updating WhatsApp template ${templateId} for org ${orgId}`);
+      const response = await axios.post(url, data, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to update template ${templateId}`);
+    }
+  }
+
+  /**
+   * Deletes a message template from Meta.
+   */
+  async deleteTemplate(orgId: string, accountId: string, templateName: string) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;
+
+    try {
+      this.logger.log(`Deleting WhatsApp template ${templateName} for org ${orgId}`);
+      const response = await axios.delete(url, {
+        params: { name: templateName },
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to delete template ${templateName}`);
+    }
+  }
+
+  /**
    * Synchronizes account details (quality, limits) from Meta.
    */
   async syncAccount(orgId: string, accountId: string) {
