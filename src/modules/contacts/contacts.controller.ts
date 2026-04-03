@@ -7,6 +7,16 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
 
+  @Post()
+  async create(@Req() req: any, @Body() data: any) {
+    return this.contactsService.createOrUpdate(req.user.orgId, data.phone, data);
+  }
+
+  @Post('bulk')
+  async bulkCreate(@Req() req: any, @Body() data: { contacts: any[] }) {
+    return this.contactsService.bulkCreateOrUpdate(req.user.orgId, data.contacts);
+  }
+
   @Get()
   async findAll(@Req() req: any) {
     return this.contactsService.findAll(req.user.orgId);

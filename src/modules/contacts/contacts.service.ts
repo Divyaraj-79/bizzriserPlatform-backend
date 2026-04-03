@@ -6,11 +6,47 @@ export class ContactsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createOrUpdate(orgId: string, phone: string, data: any) {
+    const { tags, ...rest } = data;
     return this.prisma.contact.upsert({
       where: { organizationId_phone: { organizationId: orgId, phone } },
-      update: data,
-      create: { ...data, organizationId: orgId, phone },
+      update: {
+        ...rest,
+        tags: tags ? { set: tags } : undefined,
+      },
+      create: {
+        ...rest,
+        tags: tags || [],
+        organizationId: orgId,
+        phone,
+      },
     });
+  }
+
+  async bulkCreateOrUpdate(orgId: string, contacts: any[]) {
+    // 1. Deduplicate within the incoming batch (last one wins)
+    const uniqueMap = new Map();
+    contacts.forEach(c => {
+      if (c.phone) uniqueMap.set(c.phone, c);
+    });
+
+    const uniqueContacts = Array.from(uniqueMap.values());
+    const results = [];
+
+    // 2. Process each unique contact (upsert)
+    for (const contact of uniqueContacts) {
+      try {
+        const res = await this.createOrUpdate(orgId, contact.phone, contact);
+        results.push(res);
+      } catch (err) {
+        console.error(`Failed to import contact ${contact.phone}:`, err);
+      }
+    }
+
+    return {
+      totalProcessed: uniqueContacts.length,
+      importedCount: results.length,
+      duplicatesRemoved: contacts.length - uniqueContacts.length
+    };
   }
 
   async findAll(orgId: string) {

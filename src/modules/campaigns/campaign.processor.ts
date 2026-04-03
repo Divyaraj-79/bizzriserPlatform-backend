@@ -54,10 +54,15 @@ export class CampaignProcessor {
       // 3. Map Parameters
       const bodyParameters = (templateParams || [])
         .sort((a: any, b: any) => a.index - b.index)
-        .map((p: any) => ({
-          type: 'text',
-          text: p.field ? (contact[p.field as keyof typeof contact] || '') : p.value
-        }));
+        .map((p: any) => {
+          let text = '';
+          if (p.field) {
+            text = (contact as any)[p.field] || (contact.customFields as any)?.[p.field] || '';
+          } else {
+            text = p.value || '';
+          }
+          return { type: 'text', text };
+        });
 
       const components = [ { type: 'body', parameters: bodyParameters } ];
 
