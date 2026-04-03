@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MessagingService } from '../messaging/messaging.service';
+import { CampaignsService } from './campaigns.service';
 import { CampaignStatus, MessageStatus, CampaignLogLevel } from '@prisma/client';
 
 @Processor('campaign-messages')
@@ -12,33 +13,60 @@ export class CampaignProcessor {
   constructor(
     private readonly prisma: PrismaService,
     private readonly messagingService: MessagingService,
+    private readonly campaignsService: CampaignsService,
   ) {}
+
+  @Process('start-campaign')
+  async handleStartCampaign(job: Job<any>) {
+    const { campaignId, orgId, accountId } = job.data;
+    this.logger.log(`Scheduled campaign ${campaignId} triggered. Starting now.`);
+    
+    try {
+      await this.campaignsService.startCampaign(orgId, campaignId, accountId);
+    } catch (error) {
+       this.logger.error(`Failed to start scheduled campaign ${campaignId}: ${error.message}`);
+       throw error;
+    }
+  }
 
   @Process('send-message')
   async handleSendMessage(job: Job<any>) {
-    const { campaignId, recipientId, orgId, accountId, contactId } = job.data;
+    const { campaignId, recipientId, orgId, accountId, contactId, templateName, templateParams } = job.data;
     
     this.logger.debug(`Processing campaign message for recipient ${recipientId}`);
 
     try {
-      // 1. Check if campaign is still running
+      // 1. Check if campaign is STILL running (and not cancelled)
       const campaign = await this.prisma.campaign.findUnique({
         where: { id: campaignId },
-        select: { status: true, name: true },
+        select: { status: true, name: true, totalRecipients: true, sentCount: true, failedCount: true },
       });
 
-      if (!campaign || campaign.status !== CampaignStatus.RUNNING) {
-        this.logger.warn(`Campaign ${campaignId} is no longer running. Skipping job.`);
+      if (!campaign || campaign.status === CampaignStatus.CANCELLED) {
+        this.logger.warn(`Campaign ${campaignId} is CANCELLED. Skipping message for recipient ${recipientId}.`);
         return;
       }
 
-      // 2. Fetch template details (Placeholder logic: templates are just text for now)
-      const body = `Hello! This is a message from campaign ${campaign.name}`; // Simple placeholder
+      // 2. Fetch Contact
+      const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
+      if (!contact) throw new Error('Contact not found');
 
-      // 3. Send message via MessagingService (Handles deduplication & conversation)
-      await this.messagingService.sendTextMessage(orgId, accountId, contactId, body);
+      // 3. Map Parameters
+      const bodyParameters = (templateParams || [])
+        .sort((a: any, b: any) => a.index - b.index)
+        .map((p: any) => ({
+          type: 'text',
+          text: p.field ? (contact[p.field as keyof typeof contact] || '') : p.value
+        }));
 
-      // 4. Update recipient status and campaign counts atomically
+      const components = [ { type: 'body', parameters: bodyParameters } ];
+
+      // 4. Send template message 
+      await this.messagingService.sendTemplateMessage(
+        orgId, accountId, contactId, templateName, 'en_US', components, { campaignId }
+      );
+
+      // 5. Update recipient and campaign
       const updatedCampaign = await this.prisma.campaign.update({
         where: { id: campaignId },
         data: {
@@ -50,20 +78,18 @@ export class CampaignProcessor {
             },
           },
         },
-        include: { _count: { select: { recipients: true } } }, // This might not be right way to get total
       });
 
-      // 5. Completion Check (Using simple count check for this task)
-      const totalRecipients = await this.prisma.campaignRecipient.count({ where: { campaignId } });
-      if (updatedCampaign.sentCount + updatedCampaign.failedCount >= totalRecipients) {
+      // 6. Completion check
+      if (updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients) {
         await this.prisma.campaign.update({
           where: { id: campaignId },
           data: { status: CampaignStatus.COMPLETED, completedAt: new Date() },
         });
-        await this.logToCampaign(campaignId, 'Campaign completed successfully', CampaignLogLevel.INFO);
+        await this.campaignsService.log(campaignId, 'Broadcast completed successfully', CampaignLogLevel.INFO);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Failed to process campaign message for recipient ${recipientId}: ${error.message}`);
       
       await this.prisma.campaign.update({
@@ -73,24 +99,14 @@ export class CampaignProcessor {
           recipients: {
             update: {
               where: { id: recipientId },
-              data: { status: MessageStatus.FAILED },
+              data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: error.message },
             },
           },
         },
       });
 
-      await this.logToCampaign(campaignId, `Message failed for recipient ${recipientId}: ${error.message}`, CampaignLogLevel.ERROR);
-      throw error; // Rethrow for BullMQ retry
+      await this.campaignsService.log(campaignId, `Message failed for recipient ${contactId}: ${error.message}`, CampaignLogLevel.ERROR);
+      throw error;
     }
-  }
-
-  private async logToCampaign(campaignId: string, message: string, level: CampaignLogLevel) {
-    await this.prisma.campaignLog.create({
-      data: {
-        campaignId,
-        message,
-        level,
-      },
-    });
   }
 }

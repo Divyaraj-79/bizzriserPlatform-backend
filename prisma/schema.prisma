@@ -301,6 +301,10 @@ model CampaignRecipient {
   contactId  String
   status     MessageStatus @default(PENDING)
   sentAt     DateTime?
+  deliveredAt DateTime?
+  readAt     DateTime?
+  failedAt   DateTime?
+  failureReason String?
   createdAt  DateTime      @default(now())
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)

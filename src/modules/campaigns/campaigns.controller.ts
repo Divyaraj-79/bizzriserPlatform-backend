@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -7,23 +7,48 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class CampaignsController {
   constructor(private readonly campaignsService: CampaignsService) {}
 
-  @Post()
-  async create(@Req() req: any, @Body() data: any) {
-    return this.campaignsService.create(req.user.orgId, data);
+  @Get()
+  async findAll(@Req() req: any) {
+    return this.campaignsService.findAll(req.user.orgId);
+  }
+
+  @Post('broadcast')
+  async createBroadcast(
+    @Req() req: any,
+    @Body() data: any,
+  ) {
+    return this.campaignsService.createBroadcast(req.user.orgId, data);
+  }
+
+  @Post(':id/cancel')
+  async cancelBroadcast(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    return this.campaignsService.cancelCampaign(req.user.orgId, id);
   }
 
   @Get(':id')
-  async findOne(@Req() req: any, @Param('id') id: string) {
+  async getCampaign(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
     return this.campaignsService.getCampaign(req.user.orgId, id);
   }
 
-  @Post(':id/recipients')
-  async addRecipients(@Req() req: any, @Param('id') id: string, @Body('contactIds') contactIds: string[]) {
-    return this.campaignsService.addRecipients(req.user.orgId, id, contactIds);
+  @Delete(':id')
+  async deleteCampaign(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    return this.campaignsService.deleteCampaign(req.user.orgId, id);
   }
 
-  @Post(':id/start')
-  async start(@Req() req: any, @Param('id') id: string, @Body('accountId') accountId: string) {
-    return this.campaignsService.startCampaign(req.user.orgId, id, accountId);
+  @Get(':id/export')
+  async exportCampaign(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    return this.campaignsService.getExportData(req.user.orgId, id);
   }
 }
