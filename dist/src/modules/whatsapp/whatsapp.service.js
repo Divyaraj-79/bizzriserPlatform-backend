@@ -396,10 +396,76 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     Authorization: `Bearer ${validatedToken}`,
                 },
             });
-            return response.data;
+            return response.data.data;
         }
         catch (error) {
             this.handleError(error, `Failed to fetch templates via account ${accountId}`);
+        }
+    }
+    async createTemplate(orgId, accountId, data) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;
+        try {
+            this.logger.log(`Creating WhatsApp template for org ${orgId} via account ${accountId}`);
+            const response = await axios_1.default.post(url, data, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.handleError(error, `Failed to create template via account ${accountId}`);
+        }
+    }
+    async updateTemplate(orgId, accountId, templateId, data) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${templateId}`;
+        try {
+            this.logger.log(`Updating WhatsApp template ${templateId} for org ${orgId}`);
+            const response = await axios_1.default.post(url, data, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.handleError(error, `Failed to update template ${templateId}`);
+        }
+    }
+    async deleteTemplate(orgId, accountId, templateName) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;
+        try {
+            this.logger.log(`Deleting WhatsApp template ${templateName} for org ${orgId}`);
+            const response = await axios_1.default.delete(url, {
+                params: { name: templateName },
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                },
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.handleError(error, `Failed to delete template ${templateName}`);
         }
     }
     async syncAccount(orgId, accountId) {
@@ -420,15 +486,24 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                 this.logger.error(`Phone number ${account.phoneNumberId} not found in WABA ${account.wabaId}.`);
                 throw new Error('Phone number no longer associated with this WABA');
             }
+            const tierMapping = {
+                'TIER_1000': 1000,
+                'TIER_10000': 10000,
+                'TIER_100000': 100000,
+                'TIER_UNLIMITED': 1000000
+            };
+            const tier = phoneInfo.messaging_limit_tier || 'TIER_1000';
+            const count = tierMapping[tier] || 1000;
             const updatedAccount = await this.prisma.whatsAppAccount.update({
                 where: { id: accountId },
                 data: {
                     displayName: phoneInfo.verified_name || account.displayName,
                     status: phoneInfo.code_verification_status === 'VERIFIED' ? 'ACTIVE' : 'INACTIVE',
+                    messagingLimitTier: tier,
+                    messagingLimitCount: count,
                     businessProfile: {
                         ...(typeof account.businessProfile === 'object' ? account.businessProfile : {}),
                         qualityRating: (phoneInfo.quality_rating || 'UNKNOWN').toUpperCase(),
-                        messagingLimit: phoneInfo.messaging_limit_tier || 'UNKNOWN',
                         nameStatus: phoneInfo.name_status || 'UNKNOWN',
                         lastSyncAt: new Date().toISOString(),
                     },

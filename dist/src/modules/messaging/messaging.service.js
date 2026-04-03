@@ -55,9 +55,10 @@ let MessagingService = MessagingService_1 = class MessagingService {
             },
         });
         let body = 'Media message';
-        if (data.type === client_1.MessageType.TEXT) {
+        if (data.type === client_1.MessageType.TEXT)
             body = data.content.body;
-        }
+        else if (data.type === client_1.MessageType.TEMPLATE)
+            body = `Template: ${data.content.templateName}`;
         const updatedConversation = await this.prisma.conversation.update({
             where: { id: conversation.id },
             data: {
@@ -70,11 +71,9 @@ let MessagingService = MessagingService_1 = class MessagingService {
         return message;
     }
     async sendTextMessage(orgId, accountId, contactId, text) {
-        const contact = await this.prisma.contact.findUnique({
-            where: { id: contactId },
-        });
+        const contact = await this.prisma.contact.findUnique({ where: { id: contactId, organizationId: orgId } });
         if (!contact)
-            throw new Error('Contact not found');
+            throw new common_1.NotFoundException('Contact not found');
         const message = await this.createMessage({
             organizationId: orgId,
             whatsappAccountId: accountId,
@@ -86,87 +85,58 @@ let MessagingService = MessagingService_1 = class MessagingService {
         });
         try {
             const response = await this.whatsapp.sendTextMessage(orgId, accountId, contact.phone, text);
-            const waMessageId = response.messages?.[0]?.id;
-            return await this.prisma.message.update({
+            return this.prisma.message.update({
                 where: { id: message.id },
-                data: {
-                    waMessageId,
-                    status: client_1.MessageStatus.SENT,
-                    sentAt: new Date(),
-                },
+                data: { waMessageId: response.messages?.[0]?.id, status: client_1.MessageStatus.SENT, sentAt: new Date() },
             });
         }
         catch (error) {
-            this.logger.error(`Failed to send message: ${error.message}`);
             await this.prisma.message.update({
                 where: { id: message.id },
-                data: {
-                    status: client_1.MessageStatus.FAILED,
-                    failureReason: error.message,
-                    failedAt: new Date(),
-                },
+                data: { status: client_1.MessageStatus.FAILED, metadata: { error: error.message } },
             });
             throw error;
         }
     }
     async sendMediaMessage(orgId, accountId, contactId, file, caption) {
-        const contact = await this.prisma.contact.findUnique({
-            where: { id: contactId },
-        });
+        const contact = await this.prisma.contact.findUnique({ where: { id: contactId, organizationId: orgId } });
         if (!contact)
-            throw new Error('Contact not found');
-        let type = client_1.MessageType.DOCUMENT;
-        if (file.mimetype.startsWith('image/'))
-            type = client_1.MessageType.IMAGE;
-        else if (file.mimetype.startsWith('video/'))
+            throw new common_1.NotFoundException('Contact not found');
+        const mediaRes = await this.whatsapp.uploadMedia(orgId, accountId, file);
+        const mediaId = mediaRes.id;
+        let type = client_1.MessageType.IMAGE;
+        if (file.mimetype.startsWith('video'))
             type = client_1.MessageType.VIDEO;
-        else if (file.mimetype.startsWith('audio/'))
+        else if (file.mimetype.startsWith('audio'))
             type = client_1.MessageType.AUDIO;
+        else if (!file.mimetype.startsWith('image'))
+            type = client_1.MessageType.DOCUMENT;
         const message = await this.createMessage({
             organizationId: orgId,
             whatsappAccountId: accountId,
             contactId,
             direction: client_1.MessageDirection.OUTBOUND,
             type,
-            content: {
-                filename: file.originalname,
-                mimetype: file.mimetype,
-                caption: caption || '',
-                body: caption || `[${type}] ${file.originalname}`
-            },
+            content: { mediaId, caption, filename: file.originalname },
             status: client_1.MessageStatus.PENDING,
         });
         try {
-            const uploadRes = await this.whatsapp.uploadMedia(orgId, accountId, file);
-            const mediaId = uploadRes.id;
             const response = await this.whatsapp.sendMediaMessage(orgId, accountId, contact.phone, type, mediaId, caption);
-            const waMessageId = response.messages?.[0]?.id;
-            return await this.prisma.message.update({
+            return this.prisma.message.update({
                 where: { id: message.id },
-                data: {
-                    waMessageId,
-                    status: client_1.MessageStatus.SENT,
-                    sentAt: new Date(),
-                },
+                data: { waMessageId: response.messages?.[0]?.id, status: client_1.MessageStatus.SENT, sentAt: new Date() },
             });
         }
         catch (error) {
-            this.logger.error(`Failed to send media message: ${error.message}`);
             await this.prisma.message.update({
                 where: { id: message.id },
-                data: {
-                    status: client_1.MessageStatus.FAILED,
-                    failureReason: error.message,
-                    failedAt: new Date(),
-                },
+                data: { status: client_1.MessageStatus.FAILED, metadata: { error: error.message } },
             });
             throw error;
         }
     }
-    async sendTemplateMessage(orgId, accountId, contactId, templateName, language = 'en_US', components = []) {
-        const contact = await this.prisma.contact.findUnique({
-            where: { id: contactId },
-        });
+    async sendTemplateMessage(orgId, accountId, contactId, templateName, language = 'en_US', components = [], metadata = {}) {
+        const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
         if (!contact)
             throw new Error('Contact not found');
         const message = await this.createMessage({
@@ -177,84 +147,113 @@ let MessagingService = MessagingService_1 = class MessagingService {
             type: client_1.MessageType.TEMPLATE,
             content: { templateName, components, body: `[Template: ${templateName}]` },
             status: client_1.MessageStatus.PENDING,
+            metadata
         });
         try {
             const response = await this.whatsapp.sendTemplateMessage(orgId, accountId, contact.phone, templateName, language, components);
             const waMessageId = response.messages?.[0]?.id;
             return await this.prisma.message.update({
                 where: { id: message.id },
-                data: {
-                    waMessageId,
-                    status: client_1.MessageStatus.SENT,
-                    sentAt: new Date(),
-                },
+                data: { waMessageId, status: client_1.MessageStatus.SENT, sentAt: new Date() },
             });
         }
         catch (error) {
             this.logger.error(`Failed to send template message: ${error.message}`);
             await this.prisma.message.update({
                 where: { id: message.id },
-                data: {
-                    status: client_1.MessageStatus.FAILED,
-                    failureReason: error.message,
-                    failedAt: new Date(),
-                },
+                data: { status: client_1.MessageStatus.FAILED, failureReason: error.message, failedAt: new Date() },
             });
+            if (metadata?.campaignId) {
+                const recipient = await this.prisma.campaignRecipient.findFirst({
+                    where: { campaignId: metadata.campaignId, contactId }
+                });
+                if (recipient) {
+                    await this.prisma.campaignRecipient.update({
+                        where: { id: recipient.id },
+                        data: { status: client_1.MessageStatus.FAILED, failedAt: new Date(), failureReason: error.message }
+                    });
+                }
+            }
             throw error;
         }
     }
-    async updateMessageStatus(waMessageId, status) {
-        const message = await this.prisma.message.update({
+    async startNewConversation(orgId, accountId, phone, data) {
+        const contact = await this.contactsService.createOrUpdate(orgId, phone, data);
+        return this.findOrCreateConversation(orgId, accountId, contact.id);
+    }
+    async updateMessageStatus(waMessageId, status, failureReason) {
+        const message = await this.prisma.message.findUnique({
             where: { waMessageId },
-            data: {
-                status,
-                deliveredAt: status === client_1.MessageStatus.DELIVERED ? new Date() : undefined,
-                readAt: status === client_1.MessageStatus.READ ? new Date() : undefined,
-            },
+            select: { id: true, organizationId: true, metadata: true, status: true, contactId: true }
         });
-        this.realtimeGateway.emitMessageStatusUpdate(message.organizationId, message);
-        return message;
+        if (!message)
+            return null;
+        if (message.status === status)
+            return message;
+        const data = { status };
+        if (status === client_1.MessageStatus.DELIVERED)
+            data.deliveredAt = new Date();
+        else if (status === client_1.MessageStatus.READ)
+            data.readAt = new Date();
+        else if (status === client_1.MessageStatus.FAILED) {
+            data.failedAt = new Date();
+            data.failureReason = failureReason;
+        }
+        const updatedMessage = await this.prisma.message.update({
+            where: { id: message.id },
+            data
+        });
+        const metadata = message.metadata;
+        if (metadata?.campaignId) {
+            const campaignId = metadata.campaignId;
+            const updateData = {};
+            const recipientUpdate = { status };
+            if (status === client_1.MessageStatus.DELIVERED) {
+                updateData.deliveredCount = { increment: 1 };
+                recipientUpdate.deliveredAt = new Date();
+            }
+            else if (status === client_1.MessageStatus.READ) {
+                updateData.readCount = { increment: 1 };
+                recipientUpdate.readAt = new Date();
+            }
+            else if (status === client_1.MessageStatus.FAILED) {
+                updateData.failedCount = { increment: 1 };
+                recipientUpdate.failedAt = new Date();
+                recipientUpdate.failureReason = failureReason || 'Meta delivery failure';
+            }
+            if (Object.keys(updateData).length > 0) {
+                await this.prisma.campaign.update({
+                    where: { id: campaignId },
+                    data: updateData
+                });
+                const recipient = await this.prisma.campaignRecipient.findFirst({
+                    where: { campaignId, contactId: updatedMessage.contactId }
+                });
+                if (recipient) {
+                    await this.prisma.campaignRecipient.update({
+                        where: { id: recipient.id },
+                        data: recipientUpdate
+                    });
+                }
+            }
+        }
+        this.realtimeGateway.emitMessageStatusUpdate(updatedMessage.organizationId, updatedMessage);
+        return updatedMessage;
     }
     async getConversationMessages(conversationId) {
         return this.prisma.message.findMany({
             where: { conversationId },
             orderBy: { createdAt: 'asc' },
-            take: 50,
+            take: 100,
         });
     }
     async getConversations(orgId) {
         return this.prisma.conversation.findMany({
             where: { organizationId: orgId },
             include: {
-                contact: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        phone: true,
-                        avatarUrl: true,
-                    },
-                },
+                contact: { select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true } },
             },
             orderBy: { lastMessageAt: 'desc' },
-        });
-    }
-    async startNewConversation(orgId, accountId, phoneNumber, contactInfo) {
-        const contact = await this.contactsService.createOrUpdate(orgId, phoneNumber, contactInfo || {});
-        const conversation = await this.findOrCreateConversation(orgId, accountId, contact.id);
-        return this.prisma.conversation.findUnique({
-            where: { id: conversation.id },
-            include: {
-                contact: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        phone: true,
-                        avatarUrl: true,
-                    },
-                },
-            },
         });
     }
 };

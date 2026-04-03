@@ -55,10 +55,11 @@ export class CampaignsService {
 
     // 2. Messaging Limit Logic
     let leftoverContactIds: string[] = [];
-    if (finalContactIds.length > account.messagingLimitCount) {
+    const limitCount = (account as any).messagingLimitCount || 1000;
+    if (finalContactIds.length > limitCount) {
        if (autoSegment) {
-          leftoverContactIds = finalContactIds.slice(account.messagingLimitCount);
-          finalContactIds = finalContactIds.slice(0, account.messagingLimitCount);
+          leftoverContactIds = finalContactIds.slice(limitCount);
+          finalContactIds = finalContactIds.slice(0, limitCount);
           
           // Re-tag leftovers
           if (targetTag) {
@@ -75,7 +76,7 @@ export class CampaignsService {
              // We'll use a more robust way below.
           }
        } else {
-          throw new BadRequestException(`Target audience (${finalContactIds.length}) exceeds your daily messaging limit (${account.messagingLimitCount}). Please select a smaller audience or enable Auto-Segmentation.`);
+          throw new BadRequestException(`Target audience (${finalContactIds.length}) exceeds your daily messaging limit (${(account as any).messagingLimitCount}). Please select a smaller audience or enable Auto-Segmentation.`);
        }
     }
 
@@ -96,7 +97,8 @@ export class CampaignsService {
            accountId, 
            hasAutoSegmented: leftoverContactIds.length > 0,
            leftoverCount: leftoverContactIds.length,
-           targetTag
+           targetTag,
+           messagingLimitCount: (account as any).messagingLimitCount
         }
       }
     });
@@ -144,7 +146,7 @@ export class CampaignsService {
     });
 
     if (!campaign) throw new NotFoundException('Campaign not found');
-    if (campaign.status === CampaignStatus.CANCELLED) return { success: false, message: 'Campaign was cancelled' };
+    if (campaign.status === ('CANCELLED' as any)) return { success: false, message: 'Campaign was cancelled' };
 
     await this.prisma.campaign.update({
       where: { id: campaignId },
@@ -171,17 +173,13 @@ export class CampaignsService {
   async cancelCampaign(orgId: string, campaignId: string) {
     await this.prisma.campaign.update({
       where: { id: campaignId, organizationId: orgId },
-      data: { status: CampaignStatus.CANCELLED }
+      data: { status: 'CANCELLED' as any }
     });
     return { success: true, message: 'Campaign cancelled' };
   }
 
   async deleteCampaign(orgId: string, campaignId: string) {
-    return this.prisma.prismaQuery({
-       command: 'delete',
-       model: 'campaign',
-       where: { id: campaignId, organizationId: orgId }
-    });
+    return this.prisma.campaign.delete({ where: { id: campaignId, organizationId: orgId } });
   }
 
   async getCampaign(orgId: string, campaignId: string) {
@@ -206,10 +204,10 @@ export class CampaignsService {
       'Phone': r.contact.phone,
       'Status': r.status,
       'Sent At': r.sentAt?.toLocaleString() || 'N/A',
-      'Delivered At': r.deliveredAt?.toLocaleString() || 'N/A',
-      'Read At': r.readAt?.toLocaleString() || 'N/A',
-      'Failed At': r.failedAt?.toLocaleString() || 'N/A',
-      'Error': r.failureReason || ''
+      'Delivered At': (r as any).deliveredAt?.toLocaleString() || 'N/A',
+      'Read At': (r as any).readAt?.toLocaleString() || 'N/A',
+      'Failed At': (r as any).failedAt?.toLocaleString() || 'N/A',
+      'Error': (r as any).failureReason || ''
     }));
   }
 

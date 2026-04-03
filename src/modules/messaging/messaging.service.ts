@@ -1,9 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { ContactsService } from '../contacts/contacts.service';
-import { MessageDirection, MessageType, MessageStatus, CampaignStatus } from '@prisma/client';
+import { MessageDirection, MessageType, MessageStatus } from '@prisma/client';
 
 @Injectable()
 export class MessagingService {
@@ -17,7 +17,7 @@ export class MessagingService {
   ) {}
 
   /**
-   * Retrieves or creates a conversation between a WhatsApp account and a contact.
+   * Retrieves or creates a conversation state.
    */
   async findOrCreateConversation(orgId: string, accountId: string, contactId: string) {
     return this.prisma.conversation.upsert({
@@ -38,7 +38,7 @@ export class MessagingService {
   }
 
   /**
-   * Handles creating a message and updating the associated conversation.
+   * Internal message creation with Realtime sync.
    */
   async createMessage(data: {
     organizationId: string;
@@ -83,6 +83,83 @@ export class MessagingService {
     return message;
   }
 
+  /**
+   * REST API: Sends text message.
+   */
+  async sendTextMessage(orgId: string, accountId: string, contactId: string, text: string) {
+    const contact = await this.prisma.contact.findUnique({ where: { id: contactId, organizationId: orgId } });
+    if (!contact) throw new NotFoundException('Contact not found');
+
+    const message = await this.createMessage({
+      organizationId: orgId,
+      whatsappAccountId: accountId,
+      contactId,
+      direction: MessageDirection.OUTBOUND,
+      type: MessageType.TEXT,
+      content: { body: text },
+      status: MessageStatus.PENDING,
+    });
+
+    try {
+      const response = await this.whatsapp.sendTextMessage(orgId, accountId, contact.phone, text);
+      return this.prisma.message.update({
+        where: { id: message.id },
+        data: { waMessageId: response.messages?.[0]?.id, status: MessageStatus.SENT, sentAt: new Date() },
+      });
+    } catch (error: any) {
+      await this.prisma.message.update({
+        where: { id: message.id },
+        data: { status: MessageStatus.FAILED, metadata: { error: error.message } },
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * REST API: Sends media message.
+   */
+  async sendMediaMessage(orgId: string, accountId: string, contactId: string, file: any, caption?: string) {
+    const contact = await this.prisma.contact.findUnique({ where: { id: contactId, organizationId: orgId } });
+    if (!contact) throw new NotFoundException('Contact not found');
+
+    // 1. Upload to Meta
+    const mediaRes = await this.whatsapp.uploadMedia(orgId, accountId, file);
+    const mediaId = mediaRes.id;
+
+    // 2. Map file type to MessageType
+    let type: MessageType = MessageType.IMAGE;
+    if (file.mimetype.startsWith('video')) type = MessageType.VIDEO;
+    else if (file.mimetype.startsWith('audio')) type = MessageType.AUDIO;
+    else if (!file.mimetype.startsWith('image')) type = MessageType.DOCUMENT;
+
+    const message = await this.createMessage({
+      organizationId: orgId,
+      whatsappAccountId: accountId,
+      contactId,
+      direction: MessageDirection.OUTBOUND,
+      type,
+      content: { mediaId, caption, filename: file.originalname },
+      status: MessageStatus.PENDING,
+    });
+
+    try {
+      const response = await this.whatsapp.sendMediaMessage(orgId, accountId, contact.phone, type, mediaId, caption);
+      return this.prisma.message.update({
+        where: { id: message.id },
+        data: { waMessageId: response.messages?.[0]?.id, status: MessageStatus.SENT, sentAt: new Date() },
+      });
+    } catch (error: any) {
+      await this.prisma.message.update({
+        where: { id: message.id },
+        data: { status: MessageStatus.FAILED, metadata: { error: error.message } },
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * REST API: Template dispatch.
+   */
   async sendTemplateMessage(orgId: string, accountId: string, contactId: string, templateName: string, language: string = 'en_US', components: any[] = [], metadata: any = {}) {
     const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
     if (!contact) throw new Error('Contact not found');
@@ -121,15 +198,25 @@ export class MessagingService {
          if (recipient) {
             await this.prisma.campaignRecipient.update({
               where: { id: recipient.id },
-              data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: error.message }
+              data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: error.message } as any
             });
          }
       }
-
       throw error;
     }
   }
 
+  /**
+   * REST API: Initialize new chat.
+   */
+  async startNewConversation(orgId: string, accountId: string, phone: string, data: { firstName?: string; lastName?: string }) {
+    const contact = await this.contactsService.createOrUpdate(orgId, phone, data);
+    return this.findOrCreateConversation(orgId, accountId, contact.id);
+  }
+
+  /**
+   * Internal: Sync status for webhooks.
+   */
   async updateMessageStatus(waMessageId: string, status: MessageStatus, failureReason?: string) {
     const message = await this.prisma.message.findUnique({
       where: { waMessageId },
@@ -155,7 +242,6 @@ export class MessagingService {
     const metadata = message.metadata as any;
     if (metadata?.campaignId) {
       const campaignId = metadata.campaignId;
-      
       const updateData: any = {};
       const recipientUpdate: any = { status };
 
@@ -183,7 +269,7 @@ export class MessagingService {
         if (recipient) {
            await this.prisma.campaignRecipient.update({
              where: { id: recipient.id },
-             data: recipientUpdate
+             data: recipientUpdate as any
            });
         }
       }
@@ -193,7 +279,17 @@ export class MessagingService {
     return updatedMessage;
   }
 
-  // Helper methodologies... (omitted for brevity but assume they exist below)
+  /**
+   * REST API: Fetch live chat history.
+   */
+  async getConversationMessages(conversationId: string) {
+    return this.prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'asc' },
+      take: 100,
+    });
+  }
+
   async getConversations(orgId: string) {
     return this.prisma.conversation.findMany({
       where: { organizationId: orgId },

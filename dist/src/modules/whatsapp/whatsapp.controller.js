@@ -33,6 +33,15 @@ let WhatsappController = class WhatsappController {
     async getTemplates(req, id) {
         return this.whatsappService.getTemplates(req.user.orgId, id);
     }
+    async createTemplate(req, id, data) {
+        return this.whatsappService.createTemplate(req.user.orgId, id, data);
+    }
+    async updateTemplate(req, id, templateId, data) {
+        return this.whatsappService.updateTemplate(req.user.orgId, id, templateId, data);
+    }
+    async deleteTemplate(req, id, templateName) {
+        return this.whatsappService.deleteTemplate(req.user.orgId, id, templateName);
+    }
     async syncAccount(req, id) {
         return this.whatsappService.syncAccount(req.user.orgId, id);
     }
@@ -72,6 +81,34 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], WhatsappController.prototype, "getTemplates", null);
+__decorate([
+    (0, common_1.Post)('accounts/:id/templates'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], WhatsappController.prototype, "createTemplate", null);
+__decorate([
+    (0, common_1.Patch)('accounts/:id/templates/:templateId'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Param)('templateId')),
+    __param(3, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, String, Object]),
+    __metadata("design:returntype", Promise)
+], WhatsappController.prototype, "updateTemplate", null);
+__decorate([
+    (0, common_1.Delete)('accounts/:id/templates/:templateName'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Param)('templateName')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, String]),
+    __metadata("design:returntype", Promise)
+], WhatsappController.prototype, "deleteTemplate", null);
 __decorate([
     (0, common_1.Post)('sync/:id'),
     __param(0, (0, common_1.Req)()),

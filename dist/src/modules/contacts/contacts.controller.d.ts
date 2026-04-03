@@ -1,26 +1,8 @@
-import { PrismaService } from '../../prisma/prisma.service';
-export declare class ContactsService {
-    private readonly prisma;
-    constructor(prisma: PrismaService);
-    createOrUpdate(orgId: string, phone: string, data: any): Promise<{
-        id: string;
-        organizationId: string;
-        email: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        status: import(".prisma/client").$Enums.ContactStatus;
-        avatarUrl: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        whatsappId: string | null;
-        phone: string;
-        tags: string[];
-        customFields: import("@prisma/client/runtime/library").JsonValue;
-        optedInAt: Date | null;
-        optedOutAt: Date | null;
-        lastContactedAt: Date | null;
-    }>;
-    findAll(orgId: string): Promise<{
+import { ContactsService } from './contacts.service';
+export declare class ContactsController {
+    private readonly contactsService;
+    constructor(contactsService: ContactsService);
+    findAll(req: any): Promise<{
         id: string;
         organizationId: string;
         email: string | null;
@@ -38,11 +20,14 @@ export declare class ContactsService {
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
     }[]>;
-    getTagsAnalytics(orgId: string): Promise<{
+    getTagsAnalytics(req: any): Promise<{
         name: string;
         count: number;
     }[]>;
-    bulkAddTags(orgId: string, contactIds: string[], tags: string[]): Promise<({
+    bulkAddTags(req: any, body: {
+        contactIds: string[];
+        tags: string[];
+    }): Promise<({
         id: string;
         organizationId: string;
         email: string | null;
@@ -60,7 +45,10 @@ export declare class ContactsService {
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
     } | undefined)[]>;
-    bulkRemoveTags(orgId: string, contactIds: string[], tags: string[]): Promise<({
+    bulkRemoveTags(req: any, body: {
+        contactIds: string[];
+        tags: string[];
+    }): Promise<({
         id: string;
         organizationId: string;
         email: string | null;
@@ -78,5 +66,7 @@ export declare class ContactsService {
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
     } | undefined)[]>;
-    deleteContacts(orgId: string, contactIds: string[]): Promise<import(".prisma/client").Prisma.BatchPayload>;
+    bulkDelete(req: any, body: {
+        contactIds: string[];
+    }): Promise<import(".prisma/client").Prisma.BatchPayload>;
 }

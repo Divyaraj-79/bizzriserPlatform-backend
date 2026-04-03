@@ -9,4 +9,6 @@ export declare class WebhookProcessor {
     private readonly logger;
     constructor(prisma: PrismaService, contactsService: ContactsService, messagingService: MessagingService);
     handleProcessMessage(job: Job<any>): Promise<void>;
+    private handleStatusUpdate;
+    private handleIncomingMessage;
 }

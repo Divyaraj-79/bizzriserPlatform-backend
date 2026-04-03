@@ -30,6 +30,8 @@ export declare class WhatsappService {
         wabaId: string;
         webhookSecret: string;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
+        messagingLimitTier: string | null;
+        messagingLimitCount: number;
     }>;
     sendTextMessage(orgId: string, accountId: string, to: string, message: string): Promise<any>;
     sendTemplateMessage(orgId: string, accountId: string, to: string, templateName: string, languageCode?: string, components?: any[]): Promise<any>;
@@ -46,6 +48,9 @@ export declare class WhatsappService {
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
     }[]>;
     getTemplates(orgId: string, accountId: string): Promise<any>;
+    createTemplate(orgId: string, accountId: string, data: any): Promise<any>;
+    updateTemplate(orgId: string, accountId: string, templateId: string, data: any): Promise<any>;
+    deleteTemplate(orgId: string, accountId: string, templateName: string): Promise<any>;
     syncAccount(orgId: string, accountId: string): Promise<{
         id: string;
         organizationId: string;
@@ -60,6 +65,8 @@ export declare class WhatsappService {
         wabaId: string;
         webhookSecret: string;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
+        messagingLimitTier: string | null;
+        messagingLimitCount: number;
     }>;
     disconnectAccount(orgId: string, accountId: string): Promise<{
         id: string;
@@ -75,6 +82,8 @@ export declare class WhatsappService {
         wabaId: string;
         webhookSecret: string;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
+        messagingLimitTier: string | null;
+        messagingLimitCount: number;
     }>;
     private getValidToken;
     private handleError;

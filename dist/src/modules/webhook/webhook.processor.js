@@ -32,74 +32,12 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
         const { eventId, accountId, organizationId, data } = job.data;
         this.logger.log(`Processing message for event ${eventId}`);
         try {
-            const contactData = data.contacts?.[0];
-            const messageData = data.messages?.[0];
-            if (!messageData) {
-                this.logger.warn(`No message data in event ${eventId}`);
-                return;
+            if (data.statuses && data.statuses.length > 0) {
+                await this.handleStatusUpdate(data.statuses[0]);
             }
-            const waMessageId = messageData.id;
-            const from = messageData.from;
-            const incomingName = contactData?.profile?.name;
-            const existingContact = await this.prisma.contact.findUnique({
-                where: { organizationId_phone: { organizationId, phone: from } }
-            });
-            const updateData = {
-                whatsappId: contactData?.wa_id || existingContact?.whatsappId,
-            };
-            if (incomingName && (!existingContact?.firstName || existingContact.firstName === 'WhatsApp User' || existingContact.firstName === from)) {
-                updateData.firstName = incomingName;
+            if (data.messages && data.messages.length > 0) {
+                await this.handleIncomingMessage(accountId, organizationId, data.contacts?.[0], data.messages[0]);
             }
-            const contact = await this.contactsService.createOrUpdate(organizationId, from, updateData);
-            let messageType = client_1.MessageType.TEXT;
-            let content = {};
-            if (messageData.type === 'text') {
-                messageType = client_1.MessageType.TEXT;
-                content = { body: messageData.text.body };
-            }
-            else if (messageData.type === 'image') {
-                messageType = client_1.MessageType.IMAGE;
-                content = { image: messageData.image, body: messageData.image.caption || '[Image]' };
-            }
-            else if (messageData.type === 'video') {
-                messageType = client_1.MessageType.VIDEO;
-                content = { video: messageData.video, body: messageData.video.caption || '[Video]' };
-            }
-            else if (messageData.type === 'audio') {
-                messageType = client_1.MessageType.AUDIO;
-                content = { audio: messageData.audio, body: '[Audio]' };
-            }
-            else if (messageData.type === 'document') {
-                messageType = client_1.MessageType.DOCUMENT;
-                content = { document: messageData.document, body: messageData.document.filename || '[Document]' };
-            }
-            else if (messageData.type === 'location') {
-                messageType = client_1.MessageType.LOCATION;
-                content = { location: messageData.location, body: '[Location Shared]' };
-            }
-            else if (messageData.type === 'button') {
-                messageType = client_1.MessageType.TEXT;
-                content = { body: messageData.button.text, payload: messageData.button.payload };
-            }
-            else if (messageData.type === 'interactive') {
-                messageType = client_1.MessageType.TEXT;
-                const interactiveType = messageData.interactive.type;
-                content = {
-                    body: messageData.interactive[interactiveType]?.title || '[Interactive Message]',
-                    payload: messageData.interactive[interactiveType]?.id
-                };
-            }
-            await this.messagingService.createMessage({
-                organizationId,
-                whatsappAccountId: accountId,
-                contactId: contact.id,
-                waMessageId,
-                direction: client_1.MessageDirection.INBOUND,
-                type: messageType,
-                status: client_1.MessageStatus.READ,
-                content,
-                sentAt: new Date(parseInt(messageData.timestamp) * 1000),
-            });
             await this.prisma.webhookEvent.update({
                 where: { id: eventId },
                 data: {
@@ -107,7 +45,7 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
                     processedAt: new Date(),
                 },
             });
-            this.logger.log(`Successfully processed message ${waMessageId}`);
+            this.logger.log(`Successfully processed event ${eventId}`);
         }
         catch (error) {
             this.logger.error(`Error processing message event ${eventId}: ${error.message}`);
@@ -120,6 +58,75 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
             });
             throw error;
         }
+    }
+    async handleStatusUpdate(statusData) {
+        const waMessageId = statusData.id;
+        const metaStatus = statusData.status;
+        let status = client_1.MessageStatus.SENT;
+        if (metaStatus === 'delivered')
+            status = client_1.MessageStatus.DELIVERED;
+        else if (metaStatus === 'read')
+            status = client_1.MessageStatus.READ;
+        else if (metaStatus === 'failed')
+            status = client_1.MessageStatus.FAILED;
+        this.logger.debug(`Updating status for message ${waMessageId} to ${status}`);
+        await this.messagingService.updateMessageStatus(waMessageId, status);
+    }
+    async handleIncomingMessage(accountId, organizationId, contactData, messageData) {
+        const waMessageId = messageData.id;
+        const from = messageData.from;
+        const incomingName = contactData?.profile?.name;
+        const existingContact = await this.prisma.contact.findUnique({
+            where: { organizationId_phone: { organizationId, phone: from } }
+        });
+        const updateData = {
+            whatsappId: contactData?.wa_id || existingContact?.whatsappId,
+        };
+        if (incomingName && (!existingContact?.firstName || existingContact.firstName === 'WhatsApp User' || existingContact.firstName === from)) {
+            updateData.firstName = incomingName;
+        }
+        const contact = await this.contactsService.createOrUpdate(organizationId, from, updateData);
+        let messageType = client_1.MessageType.TEXT;
+        let content = {};
+        if (messageData.type === 'text') {
+            messageType = client_1.MessageType.TEXT;
+            content = { body: messageData.text.body };
+        }
+        else if (messageData.type === 'image') {
+            messageType = client_1.MessageType.IMAGE;
+            content = { image: messageData.image, body: messageData.image.caption || '[Image]' };
+        }
+        else if (messageData.type === 'video') {
+            messageType = client_1.MessageType.VIDEO;
+            content = { video: messageData.video, body: messageData.video.caption || '[Video]' };
+        }
+        else if (messageData.type === 'document') {
+            messageType = client_1.MessageType.DOCUMENT;
+            content = { document: messageData.document, body: messageData.document.filename || '[Document]' };
+        }
+        else if (messageData.type === 'interactive') {
+            messageType = client_1.MessageType.TEXT;
+            const it = messageData.interactive.type;
+            content = {
+                body: messageData.interactive[it]?.title || '[Interactive]',
+                payload: messageData.interactive[it]?.id
+            };
+        }
+        else if (messageData.type === 'button') {
+            messageType = client_1.MessageType.TEXT;
+            content = { body: messageData.button.text, payload: messageData.button.payload };
+        }
+        await this.messagingService.createMessage({
+            organizationId,
+            whatsappAccountId: accountId,
+            contactId: contact.id,
+            waMessageId,
+            direction: client_1.MessageDirection.INBOUND,
+            type: messageType,
+            status: client_1.MessageStatus.READ,
+            content,
+            sentAt: new Date(parseInt(messageData.timestamp) * 1000),
+        });
     }
 };
 exports.WebhookProcessor = WebhookProcessor;

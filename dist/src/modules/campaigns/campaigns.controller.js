@@ -21,28 +21,49 @@ let CampaignsController = class CampaignsController {
     constructor(campaignsService) {
         this.campaignsService = campaignsService;
     }
-    async create(req, data) {
-        return this.campaignsService.create(req.user.orgId, data);
+    async findAll(req) {
+        return this.campaignsService.findAll(req.user.orgId);
     }
-    async findOne(req, id) {
+    async createBroadcast(req, data) {
+        return this.campaignsService.createBroadcast(req.user.orgId, data);
+    }
+    async cancelBroadcast(req, id) {
+        return this.campaignsService.cancelCampaign(req.user.orgId, id);
+    }
+    async getCampaign(req, id) {
         return this.campaignsService.getCampaign(req.user.orgId, id);
     }
-    async addRecipients(req, id, contactIds) {
-        return this.campaignsService.addRecipients(req.user.orgId, id, contactIds);
+    async deleteCampaign(req, id) {
+        return this.campaignsService.deleteCampaign(req.user.orgId, id);
     }
-    async start(req, id, accountId) {
-        return this.campaignsService.startCampaign(req.user.orgId, id, accountId);
+    async exportCampaign(req, id) {
+        return this.campaignsService.getExportData(req.user.orgId, id);
     }
 };
 exports.CampaignsController = CampaignsController;
 __decorate([
-    (0, common_1.Post)(),
+    (0, common_1.Get)(),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], CampaignsController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Post)('broadcast'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
-], CampaignsController.prototype, "create", null);
+], CampaignsController.prototype, "createBroadcast", null);
+__decorate([
+    (0, common_1.Post)(':id/cancel'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], CampaignsController.prototype, "cancelBroadcast", null);
 __decorate([
     (0, common_1.Get)(':id'),
     __param(0, (0, common_1.Req)()),
@@ -50,25 +71,23 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
-], CampaignsController.prototype, "findOne", null);
+], CampaignsController.prototype, "getCampaign", null);
 __decorate([
-    (0, common_1.Post)(':id/recipients'),
+    (0, common_1.Delete)(':id'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)('id')),
-    __param(2, (0, common_1.Body)('contactIds')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, Array]),
+    __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
-], CampaignsController.prototype, "addRecipients", null);
+], CampaignsController.prototype, "deleteCampaign", null);
 __decorate([
-    (0, common_1.Post)(':id/start'),
+    (0, common_1.Get)(':id/export'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)('id')),
-    __param(2, (0, common_1.Body)('accountId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, String]),
+    __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
-], CampaignsController.prototype, "start", null);
+], CampaignsController.prototype, "exportCampaign", null);
 exports.CampaignsController = CampaignsController = __decorate([
     (0, common_1.Controller)('campaigns'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

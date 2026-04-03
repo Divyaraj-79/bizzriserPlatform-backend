@@ -42,7 +42,7 @@ export class CampaignProcessor {
         select: { status: true, name: true, totalRecipients: true, sentCount: true, failedCount: true },
       });
 
-      if (!campaign || campaign.status === CampaignStatus.CANCELLED) {
+      if (!campaign || campaign.status === ('CANCELLED' as any)) {
         this.logger.warn(`Campaign ${campaignId} is CANCELLED. Skipping message for recipient ${recipientId}.`);
         return;
       }
@@ -99,7 +99,7 @@ export class CampaignProcessor {
           recipients: {
             update: {
               where: { id: recipientId },
-              data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: error.message },
+              data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: error.message } as any,
             },
           },
         },

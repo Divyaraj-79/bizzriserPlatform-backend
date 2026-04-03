@@ -100,15 +100,7 @@ export declare class MessagingController {
         phoneNumber: string;
         firstName?: string;
         lastName?: string;
-    }): Promise<({
-        contact: {
-            id: string;
-            firstName: string | null;
-            lastName: string | null;
-            avatarUrl: string | null;
-            phone: string;
-        };
-    } & {
+    }): Promise<{
         id: string;
         organizationId: string;
         createdAt: Date;
@@ -118,7 +110,7 @@ export declare class MessagingController {
         contactId: string;
         lastMessageBody: string | null;
         lastMessageAt: Date;
-    }) | null>;
+    }>;
     getMessages(conversationId: string, req: any): Promise<{
         id: string;
         organizationId: string;

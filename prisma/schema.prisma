@@ -71,6 +71,7 @@ enum CampaignStatus {
   PAUSED
   COMPLETED
   FAILED
+  CANCELLED
 }
 
 enum CampaignLogLevel {

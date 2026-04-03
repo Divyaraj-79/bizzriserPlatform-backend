@@ -16,6 +16,8 @@ export declare class WhatsappController {
         wabaId: string;
         webhookSecret: string;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
+        messagingLimitTier: string | null;
+        messagingLimitCount: number;
     }>;
     listAccounts(req: any): Promise<{
         id: string;
@@ -28,6 +30,9 @@ export declare class WhatsappController {
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
     }[]>;
     getTemplates(req: any, id: string): Promise<any>;
+    createTemplate(req: any, id: string, data: any): Promise<any>;
+    updateTemplate(req: any, id: string, templateId: string, data: any): Promise<any>;
+    deleteTemplate(req: any, id: string, templateName: string): Promise<any>;
     syncAccount(req: any, id: string): Promise<{
         id: string;
         organizationId: string;
@@ -42,6 +47,8 @@ export declare class WhatsappController {
         wabaId: string;
         webhookSecret: string;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
+        messagingLimitTier: string | null;
+        messagingLimitCount: number;
     }>;
     disconnectAccount(req: any, id: string): Promise<{
         id: string;
@@ -57,6 +64,8 @@ export declare class WhatsappController {
         wabaId: string;
         webhookSecret: string;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
+        messagingLimitTier: string | null;
+        messagingLimitCount: number;
     }>;
     getSignupConfig(): Promise<{
         appId: string | undefined;
