@@ -451,7 +451,7 @@ export class WhatsappService {
         },
       });
       
-      return response.data;
+      return response.data.data;
     } catch (error) {
       this.handleError(error, `Failed to fetch templates via account ${accountId}`);
     }
