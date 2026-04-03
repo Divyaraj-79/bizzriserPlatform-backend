@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, NotFoundException } from '@nestjs/common';
 import { ContactsService } from './contacts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -49,5 +49,10 @@ export class ContactsController {
     @Body() body: { contactIds: string[] }
   ) {
     return this.contactsService.deleteContacts(req.user.orgId, body.contactIds);
+  }
+
+  @Get('import/status/:jobId')
+  async getImportStatus(@Param('jobId') jobId: string) {
+    return this.contactsService.getImportStatus(jobId);
   }
 }
