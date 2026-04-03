@@ -5,14 +5,15 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter, TransformInterceptor, LoggingInterceptor } from './common';
 
+import { json, urlencoded } from 'express';
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule, { rawBody: true });
   
-  // Increase body size limits for large imports
-  const express = require('express');
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  // Increase body size limits for large imports (100k+ records)
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ limit: '50mb', extended: true }));
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('app.port') ?? 3001;

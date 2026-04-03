@@ -1,5 +1,5 @@
 import { Process, Processor } from '@nestjs/bull';
-import type { Job } from 'bull';
+import { Job } from 'bullmq';
 import { ContactsService } from './contacts.service';
 import { Logger } from '@nestjs/common';
 
@@ -18,17 +18,17 @@ export class ImportProcessor {
     
     try {
       // Phase 1: Validation & Deduplication (Initial)
-      await job.progress(10);
+      await job.updateProgress(10);
       
       // Phase 2: Processing in batches with progress updates
       // Using a transaction to ensure "all or nothing" as requested
       await this.contactsService.atomicBulkImport(orgId, contacts, async (progress) => {
          // Scale progress from 10% to 90%
          const scaledProgress = 10 + Math.floor(progress * 0.8);
-         await job.progress(scaledProgress);
+         await job.updateProgress(scaledProgress);
       });
 
-      await job.progress(100);
+      await job.updateProgress(100);
       this.logger.log(`Import completed successfully for Org: ${orgId}`);
       return { success: true, count: total };
     } catch (err) {

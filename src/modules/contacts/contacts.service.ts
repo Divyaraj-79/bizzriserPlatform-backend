@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import type { Queue } from 'bull';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class ContactsService {
+  private readonly logger = new Logger(ContactsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue('contact-import') private readonly importQueue: Queue,
@@ -29,30 +31,39 @@ export class ContactsService {
   }
 
   async bulkCreateOrUpdate(orgId: string, contacts: any[]) {
-    // Deduplicate within the incoming batch (last one wins)
-    const uniqueMap = new Map();
-    contacts.forEach(c => {
-      if (c.phone) {
-        // Ensure phone is a string and cleaned
-        const cleanPhone = String(c.phone).replace(/\D/g, '');
-        uniqueMap.set(cleanPhone, { ...c, phone: cleanPhone });
-      }
-    });
+    try {
+      // Deduplicate within the incoming batch (last one wins)
+      const uniqueMap = new Map();
+      contacts.forEach(c => {
+        if (c.phone) {
+          const cleanPhone = String(c.phone).replace(/\D/g, '');
+          uniqueMap.set(cleanPhone, { ...c, phone: cleanPhone });
+        }
+      });
 
-    const uniqueContacts = Array.from(uniqueMap.values());
-    
-    // Add to background queue instead of processing synchronously
-    const job = await this.importQueue.add('import-contacts', {
-      orgId,
-      contacts: uniqueContacts,
-    });
+      const uniqueContacts = Array.from(uniqueMap.values());
+      
+      // Add to background queue
+      const job = await this.importQueue.add('import-contacts', {
+        orgId,
+        contacts: uniqueContacts,
+      });
 
-    return {
-      jobId: job.id,
-      totalContacts: contacts.length,
-      uniqueContacts: uniqueContacts.length,
-      status: 'QUEUED'
-    };
+      return {
+        jobId: job.id,
+        totalContacts: contacts.length,
+        uniqueContacts: uniqueContacts.length,
+        status: 'QUEUED'
+      };
+    } catch (err) {
+      this.logger.error(`Failed to queue bulk import: ${err.message}`, err.stack);
+      throw err;
+    }
+  }
+
+  private escapeSql(val: any) {
+    if (val === null || val === undefined) return '';
+    return String(val).replace(/'/g, "''");
   }
 
   /**
@@ -63,39 +74,42 @@ export class ContactsService {
     const CHUNK_SIZE = 1000;
     const total = contacts.length;
 
-    // Use a single transaction for the entire process to satisfy the "all or nothing" requirement
-    return this.prisma.$transaction(async (tx) => {
-      for (let i = 0; i < total; i += CHUNK_SIZE) {
-        const chunk = contacts.slice(i, i + CHUNK_SIZE);
-        
-        // Construct bulk SQL
-        // PostgreSQL ON CONFLICT DO UPDATE
-        const values = chunk.map(c => {
-          const id = uuidv4();
-          const customFields = JSON.stringify(c.customFields || {});
-          return `('${id}', '${orgId}', '${c.phone}', '${c.firstName || ''}', '${c.lastName || ''}', '${c.email || ''}', '${customFields}'::jsonb, NOW(), NOW())`;
-        }).join(',');
+    try {
+      // Use a single transaction for the entire process to satisfy the "all or nothing" requirement
+      return await this.prisma.$transaction(async (tx) => {
+        for (let i = 0; i < total; i += CHUNK_SIZE) {
+          const chunk = contacts.slice(i, i + CHUNK_SIZE);
+          
+          const values = chunk.map(c => {
+            const id = uuidv4();
+            const customFields = JSON.stringify(c.customFields || {});
+            return `('${id}', '${orgId}', '${this.escapeSql(c.phone)}', '${this.escapeSql(c.firstName)}', '${this.escapeSql(c.lastName)}', '${this.escapeSql(c.email)}', '${this.escapeSql(customFields)}'::jsonb, NOW(), NOW())`;
+          }).join(',');
 
-        const query = `
-          INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "lastName", "email", "customFields", "createdAt", "updatedAt")
-          VALUES ${values}
-          ON CONFLICT ("organizationId", "phone") DO UPDATE SET
-            "firstName" = EXCLUDED."firstName",
-            "lastName" = EXCLUDED."lastName",
-            "email" = EXCLUDED."email",
-            "customFields" = EXCLUDED."customFields",
-            "updatedAt" = NOW();
-        `;
+          const query = `
+            INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "lastName", "email", "customFields", "createdAt", "updatedAt")
+            VALUES ${values}
+            ON CONFLICT ("organizationId", "phone") DO UPDATE SET
+              "firstName" = EXCLUDED."firstName",
+              "lastName" = EXCLUDED."lastName",
+              "email" = EXCLUDED."email",
+              "customFields" = EXCLUDED."customFields",
+              "updatedAt" = NOW();
+          `;
 
-        await tx.$executeRawUnsafe(query);
+          await tx.$executeRawUnsafe(query);
 
-        if (onProgress) {
-          onProgress(Math.min(100, Math.floor(((i + chunk.length) / total) * 100)));
+          if (onProgress) {
+            onProgress(Math.min(100, Math.floor(((i + chunk.length) / total) * 100)));
+          }
         }
-      }
-    }, {
-      timeout: 300000 // 5 minutes timeout for the entire 100k transaction
-    });
+      }, {
+        timeout: 600000 // 10 minutes timeout for very large transactions
+      });
+    } catch (error) {
+      this.logger.error(`Atomic bulk import failed: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   async getImportStatus(jobId: string) {
@@ -103,7 +117,7 @@ export class ContactsService {
     if (!job) throw new NotFoundException('Import job not found');
     
     const status = await job.getState();
-    const progress = job.progress();
+    const progress = job.progress; // In BullMQ, this is a property
     const result = job.returnvalue;
     const failedReason = job.failedReason;
 
