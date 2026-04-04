@@ -43,10 +43,18 @@ export class ContactsService {
 
       const uniqueContacts = Array.from(uniqueMap.values());
       
-      // Add to background queue
+      // Add to background queue with industrial reliability settings
       const job = await this.importQueue.add('import-contacts', {
         orgId,
         contacts: uniqueContacts,
+      }, {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+        removeOnComplete: true,
+        removeOnFail: false,
       });
 
       return {

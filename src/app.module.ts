@@ -31,13 +31,35 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
     PrismaModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: async (config: ConfigService) => ({
-        connection: {
-          host: config.get<string>('redis.host'),
-          port: config.get<number>('redis.port'),
-          password: config.get<string>('redis.password'),
-        },
-      } as any),
+      useFactory: async (config: ConfigService) => {
+        const host = config.get<string>('redis.host') || 'localhost';
+        const password = config.get<string>('redis.password');
+        const port = config.get<number>('redis.port') || 6379;
+        
+        // Comprehensive cloud detection for TLS
+        const isCloud = host.includes('render.com') || 
+                        host.includes('redislabs.com') || 
+                        host.includes('upstash.io') ||
+                        host.includes('aws.com') ||
+                        host.includes('internal'); // Render internal can sometimes use TLS
+        
+        return {
+          redis: {
+            host,
+            port,
+            password,
+            maxRetriesPerRequest: null, // Allow BullMQ to handle retries internally
+            enableReadyCheck: false,
+            disconnectTimeout: 10000,
+            connectTimeout: 20000,
+            tls: isCloud ? { rejectUnauthorized: false } : undefined,
+            retryStrategy: (times: number) => {
+              // Stay connected forever - retry every 2-5 seconds
+              return Math.min(times * 100, 5000);
+            },
+          },
+        };
+      },
       inject: [ConfigService],
     }),
 
