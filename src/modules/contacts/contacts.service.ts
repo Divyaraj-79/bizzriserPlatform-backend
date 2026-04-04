@@ -14,6 +14,7 @@ export class ContactsService {
   ) {}
 
   async createOrUpdate(orgId: string, phone: string, data: any) {
+    this.logger.log(`[ENTRY] createOrUpdate called for Org: ${orgId}, Phone: ${phone}`);
     const cleanPhone = String(phone).replace(/\D/g, '');
     const { name, tags, ...otherData } = data;
     
@@ -84,7 +85,7 @@ export class ContactsService {
         uniqueContacts: uniqueContacts.length,
         status: 'QUEUED'
       };
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(`Failed to queue bulk import: ${err.message}`, err.stack);
       throw err;
     }
