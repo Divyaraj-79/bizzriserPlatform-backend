@@ -126,16 +126,19 @@ export class ContactsService {
             const phone = this.escapeSql(c.phone);
             const firstName = this.escapeSql(c.name || c.firstName || '');
             const fields = this.escapeSql(JSON.stringify(c.customFields || {}));
+            const tagArray = (c.tags || []).map((t: string) => `'${this.escapeSql(t)}'`);
+            const tagsSql = tagArray.length > 0 ? `ARRAY[${tagArray.join(',')}]::text[]` : `ARRAY[]::text[]`;
             
-            return `('${id}', '${orgId}', '${phone}', '${firstName}', '${fields}'::jsonb, NOW(), NOW())`;
+            return `('${id}', '${orgId}', '${phone}', '${firstName}', '${fields}'::jsonb, ${tagsSql}, NOW(), NOW())`;
           }).join(',');
 
           const query = `
-            INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "customFields", "createdAt", "updatedAt")
+            INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "customFields", "tags", "createdAt", "updatedAt")
             VALUES ${values}
             ON CONFLICT ("organizationId", "phone") DO UPDATE SET
               "firstName" = EXCLUDED."firstName",
               "customFields" = EXCLUDED."customFields",
+              "tags" = EXCLUDED."tags",
               "updatedAt" = NOW();
           `;
 
