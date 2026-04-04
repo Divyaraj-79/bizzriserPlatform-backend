@@ -13,9 +13,18 @@ export class ContactsService {
     @InjectQueue('contact-import') private readonly importQueue: any,
   ) {}
 
+  private sanitizePhone(phone: any): string {
+    if (!phone) return '';
+    let clean = String(phone);
+    if (clean.includes('E+') || clean.includes('e+')) {
+      clean = Number(clean).toLocaleString('fullwide', { useGrouping: false });
+    }
+    return clean.replace(/\D/g, '');
+  }
+
   async createOrUpdate(orgId: string, phone: string, data: any) {
     this.logger.log(`[ENTRY] createOrUpdate called for Org: ${orgId}, Phone: ${phone}`);
-    const cleanPhone = String(phone).replace(/\D/g, '');
+    const cleanPhone = this.sanitizePhone(phone);
     const { name, tags, ...otherData } = data;
     
     const baseData = {
@@ -52,14 +61,16 @@ export class ContactsService {
       // Deduplicate within the incoming batch (last one wins)
       const uniqueMap = new Map();
       contacts.forEach(c => {
-        if (c.phone) {
-          // Handle potential scientific notation from CSV (e.g. 9.1E+11)
-          let cleanPhone = String(c.phone);
-          if (cleanPhone.includes('E+') || cleanPhone.includes('e+')) {
-            cleanPhone = Number(cleanPhone).toLocaleString('fullwide', {useGrouping:false});
+        const phoneInput = c.phone || c.Phone || c.Number;
+        if (phoneInput) {
+          const cleanPhone = this.sanitizePhone(phoneInput);
+          if (cleanPhone) {
+            uniqueMap.set(cleanPhone, { 
+              ...c, 
+              phone: cleanPhone,
+              firstName: c.name || c.Name || c.firstName || c.FirstName || ''
+            });
           }
-          cleanPhone = cleanPhone.replace(/\D/g, '');
-          uniqueMap.set(cleanPhone, { ...c, phone: cleanPhone });
         }
       });
 
