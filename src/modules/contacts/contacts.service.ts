@@ -15,10 +15,9 @@ export class ContactsService {
 
   async createOrUpdate(orgId: string, phone: string, data: any) {
     const cleanPhone = String(phone).replace(/\D/g, '');
-    const { name, ...otherData } = data;
+    const { name, tags, ...otherData } = data;
     
-    // Map 'name' to 'firstName' as per schema
-    const prismaData = {
+    const baseData = {
       ...otherData,
       firstName: name || otherData.firstName || '',
       organizationId: orgId,
@@ -29,8 +28,14 @@ export class ContactsService {
       where: {
         organizationId_phone: { organizationId: orgId, phone: cleanPhone },
       },
-      update: prismaData,
-      create: prismaData,
+      update: {
+        ...baseData,
+        tags: tags ? { set: tags } : undefined,
+      },
+      create: {
+        ...baseData,
+        tags: tags || [],
+      },
     });
   }
 
