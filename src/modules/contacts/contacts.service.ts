@@ -83,8 +83,8 @@ export class ContactsService {
       }, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
-        removeOnComplete: true,
-        removeOnFail: false,
+        removeOnComplete: { age: 3600 }, // Keep for 1 hour to allow polling
+        removeOnFail: { age: 86400 },   // Keep failed for 24 hours
       });
 
       this.logger.log(`Successfully queued job ${job?.id} for ${uniqueContacts.length} contacts`);
