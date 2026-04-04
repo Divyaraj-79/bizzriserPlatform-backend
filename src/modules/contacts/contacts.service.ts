@@ -31,12 +31,24 @@ export class ContactsService {
   }
 
   async bulkCreateOrUpdate(orgId: string, contacts: any[]) {
+    // Robust OrgID resolution
+    const resolvedOrgId = orgId || 'GLOBAL';
+    this.logger.log(`Bulk import request for Org: ${resolvedOrgId}, Count: ${contacts?.length}`);
+    
     try {
+      if (!contacts || !Array.isArray(contacts)) {
+        throw new Error('Invalid contacts data provided');
+      }
       // Deduplicate within the incoming batch (last one wins)
       const uniqueMap = new Map();
       contacts.forEach(c => {
         if (c.phone) {
-          const cleanPhone = String(c.phone).replace(/\D/g, '');
+          // Handle potential scientific notation from CSV (e.g. 9.1E+11)
+          let cleanPhone = String(c.phone);
+          if (cleanPhone.includes('E+') || cleanPhone.includes('e+')) {
+            cleanPhone = Number(cleanPhone).toLocaleString('fullwide', {useGrouping:false});
+          }
+          cleanPhone = cleanPhone.replace(/\D/g, '');
           uniqueMap.set(cleanPhone, { ...c, phone: cleanPhone });
         }
       });
@@ -49,13 +61,13 @@ export class ContactsService {
         contacts: uniqueContacts,
       }, {
         attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
+        backoff: { type: 'exponential', delay: 2000 },
         removeOnComplete: true,
         removeOnFail: false,
       });
+
+      this.logger.log(`Successfully queued job ${job?.id} for ${uniqueContacts.length} contacts`);
+      this.logger.debug(`Job details: ${JSON.stringify(job)}`);
 
       return {
         jobId: job.id,
@@ -114,9 +126,9 @@ export class ContactsService {
       }, {
         timeout: 600000 // 10 minutes timeout for very large transactions
       });
-    } catch (error) {
-      this.logger.error(`Atomic bulk import failed: ${error.message}`, error.stack);
-      throw error;
+    } catch (err: any) {
+      this.logger.error(`Atomic bulk import failed: ${err.message}`, err.stack);
+      throw err;
     }
   }
 
