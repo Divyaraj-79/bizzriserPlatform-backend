@@ -102,17 +102,18 @@ export class ContactsService {
           
           const values = chunk.map(c => {
             const id = uuidv4();
-            const customFields = JSON.stringify(c.customFields || {});
-            return `('${id}', '${orgId}', '${this.escapeSql(c.phone)}', '${this.escapeSql(c.firstName)}', '${this.escapeSql(c.lastName)}', '${this.escapeSql(c.email)}', '${this.escapeSql(customFields)}'::jsonb, NOW(), NOW())`;
+            const phone = this.escapeSql(c.phone);
+            const firstName = this.escapeSql(c.name || c.firstName || '');
+            const fields = this.escapeSql(JSON.stringify(c.customFields || {}));
+            
+            return `('${id}', '${orgId}', '${phone}', '${firstName}', '${fields}'::jsonb, NOW(), NOW())`;
           }).join(',');
 
           const query = `
-            INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "lastName", "email", "customFields", "createdAt", "updatedAt")
+            INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "customFields", "createdAt", "updatedAt")
             VALUES ${values}
             ON CONFLICT ("organizationId", "phone") DO UPDATE SET
               "firstName" = EXCLUDED."firstName",
-              "lastName" = EXCLUDED."lastName",
-              "email" = EXCLUDED."email",
               "customFields" = EXCLUDED."customFields",
               "updatedAt" = NOW();
           `;
