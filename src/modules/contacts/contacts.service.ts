@@ -116,15 +116,20 @@ export class ContactsService {
     const job = await this.importQueue.getJob(jobId);
     if (!job) throw new NotFoundException('Import job not found');
     
-    const status = await job.getState();
-    const progress = job.progress; // In BullMQ, this is a property
+    const state = await job.getState();
+    const progress = job.progress || 0;
     const result = job.returnvalue;
     const failedReason = job.failedReason;
 
+    // Normalize status for UI
+    let status = state.toUpperCase();
+    if (status === 'WAITING' || status === 'DELAYED') status = 'QUEUED';
+    if (status === 'COMPLETED') status = 'COMPLETED';
+
     return {
       id: jobId,
-      status: status.toUpperCase(),
-      progress,
+      status,
+      progress: typeof progress === 'number' ? progress : 0,
       result,
       error: failedReason
     };
@@ -154,8 +159,6 @@ export class ContactsService {
   }
 
   async bulkAddTags(orgId: string, contactIds: string[], tags: string[]) {
-    // Prisma array updates are specific per element. We'll iterate for safety or use raw SQL.
-    // For local dev, we'll iterate.
     const promises = contactIds.map(async (id) => {
        const contact = await this.prisma.contact.findUnique({ where: { id } });
        if (!contact) return;
