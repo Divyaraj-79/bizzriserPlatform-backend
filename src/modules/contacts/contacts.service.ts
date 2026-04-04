@@ -14,19 +14,23 @@ export class ContactsService {
   ) {}
 
   async createOrUpdate(orgId: string, phone: string, data: any) {
-    const { tags, ...rest } = data;
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    const { name, ...otherData } = data;
+    
+    // Map 'name' to 'firstName' as per schema
+    const prismaData = {
+      ...otherData,
+      firstName: name || otherData.firstName || '',
+      organizationId: orgId,
+      phone: cleanPhone,
+    };
+
     return this.prisma.contact.upsert({
-      where: { organizationId_phone: { organizationId: orgId, phone } },
-      update: {
-        ...rest,
-        tags: tags ? { set: tags } : undefined,
+      where: {
+        organizationId_phone: { organizationId: orgId, phone: cleanPhone },
       },
-      create: {
-        ...rest,
-        tags: tags || [],
-        organizationId: orgId,
-        phone,
-      },
+      update: prismaData,
+      create: prismaData,
     });
   }
 
