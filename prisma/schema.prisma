@@ -232,7 +232,7 @@ model Message {
 
   organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   whatsappAccount WhatsAppAccount @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
-  contact         Contact         @relation(fields: [contactId], references: [id])
+  contact         Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
   conversation    Conversation?   @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
 // failures        Message[]       @relation("MessageFailures")
@@ -311,7 +311,7 @@ model CampaignRecipient {
   createdAt  DateTime      @default(now())
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contact  Contact  @relation(fields: [contactId], references: [id])
+  contact  Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, contactId])
   @@index([campaignId])

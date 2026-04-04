@@ -227,8 +227,39 @@ export class ContactsService {
   }
 
   async deleteContacts(orgId: string, contactIds: string[]) {
-     return this.prisma.contact.deleteMany({
-        where: { id: { in: contactIds }, organizationId: orgId }
-     });
+    this.logger.log(`Bulk delete request for Org: ${orgId}, IDs: ${contactIds.length}`);
+    
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // 1. Delete associated messages
+        const msgResult = await tx.message.deleteMany({
+          where: { contactId: { in: contactIds }, organizationId: orgId }
+        });
+        this.logger.log(`Deleted ${msgResult.count} associated messages`);
+
+        // 2. Delete associated campaign recipients
+        const campaignResult = await tx.campaignRecipient.deleteMany({
+          where: { contactId: { in: contactIds } }
+        });
+        this.logger.log(`Deleted ${campaignResult.count} campaign recipient records`);
+
+        // 3. Delete associated conversations
+        const convResult = await tx.conversation.deleteMany({
+          where: { contactId: { in: contactIds }, organizationId: orgId }
+        });
+        this.logger.log(`Deleted ${convResult.count} conversations`);
+
+        // 4. Finally delete the contacts
+        const contactResult = await tx.contact.deleteMany({
+          where: { id: { in: contactIds }, organizationId: orgId }
+        });
+        this.logger.log(`Successfully deleted ${contactResult.count} contacts`);
+
+        return contactResult;
+      });
+    } catch (err: any) {
+      this.logger.error(`Failed to bulk delete contacts: ${err.message}`, err.stack);
+      throw err;
+    }
   }
 }
