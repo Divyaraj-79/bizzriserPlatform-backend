@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bullmq';
+import { Queue, Job } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -10,7 +10,7 @@ export class ContactsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    @InjectQueue('contact-import') private readonly importQueue: Queue,
+    @InjectQueue('contact-import') private readonly importQueue: any,
   ) {}
 
   async createOrUpdate(orgId: string, phone: string, data: any) {

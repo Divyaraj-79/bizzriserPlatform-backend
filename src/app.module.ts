@@ -32,31 +32,33 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (config: ConfigService) => {
-        const host = config.get<string>('redis.host') || 'localhost';
-        const password = config.get<string>('redis.password');
+        const rawHost = config.get<string>('redis.host') || 'localhost';
         const port = config.get<number>('redis.port') || 6379;
+        const password = config.get<string>('redis.password');
         
-        // Comprehensive cloud detection for TLS
-        const isCloud = host.includes('render.com') || 
-                        host.includes('redislabs.com') || 
-                        host.includes('upstash.io') ||
-                        host.includes('aws.com') ||
-                        host.includes('internal'); // Render internal can sometimes use TLS
-        
+        // Handle if REDIS_HOST is actually a URL
+        const isUrl = rawHost.startsWith('redis://') || rawHost.startsWith('rediss://');
+        const isCloud = isUrl || rawHost.includes('render.com') || rawHost.includes('internal');
+
+        if (isUrl) {
+          return {
+            url: rawHost,
+            redis: {
+              maxRetriesPerRequest: null,
+              tls: rawHost.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+              retryStrategy: (times: number) => Math.min(times * 100, 5000),
+            }
+          };
+        }
+
         return {
           redis: {
-            host,
+            host: rawHost,
             port,
             password,
-            maxRetriesPerRequest: null, // Allow BullMQ to handle retries internally
-            enableReadyCheck: false,
-            disconnectTimeout: 10000,
-            connectTimeout: 20000,
+            maxRetriesPerRequest: null,
             tls: isCloud ? { rejectUnauthorized: false } : undefined,
-            retryStrategy: (times: number) => {
-              // Stay connected forever - retry every 2-5 seconds
-              return Math.min(times * 100, 5000);
-            },
+            retryStrategy: (times: number) => Math.min(times * 100, 5000),
           },
         };
       },
