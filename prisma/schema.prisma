@@ -194,6 +194,7 @@ model Contact {
   status          ContactStatus @default(ACTIVE)
   tags            String[]      @default([])
   customFields    Json          @default("{}")
+  agentId         String?       // Assigned Agent (User ID)
   optedInAt       DateTime?
   optedOutAt      DateTime?
   lastContactedAt DateTime?

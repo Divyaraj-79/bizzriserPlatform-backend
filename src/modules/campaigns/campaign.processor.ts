@@ -70,6 +70,10 @@ export class CampaignProcessor {
             if (fieldKey.startsWith('custom:')) {
               const cfKey = fieldKey.replace('custom:', '');
               text = (contact.customFields as any)?.[cfKey] || '';
+            } else if (fieldKey.startsWith('var:')) {
+              const varKey = fieldKey.replace('var:', '');
+              // Try to find the value in templateParams (which stores manual values for the campaign)
+              text = (templateParams as any)?.[varKey] || (templateParams as any)?.find?.((p: any) => p.name === varKey)?.value || '';
             } else {
               text = (contact as any)[fieldKey] || '';
             }
