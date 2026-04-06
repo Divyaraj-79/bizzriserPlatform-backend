@@ -60,6 +60,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       statusCode: status,
       error,
       message,
+      details: (exception as any)?.meta || (exception as any)?.code ? { code: (exception as any).code, ...((exception as any).meta || {}) } : undefined,
       path: request.url,
       timestamp: new Date().toISOString(),
     });
@@ -82,14 +83,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     switch (error.code) {
       case 'P2002': {
         const fields = (error.meta?.['target'] as string[])?.join(', ');
-        return `A record with this ${fields ?? 'field'} already exists`;
+        return `Database constraint violation: duplicate value for ${fields ?? 'field'}`;
       }
       case 'P2025':
-        return 'Record not found';
+        return 'Record not found for update/delete';
       case 'P2003':
-        return 'Referenced record not found';
+        return 'Foreign key constraint failed';
       default:
-        return 'Database operation failed';
+        // Include the code to pin-point the exact database issue (e.g. P1001, P2011)
+        return `Database operation failed [Prisma Code: ${error.code}]`;
     }
   }
 }

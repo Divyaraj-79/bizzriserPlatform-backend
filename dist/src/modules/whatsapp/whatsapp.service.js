@@ -496,6 +496,11 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                 this.logger.error(`[SYNC] Failed to merge business profile JSON for account ${accountId}: ${profileErr.message}`);
                 businessProfile = { lastSyncAt: new Date().toISOString() };
             }
+            this.logger.log(`[SYNC] Attempting database update for account ${accountId} with: ${JSON.stringify({
+                name: phoneInfo.verified_name,
+                tier,
+                status: phoneInfo.code_verification_status
+            })}`);
             const updatedAccount = await this.prisma.whatsAppAccount.update({
                 where: { id: accountId },
                 data: {

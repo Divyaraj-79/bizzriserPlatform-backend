@@ -57,6 +57,7 @@ let GlobalExceptionFilter = GlobalExceptionFilter_1 = class GlobalExceptionFilte
             statusCode: status,
             error,
             message,
+            details: exception?.meta || exception?.code ? { code: exception.code, ...(exception.meta || {}) } : undefined,
             path: request.url,
             timestamp: new Date().toISOString(),
         });
@@ -77,14 +78,14 @@ let GlobalExceptionFilter = GlobalExceptionFilter_1 = class GlobalExceptionFilte
         switch (error.code) {
             case 'P2002': {
                 const fields = error.meta?.['target']?.join(', ');
-                return `A record with this ${fields ?? 'field'} already exists`;
+                return `Database constraint violation: duplicate value for ${fields ?? 'field'}`;
             }
             case 'P2025':
-                return 'Record not found';
+                return 'Record not found for update/delete';
             case 'P2003':
-                return 'Referenced record not found';
+                return 'Foreign key constraint failed';
             default:
-                return 'Database operation failed';
+                return `Database operation failed [Prisma Code: ${error.code}]`;
         }
     }
 };
