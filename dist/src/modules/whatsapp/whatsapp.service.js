@@ -483,6 +483,19 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             };
             const tier = phoneInfo.messaging_limit_tier || 'TIER_1000';
             const count = tierMapping[tier] || 1000;
+            let businessProfile = {};
+            try {
+                businessProfile = {
+                    ...(typeof account.businessProfile === 'object' ? account.businessProfile : {}),
+                    qualityRating: (phoneInfo.quality_rating || 'UNKNOWN').toUpperCase(),
+                    nameStatus: phoneInfo.name_status || 'UNKNOWN',
+                    lastSyncAt: new Date().toISOString(),
+                };
+            }
+            catch (profileErr) {
+                this.logger.error(`[SYNC] Failed to merge business profile JSON for account ${accountId}: ${profileErr.message}`);
+                businessProfile = { lastSyncAt: new Date().toISOString() };
+            }
             const updatedAccount = await this.prisma.whatsAppAccount.update({
                 where: { id: accountId },
                 data: {
@@ -490,12 +503,7 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     status: phoneInfo.code_verification_status === 'VERIFIED' ? 'ACTIVE' : 'INACTIVE',
                     messagingLimitTier: tier,
                     messagingLimitCount: count,
-                    businessProfile: {
-                        ...(typeof account.businessProfile === 'object' ? account.businessProfile : {}),
-                        qualityRating: (phoneInfo.quality_rating || 'UNKNOWN').toUpperCase(),
-                        nameStatus: phoneInfo.name_status || 'UNKNOWN',
-                        lastSyncAt: new Date().toISOString(),
-                    },
+                    businessProfile,
                 },
             });
             this.logger.log(`[SYNC SUCCESS] Account ${accountId} updated. Status: ${updatedAccount.status}`);
