@@ -125,6 +125,7 @@ model Organization {
   campaigns       Campaign[]
   messages        Message[]
   conversations   Conversation[]
+  templates       WhatsAppTemplate[]
   webhookEvents   WebhookEvent[]
 
   @@map("organizations")
@@ -173,7 +174,8 @@ model WhatsAppAccount {
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   messages     Message[]
   conversations Conversation[]
-  contacts     Contact[]     @relation("WhatsAppContacts")
+  contacts     Contact[]       @relation("WhatsAppContacts")
+  templates    WhatsAppTemplate[]
 
   @@index([organizationId])
   @@index([wabaId])
@@ -351,4 +353,26 @@ model WebhookEvent {
   @@index([processed])
   @@index([eventType])
   @@map("webhook_events")
+}
+
+model WhatsAppTemplate {
+  id              String   @id @default(uuid())
+  organizationId  String
+  accountId       String
+  name            String   // Meta template name
+  language        String
+  category        String
+  components      Json     // The raw components sent to Meta
+  variableMapping Json     // e.g. { "1": "firstName", "2": "email", "3": "custom:EnglishMarks" }
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account        WhatsAppAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, name, language])
+  @@index([organizationId])
+  @@index([accountId])
+  @@map("whatsapp_templates")
 }

@@ -435,7 +435,20 @@ export class WhatsappService {
         },
       });
       
-      return response.data.data;
+      const metaTemplates = response.data.data || [];
+
+      // Enrich with local mappings
+      const localTemplates = await this.prisma.whatsAppTemplate.findMany({
+        where: { accountId, organizationId: orgId }
+      });
+
+      return metaTemplates.map((mt: any) => {
+        const local = localTemplates.find(lt => lt.name === mt.name && lt.language === mt.language);
+        return {
+          ...mt,
+          variableMapping: local?.variableMapping || {},
+        };
+      });
     } catch (error) {
       this.handleError(error, `Failed to fetch templates via account ${accountId}`);
     }
@@ -453,14 +466,68 @@ export class WhatsappService {
     const { token: validatedToken } = await this.getValidToken(account);
     const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;
 
+    // 1. Extract variable mapping and samples if provided
+    const variableMapping = data.variableMapping || {}; // { "1": "firstName", "2": "custom:EnglishMarks" }
+    const sampleValues = data.sampleValues || {}; // { "firstName": "John", "custom:EnglishMarks": "85" }
+
+    // 2. Prepare Meta Payload (Inject examples)
+    const metaPayload = { ...data };
+    delete metaPayload.variableMapping;
+    delete metaPayload.sampleValues;
+
+    if (Object.keys(variableMapping).length > 0) {
+      metaPayload.components = metaPayload.components.map((comp: any) => {
+        if (comp.type === 'BODY') {
+          const bodySamples = Object.keys(variableMapping)
+            .sort((a, b) => parseInt(a) - parseInt(b))
+            .map(index => {
+              const fieldName = variableMapping[index];
+              return sampleValues[fieldName] || `Sample ${index}`;
+            });
+
+          if (bodySamples.length > 0) {
+            comp.example = {
+              body_text: [bodySamples]
+            };
+          }
+        }
+        return comp;
+      });
+    }
+
     try {
-      this.logger.log(`Creating WhatsApp template for org ${orgId} via account ${accountId}`);
-      const response = await axios.post(url, data, {
+      this.logger.log(`Creating WhatsApp template ${data.name} for org ${orgId} with ${Object.keys(variableMapping).length} variables`);
+      const response = await axios.post(url, metaPayload, {
         headers: {
           Authorization: `Bearer ${validatedToken}`,
           'Content-Type': 'application/json',
         },
       });
+
+      // 3. Store mapping locally for broadcast resolution
+      await this.prisma.whatsAppTemplate.upsert({
+        where: {
+          accountId_name_language: {
+            accountId,
+            name: data.name,
+            language: data.language
+          }
+        },
+        create: {
+          organizationId: orgId,
+          accountId,
+          name: data.name,
+          language: data.language,
+          category: data.category,
+          components: data.components,
+          variableMapping,
+        },
+        update: {
+          components: data.components,
+          variableMapping,
+        }
+      });
+
       return response.data;
     } catch (error) {
       this.handleError(error, `Failed to create template via account ${accountId}`);
