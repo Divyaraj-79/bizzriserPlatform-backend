@@ -21,6 +21,12 @@ let ContactsController = class ContactsController {
     constructor(contactsService) {
         this.contactsService = contactsService;
     }
+    async create(req, data) {
+        return this.contactsService.createOrUpdate(req.user.orgId, data.phone, data);
+    }
+    async bulkCreate(req, data) {
+        return this.contactsService.bulkCreateOrUpdate(req.user.orgId, data.contacts);
+    }
     async findAll(req) {
         return this.contactsService.findAll(req.user.orgId);
     }
@@ -36,8 +42,27 @@ let ContactsController = class ContactsController {
     async bulkDelete(req, body) {
         return this.contactsService.deleteContacts(req.user.orgId, body.contactIds);
     }
+    async getImportStatus(jobId) {
+        return this.contactsService.getImportStatus(jobId);
+    }
 };
 exports.ContactsController = ContactsController;
+__decorate([
+    (0, common_1.Post)(),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], ContactsController.prototype, "create", null);
+__decorate([
+    (0, common_1.Post)('bulk'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], ContactsController.prototype, "bulkCreate", null);
 __decorate([
     (0, common_1.Get)(),
     __param(0, (0, common_1.Req)()),
@@ -76,6 +101,13 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], ContactsController.prototype, "bulkDelete", null);
+__decorate([
+    (0, common_1.Get)('import/status/:jobId'),
+    __param(0, (0, common_1.Param)('jobId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], ContactsController.prototype, "getImportStatus", null);
 exports.ContactsController = ContactsController = __decorate([
     (0, common_1.Controller)('contacts'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

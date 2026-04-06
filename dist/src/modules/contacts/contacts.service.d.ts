@@ -1,7 +1,10 @@
 import { PrismaService } from '../../prisma/prisma.service';
 export declare class ContactsService {
     private readonly prisma;
-    constructor(prisma: PrismaService);
+    private readonly importQueue;
+    private readonly logger;
+    constructor(prisma: PrismaService, importQueue: any);
+    private sanitizePhone;
     createOrUpdate(orgId: string, phone: string, data: any): Promise<{
         id: string;
         organizationId: string;
@@ -19,6 +22,21 @@ export declare class ContactsService {
         optedInAt: Date | null;
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
+    }>;
+    bulkCreateOrUpdate(orgId: string, contacts: any[]): Promise<{
+        jobId: any;
+        totalContacts: number;
+        uniqueContacts: number;
+        status: string;
+    }>;
+    private escapeSql;
+    atomicBulkImport(orgId: string, contacts: any[], onProgress?: (p: number) => void): Promise<void>;
+    getImportStatus(jobId: string): Promise<{
+        id: string;
+        status: any;
+        progress: number;
+        result: any;
+        error: any;
     }>;
     findAll(orgId: string): Promise<{
         id: string;

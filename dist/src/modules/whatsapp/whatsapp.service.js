@@ -141,22 +141,6 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             }
         }
         if (!wabaId) {
-            this.logger.log(`Wait... scanning client WABAs manually as absolute final fallback...`);
-            try {
-                const clientWabasRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/client_whatsapp_business_accounts`, {
-                    headers: { Authorization: `Bearer ${systemAccessToken}` }
-                });
-                const clientWabas = clientWabasRes.data.data;
-                if (clientWabas && clientWabas.length > 0) {
-                    wabaId = clientWabas[0].id;
-                    this.logger.log(`Found WABA ID via direct app scan: ${wabaId}`);
-                }
-            }
-            catch (err) {
-                this.logger.warn(`Final direct scan failed: ${err.message}`);
-            }
-        }
-        if (!wabaId) {
             this.logger.error(`CRITICAL: No WABA ID found. App ID: ${appId}`);
             throw new common_1.HttpException('Could not determine WhatsApp Business Account ID. Please ensure the Meta embedded signup was completed.', common_1.HttpStatus.BAD_REQUEST);
         }
@@ -472,9 +456,14 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         const account = await this.prisma.whatsAppAccount.findUnique({
             where: { id: accountId, organizationId: orgId },
         });
-        if (!account)
-            throw new common_1.ConflictException('Account not found');
+        if (!account) {
+            throw new common_1.HttpException('WhatsApp Account not found or access denied.', common_1.HttpStatus.NOT_FOUND);
+        }
+        if (!account.wabaId || !account.phoneNumberId) {
+            throw new common_1.HttpException('Incomplete account data (missing WABA or Phone ID). Try reconnecting.', common_1.HttpStatus.BAD_REQUEST);
+        }
         try {
+            this.logger.log(`[SYNC] Starting sync for account ${accountId} (WABA: ${account.wabaId})`);
             const { token: validatedToken } = await this.getValidToken(account);
             const phoneRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/phone_numbers`, {
                 params: { fields: 'display_phone_number,quality_rating,messaging_limit_tier,verified_name,code_verification_status,name_status' },
@@ -483,8 +472,8 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             const phoneData = phoneRes.data?.data || [];
             const phoneInfo = phoneData.find((p) => p.id === account.phoneNumberId);
             if (!phoneInfo) {
-                this.logger.error(`Phone number ${account.phoneNumberId} not found in WABA ${account.wabaId}.`);
-                throw new Error('Phone number no longer associated with this WABA');
+                this.logger.error(`[SYNC FAILURE] Phone number ${account.phoneNumberId} missing in WABA ${account.wabaId}. Avail IDs: ${phoneData.map((p) => p.id).join(', ')}`);
+                throw new common_1.HttpException('Your Phone Number ID is no longer associated with this Meta WABA.', common_1.HttpStatus.UNAUTHORIZED);
             }
             const tierMapping = {
                 'TIER_1000': 1000,
@@ -509,10 +498,13 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     },
                 },
             });
+            this.logger.log(`[SYNC SUCCESS] Account ${accountId} updated. Status: ${updatedAccount.status}`);
             return updatedAccount;
         }
         catch (error) {
-            this.handleError(error, `Sync failed for account ${accountId}`);
+            if (error instanceof common_1.HttpException)
+                throw error;
+            this.handleError(error, `Synchronization failed`);
         }
     }
     async disconnectAccount(orgId, accountId) {
@@ -537,8 +529,10 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             return { token: storedToken, wasUpdated: false };
         }
         catch (error) {
-            if (error.response?.status === 401 && globalToken && globalToken !== storedToken) {
-                this.logger.warn(`Token for account ${account.id} failed (401). Retrying with global token...`);
+            const errorMsg = error.response?.data?.error?.message || error.message;
+            this.logger.warn(`Token validation failed for ${account.id}: ${errorMsg}`);
+            if (globalToken && globalToken !== storedToken) {
+                this.logger.log(`Attempting global token fallback for account ${account.id}...`);
                 try {
                     await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
                         params: { input_token: globalToken },
@@ -551,18 +545,19 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     return { token: globalToken, wasUpdated: true };
                 }
                 catch (globalErr) {
+                    this.logger.error(`CRITICAL: Global system token is also invalid.`);
                     throw error;
                 }
             }
-            throw error;
+            throw new common_1.HttpException(`WhatsApp authentication failed: ${errorMsg}. Your token may have expired.`, common_1.HttpStatus.UNAUTHORIZED);
         }
     }
     handleError(error, contextMessage) {
         const status = error.response?.status || common_1.HttpStatus.INTERNAL_SERVER_ERROR;
         const errorData = error.response?.data?.error || error.response?.data || { message: 'Unknown WhatsApp API error' };
+        this.logger.error(`[WHATSAPP_ERROR] ${contextMessage} (Status: ${status}):`, JSON.stringify(errorData));
         const metaMessage = errorData.message || 'WhatsApp API Error';
         const enhancedMessage = `${contextMessage}: ${metaMessage}`;
-        this.logger.error(`${contextMessage}:`, JSON.stringify(errorData));
         throw new common_1.HttpException({ success: false, message: enhancedMessage, details: errorData }, status);
     }
 };

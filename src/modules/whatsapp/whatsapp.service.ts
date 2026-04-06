@@ -138,22 +138,6 @@ export class WhatsappService {
     }
 
     if (!wabaId) {
-       this.logger.log(`Wait... scanning client WABAs manually as absolute final fallback...`);
-       try {
-         const clientWabasRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/client_whatsapp_business_accounts`, {
-           headers: { Authorization: `Bearer ${systemAccessToken}` }
-         });
-         const clientWabas = clientWabasRes.data.data;
-         if (clientWabas && clientWabas.length > 0) {
-            wabaId = clientWabas[0].id;
-            this.logger.log(`Found WABA ID via direct app scan: ${wabaId}`);
-         }
-       } catch (err: any) {
-         this.logger.warn(`Final direct scan failed: ${err.message}`);
-       }
-    }
-
-    if (!wabaId) {
       this.logger.error(`CRITICAL: No WABA ID found. App ID: ${appId}`);
       throw new HttpException(
         'Could not determine WhatsApp Business Account ID. Please ensure the Meta embedded signup was completed.',
@@ -542,9 +526,17 @@ export class WhatsappService {
     const account = await this.prisma.whatsAppAccount.findUnique({
       where: { id: accountId, organizationId: orgId },
     });
-    if (!account) throw new ConflictException('Account not found');
+    
+    if (!account) {
+      throw new HttpException('WhatsApp Account not found or access denied.', HttpStatus.NOT_FOUND);
+    }
+
+    if (!account.wabaId || !account.phoneNumberId) {
+      throw new HttpException('Incomplete account data (missing WABA or Phone ID). Try reconnecting.', HttpStatus.BAD_REQUEST);
+    }
 
     try {
+      this.logger.log(`[SYNC] Starting sync for account ${accountId} (WABA: ${account.wabaId})`);
       const { token: validatedToken } = await this.getValidToken(account);
 
       const phoneRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/phone_numbers`, {
@@ -556,8 +548,8 @@ export class WhatsappService {
       const phoneInfo = phoneData.find((p: any) => p.id === account.phoneNumberId);
       
       if (!phoneInfo) {
-        this.logger.error(`Phone number ${account.phoneNumberId} not found in WABA ${account.wabaId}.`);
-        throw new Error('Phone number no longer associated with this WABA');
+        this.logger.error(`[SYNC FAILURE] Phone number ${account.phoneNumberId} missing in WABA ${account.wabaId}. Avail IDs: ${phoneData.map((p:any)=>p.id).join(', ')}`);
+        throw new HttpException('Your Phone Number ID is no longer associated with this Meta WABA.', HttpStatus.UNAUTHORIZED);
       }
 
       const tierMapping: any = {
@@ -586,9 +578,11 @@ export class WhatsappService {
         },
       });
 
+      this.logger.log(`[SYNC SUCCESS] Account ${accountId} updated. Status: ${updatedAccount.status}`);
       return updatedAccount;
     } catch (error) {
-      this.handleError(error, `Sync failed for account ${accountId}`);
+      if (error instanceof HttpException) throw error;
+      this.handleError(error, `Synchronization failed`);
     }
   }
 
@@ -617,16 +611,20 @@ export class WhatsappService {
     const globalToken = this.configService.get<string>('whatsapp.accessToken');
 
     try {
-      // 1. Test the stored token
+      // 1. Test the stored token via debug endpoint
+      // Note: input_token needs to be checked against a system token for best results
       await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
         params: { input_token: storedToken },
         headers: { Authorization: `Bearer ${storedToken}` },
       });
       return { token: storedToken, wasUpdated: false };
     } catch (error: any) {
-      // 2. If 401 and global token is different, try global
-      if (error.response?.status === 401 && globalToken && globalToken !== storedToken) {
-        this.logger.warn(`Token for account ${account.id} failed (401). Retrying with global token...`);
+      const errorMsg = error.response?.data?.error?.message || error.message;
+      this.logger.warn(`Token validation failed for ${account.id}: ${errorMsg}`);
+
+      // 2. Fallback to global System Token if the stored one failed (e.g. expired or restricted)
+      if (globalToken && globalToken !== storedToken) {
+        this.logger.log(`Attempting global token fallback for account ${account.id}...`);
         try {
           await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
             params: { input_token: globalToken },
@@ -640,10 +638,13 @@ export class WhatsappService {
           
           return { token: globalToken, wasUpdated: true };
         } catch (globalErr) {
+          this.logger.error(`CRITICAL: Global system token is also invalid.`);
           throw error;
         }
       }
-      throw error;
+      
+      // If no fallback available, throw clear error
+      throw new HttpException(`WhatsApp authentication failed: ${errorMsg}. Your token may have expired.`, HttpStatus.UNAUTHORIZED);
     }
   }
 
@@ -651,11 +652,12 @@ export class WhatsappService {
     const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
     const errorData = error.response?.data?.error || error.response?.data || { message: 'Unknown WhatsApp API error' };
     
+    // Log the full error data for engineering diagnostics
+    this.logger.error(`[WHATSAPP_ERROR] ${contextMessage} (Status: ${status}):`, JSON.stringify(errorData));
+    
     const metaMessage = errorData.message || 'WhatsApp API Error';
     const enhancedMessage = `${contextMessage}: ${metaMessage}`;
 
-    this.logger.error(`${contextMessage}:`, JSON.stringify(errorData));
-    
     throw new HttpException(
       { success: false, message: enhancedMessage, details: errorData },
       status,

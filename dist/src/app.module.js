@@ -40,13 +40,33 @@ exports.AppModule = AppModule = __decorate([
             prisma_module_1.PrismaModule,
             bull_1.BullModule.forRootAsync({
                 imports: [config_1.ConfigModule],
-                useFactory: async (config) => ({
-                    connection: {
-                        host: config.get('redis.host'),
-                        port: config.get('redis.port'),
-                        password: config.get('redis.password'),
-                    },
-                }),
+                useFactory: async (config) => {
+                    const rawHost = config.get('redis.host') || 'localhost';
+                    const port = config.get('redis.port') || 6379;
+                    const password = config.get('redis.password');
+                    const isUrl = rawHost.startsWith('redis://') || rawHost.startsWith('rediss://');
+                    const isCloud = isUrl || rawHost.includes('render.com') || rawHost.includes('internal');
+                    if (isUrl) {
+                        return {
+                            url: rawHost,
+                            redis: {
+                                maxRetriesPerRequest: null,
+                                tls: rawHost.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+                                retryStrategy: (times) => Math.min(times * 100, 5000),
+                            }
+                        };
+                    }
+                    return {
+                        redis: {
+                            host: rawHost,
+                            port,
+                            password,
+                            maxRetriesPerRequest: null,
+                            tls: isCloud ? { rejectUnauthorized: false } : undefined,
+                            retryStrategy: (times) => Math.min(times * 100, 5000),
+                        },
+                    };
+                },
                 inject: [config_1.ConfigService],
             }),
             auth_module_1.AuthModule,

@@ -56,10 +56,16 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
                 throw new Error('Contact not found');
             const bodyParameters = (templateParams || [])
                 .sort((a, b) => a.index - b.index)
-                .map((p) => ({
-                type: 'text',
-                text: p.field ? (contact[p.field] || '') : p.value
-            }));
+                .map((p) => {
+                let text = '';
+                if (p.field) {
+                    text = contact[p.field] || contact.customFields?.[p.field] || '';
+                }
+                else {
+                    text = p.value || '';
+                }
+                return { type: 'text', text };
+            });
             const components = [{ type: 'body', parameters: bodyParameters }];
             await this.messagingService.sendTemplateMessage(orgId, accountId, contactId, templateName, 'en_US', components, { campaignId });
             const updatedCampaign = await this.prisma.campaign.update({
