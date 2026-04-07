@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Body, UseGuards, Req, Version, Param, Patch, Delete } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Req, Version, Param, Patch, Delete, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { WhatsappService } from './whatsapp.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -36,6 +37,16 @@ export class WhatsappController {
   @Post('accounts/:id/templates')
   async createTemplate(@Req() req: any, @Param('id') id: string, @Body() data: any) {
     return this.whatsappService.createTemplate(req.user.orgId, id, data);
+  }
+
+  @Post('accounts/:id/templates/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadTemplateMedia(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file: any
+  ) {
+    return this.whatsappService.uploadTemplateMedia(req.user.orgId, id, file);
   }
 
   @Patch('accounts/:id/templates/:templateId')

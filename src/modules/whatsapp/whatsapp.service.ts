@@ -324,6 +324,51 @@ export class WhatsappService {
   }
 
   /**
+   * Uploads a file to Meta's resumable upload endpoint to get a 'header_handle' for templates.
+   */
+  async uploadTemplateMedia(orgId: string, accountId: string, file: any) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new HttpException('Account not found', HttpStatus.NOT_FOUND);
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const appId = this.configService.get<string>('whatsapp.appId');
+
+    try {
+      this.logger.log(`STEP 1: Creating Resumable Upload Session for file ${file.originalname} (${file.size} bytes)`);
+      
+      // 1. Create Upload Session
+      const sessionRes = await axios.post(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/uploads`, null, {
+        params: {
+          file_length: file.size,
+          file_type: file.mimetype,
+          access_token: validatedToken,
+        },
+      });
+
+      const sessionId = sessionRes.data.id;
+      this.logger.log(`STEP 2: Uploading data to session ${sessionId}...`);
+
+      // 2. Upload the file data
+      const uploadRes = await axios.post(`${this.graphBaseUrl}/${this.apiVersion}/${sessionId}`, file.buffer, {
+        headers: {
+          'Authorization': `OAuth ${validatedToken}`,
+          'file_offset': '0',
+          'Content-Type': 'application/octet-stream',
+        },
+      });
+
+      const handle = uploadRes.data.h;
+      this.logger.log(`SUCCESS: Received header_handle: ${handle}`);
+      
+      return { handle };
+    } catch (error) {
+      this.handleError(error, `Resumable upload failed for template media`);
+    }
+  }
+
+  /**
    * Uploads a file to Meta's media endpoint to get a media_id.
    */
   async uploadMedia(orgId: string, accountId: string, file: any) {
@@ -492,11 +537,11 @@ export class WhatsappService {
 
         // Handle Header Media Examples (Meta requirement for IMAGE/VIDEO)
         if (comp.type === 'HEADER' && (comp.format === 'IMAGE' || comp.format === 'VIDEO')) {
-          // Meta requires a header_handle or link during template creation for media
-          // We provide a placeholder link if handle is missing to pass schema validation
-          processed.example = { 
-            header_handle: ["478051781254308"] // Default placeholder ID for validation
-          };
+          // Note: Meta REQUIRES a real header_handle from an uploaded file.
+          // We should only add this if we have a valid handle to avoid 'Invalid Parameter' errors.
+          if (comp.example?.header_handle) {
+            processed.example = comp.example;
+          }
         }
 
         // Handle Carousel (Recursive)
