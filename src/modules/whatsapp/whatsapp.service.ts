@@ -466,37 +466,60 @@ export class WhatsappService {
     const { token: validatedToken } = await this.getValidToken(account);
     const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;
 
-    // 1. Extract variable mapping and samples if provided
-    const variableMapping = data.variableMapping || {}; // { "1": "firstName", "2": "custom:EnglishMarks" }
-    const sampleValues = data.sampleValues || {}; // { "firstName": "John", "custom:EnglishMarks": "85" }
+    // 1. Prepare Meta Payload (Inject examples recursively)
+    const prepareComponents = (components: any[]) => {
+      return components.map((comp: any) => {
+        const processed = { ...comp };
 
-    // 2. Prepare Meta Payload (Inject examples)
-    const metaPayload = { ...data };
-    delete metaPayload.variableMapping;
-    delete metaPayload.sampleValues;
+        // Handle Body Variables
+        if (comp.type === 'BODY' && comp.text) {
+          const variableRegex = /\{\{(\d+)\}\}/g;
+          const detectedIndices: number[] = [];
+          let match;
+          while ((match = variableRegex.exec(comp.text)) !== null) {
+            detectedIndices.push(parseInt(match[1]));
+          }
 
-    if (Object.keys(variableMapping).length > 0) {
-      metaPayload.components = metaPayload.components.map((comp: any) => {
-        if (comp.type === 'BODY') {
-          const bodySamples = Object.keys(variableMapping)
-            .sort((a, b) => parseInt(a) - parseInt(b))
-            .map(index => {
-              const fieldName = variableMapping[index];
-              return sampleValues[fieldName] || `Sample ${index}`;
+          if (detectedIndices.length > 0) {
+            const sortedIndices = [...new Set(detectedIndices)].sort((a, b) => a - b);
+            const bodySamples = sortedIndices.map(index => {
+              const fieldName = data.variableMapping?.[index.toString()];
+              return data.sampleValues?.[fieldName] || `Sample ${index}`;
             });
-
-          if (bodySamples.length > 0) {
-            comp.example = {
-              body_text: [bodySamples]
-            };
+            processed.example = { body_text: [bodySamples] };
           }
         }
-        return comp;
+
+        // Handle Header Media Examples (Meta requirement for IMAGE/VIDEO)
+        if (comp.type === 'HEADER' && (comp.format === 'IMAGE' || comp.format === 'VIDEO')) {
+          // Meta requires a header_handle or link during template creation for media
+          // We provide a placeholder link if handle is missing to pass schema validation
+          processed.example = { 
+            header_handle: ["478051781254308"] // Default placeholder ID for validation
+          };
+        }
+
+        // Handle Carousel (Recursive)
+        if (comp.type === 'CAROUSEL' && comp.cards) {
+          processed.cards = comp.cards.map((card: any) => ({
+            ...card,
+            components: prepareComponents(card.components)
+          }));
+        }
+
+        return processed;
       });
-    }
+    };
+
+    const metaPayload = {
+      name: data.name,
+      language: data.language,
+      category: data.category,
+      components: prepareComponents(data.components)
+    };
 
     try {
-      this.logger.log(`Creating WhatsApp template ${data.name} for org ${orgId} with ${Object.keys(variableMapping).length} variables`);
+      this.logger.log(`Creating WhatsApp template ${data.name} for org ${orgId}...`);
       const response = await axios.post(url, metaPayload, {
         headers: {
           Authorization: `Bearer ${validatedToken}`,
@@ -520,11 +543,11 @@ export class WhatsappService {
           language: data.language,
           category: data.category,
           components: data.components,
-          variableMapping,
+          variableMapping: data.variableMapping || {},
         },
         update: {
           components: data.components,
-          variableMapping,
+          variableMapping: data.variableMapping || {},
         }
       });
 
