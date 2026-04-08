@@ -337,6 +337,11 @@ export class WhatsappService {
       throw new HttpException('Media upload failed: Meta App ID is missing in server configuration.', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    if (!file) {
+      this.logger.error('Upload failed: Multer file object is undefined.');
+      throw new HttpException('No file provided for upload. Check your multipart/form-data configuration.', HttpStatus.BAD_REQUEST);
+    }
+
     try {
       this.logger.log(`[RESUMABLE UPLOAD] STEP 1: Creating Session for ${file.originalname} (${file.size} bytes)`);
       
@@ -385,6 +390,9 @@ export class WhatsappService {
     });
     if (!account) throw new ConflictException('Account not found');
 
+    if (!file) {
+      throw new ConflictException('No file provided for upload.');
+    }
     const { token: validatedToken } = await this.getValidToken(account);
     const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/media`;
 
