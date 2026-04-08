@@ -530,14 +530,18 @@ export class WhatsappService {
     // 1. Prepare Meta Payload (Inject examples recursively)
     const prepareComponents = (components: any[]) => {
       return components.map((comp: any) => {
+        // 1. Strip internal fields (starting with _)
         const processed = { ...comp };
+        Object.keys(processed).forEach(key => {
+          if (key.startsWith('_')) delete processed[key];
+        });
 
-        // Handle Body Variables
-        if (comp.type === 'BODY' && comp.text) {
+        // 2. Handle Body Variables
+        if (processed.type === 'BODY' && processed.text) {
           const variableRegex = /\{\{(\d+)\}\}/g;
           const detectedIndices: number[] = [];
           let match;
-          while ((match = variableRegex.exec(comp.text)) !== null) {
+          while ((match = variableRegex.exec(processed.text)) !== null) {
             detectedIndices.push(parseInt(match[1]));
           }
 
@@ -551,21 +555,23 @@ export class WhatsappService {
           }
         }
 
-        // Handle Header Media Examples (Meta requirement for IMAGE/VIDEO)
-        if (comp.type === 'HEADER' && (comp.format === 'IMAGE' || comp.format === 'VIDEO')) {
-          // Note: Meta REQUIRES a real header_handle from an uploaded file.
-          // We should only add this if we have a valid handle to avoid 'Invalid Parameter' errors.
-          if (comp.example?.header_handle) {
-            processed.example = comp.example;
+        // 3. Handle Header Media Examples (Meta requirement for IMAGE/VIDEO)
+        if (processed.type === 'HEADER' && (processed.format === 'IMAGE' || processed.format === 'VIDEO')) {
+          if (processed.example?.header_handle) {
+            processed.example = processed.example;
           }
         }
 
-        // Handle Carousel (Recursive)
-        if (comp.type === 'CAROUSEL' && comp.cards) {
-          processed.cards = comp.cards.map((card: any) => ({
-            ...card,
-            components: prepareComponents(card.components)
-          }));
+        // 4. Handle Carousel (Recursive)
+        if (processed.type === 'CAROUSEL' && processed.cards) {
+          processed.cards = processed.cards.map((card: any) => {
+            const cleanedCard = { ...card };
+            Object.keys(cleanedCard).forEach(k => k.startsWith('_') && delete cleanedCard[k]);
+            return {
+              ...cleanedCard,
+              components: prepareComponents(card.components)
+            };
+          });
         }
 
         return processed;
