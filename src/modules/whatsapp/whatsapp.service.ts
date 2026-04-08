@@ -323,9 +323,6 @@ export class WhatsappService {
     }
   }
 
-  /**
-   * Uploads a file to Meta's resumable upload endpoint to get a 'header_handle' for templates.
-   */
   async uploadTemplateMedia(orgId: string, accountId: string, file: any) {
     const account = await this.prisma.whatsAppAccount.findUnique({
       where: { id: accountId, organizationId: orgId },
@@ -335,8 +332,13 @@ export class WhatsappService {
     const { token: validatedToken } = await this.getValidToken(account);
     const appId = this.configService.get<string>('whatsapp.appId');
 
+    if (!appId) {
+      this.logger.error('CRITICAL: WHATSAPP_APP_ID is not configured in environment.');
+      throw new HttpException('Media upload failed: Meta App ID is missing in server configuration.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
     try {
-      this.logger.log(`STEP 1: Creating Resumable Upload Session for file ${file.originalname} (${file.size} bytes)`);
+      this.logger.log(`[RESUMABLE UPLOAD] STEP 1: Creating Session for ${file.originalname} (${file.size} bytes)`);
       
       // 1. Create Upload Session
       const sessionRes = await axios.post(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/uploads`, null, {
@@ -348,19 +350,25 @@ export class WhatsappService {
       });
 
       const sessionId = sessionRes.data.id;
-      this.logger.log(`STEP 2: Uploading data to session ${sessionId}...`);
+      this.logger.log(`[RESUMABLE UPLOAD] STEP 2: Uploading data to session ${sessionId}...`);
 
-      // 2. Upload the file data
+      // 2. Upload the file data (Standardizing to Bearer for consistency)
       const uploadRes = await axios.post(`${this.graphBaseUrl}/${this.apiVersion}/${sessionId}`, file.buffer, {
         headers: {
-          'Authorization': `OAuth ${validatedToken}`,
+          'Authorization': `Bearer ${validatedToken}`,
           'file_offset': '0',
           'Content-Type': 'application/octet-stream',
+          'Content-Length': file.size.toString(),
         },
       });
 
       const handle = uploadRes.data.h;
-      this.logger.log(`SUCCESS: Received header_handle: ${handle}`);
+      if (!handle) {
+         this.logger.error(`[RESUMABLE UPLOAD] FAILURE: No handle returned. Response: ${JSON.stringify(uploadRes.data)}`);
+         throw new Error('Meta did not return a header handle after successful upload.');
+      }
+
+      this.logger.log(`[RESUMABLE UPLOAD] SUCCESS: Received header_handle: ${handle}`);
       
       return { handle };
     } catch (error) {
@@ -798,19 +806,26 @@ export class WhatsappService {
     }
   }
 
-  private handleError(error: any, contextMessage: string): never {
-    const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-    const errorData = error.response?.data?.error || error.response?.data || { message: 'Unknown WhatsApp API error' };
+  private handleError(error: any, context: string) {
+    const errorData = error.response?.data;
+    const errorMsg = errorData?.error?.message || errorData?.message || error.message;
+    const errorCode = errorData?.error?.code || errorData?.code;
+    const errorSubcode = errorData?.error?.error_subcode;
+
+    this.logger.error(`${context}: ${errorMsg} (Code: ${errorCode}, Subcode: ${errorSubcode})`);
     
-    // Log the full error data for engineering diagnostics
-    this.logger.error(`[WHATSAPP_ERROR] ${contextMessage} (Status: ${status}):`, JSON.stringify(errorData));
-    
-    const metaMessage = errorData.message || 'WhatsApp API Error';
-    const enhancedMessage = `${contextMessage}: ${metaMessage}`;
+    // Log unexpected error structures for debugging
+    if (errorData && !errorData.error) {
+      this.logger.error(`${context} Full Response: ${JSON.stringify(errorData)}`);
+    }
+
+    if (error.response?.status === HttpStatus.UNAUTHORIZED) {
+      throw new HttpException(`${context}: Authentication failed. Please reconnect your WhatsApp account.`, HttpStatus.UNAUTHORIZED);
+    }
 
     throw new HttpException(
-      { success: false, message: enhancedMessage, details: errorData },
-      status,
+      `${context}: ${errorMsg || 'Unknown WhatsApp API error'}`,
+      error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
     );
   }
 }
