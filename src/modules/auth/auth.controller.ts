@@ -36,4 +36,10 @@ export class AuthController {
   async switchTenant(@Req() req: any, @Param('orgId') orgId: string) {
     return this.authService.switchTenant(req.user, orgId);
   }
+  
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Body('refresh_token') refreshToken: string) {
+    return this.authService.refreshToken(refreshToken);
+  }
 }
