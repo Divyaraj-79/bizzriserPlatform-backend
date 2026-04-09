@@ -61,21 +61,29 @@ export class CampaignProcessor {
 
       // If we have a local mapping, use it to resolve variables from the contact
       if (Object.keys(variableMapping).length > 0) {
+        const broadcastParams = templateParams as any[] || [];
+        
         Object.keys(variableMapping)
           .sort((a, b) => parseInt(a) - parseInt(b))
           .forEach(index => {
-            const fieldKey = variableMapping[index];
+            const broadcastParam = broadcastParams.find(p => String(p.index) === String(index));
             let text = '';
 
-            if (fieldKey.startsWith('custom:')) {
-              const cfKey = fieldKey.replace('custom:', '');
-              text = (contact.customFields as any)?.[cfKey] || '';
-            } else if (fieldKey.startsWith('var:')) {
-              const varKey = fieldKey.replace('var:', '');
-              // Try to find the value in templateParams (which stores manual values for the campaign)
-              text = (templateParams as any)?.[varKey] || (templateParams as any)?.find?.((p: any) => p.name === varKey)?.value || '';
+            // 1. Prioritize static value from broadcast UI
+            if (broadcastParam?.value) {
+                text = broadcastParam.value;
             } else {
-              text = (contact as any)[fieldKey] || '';
+              // 2. Resolve via mapping (either broadcast-specific or template-default)
+              const fieldKey = broadcastParam?.field || variableMapping[index];
+              if (fieldKey.startsWith('custom:')) {
+                const cfKey = fieldKey.replace('custom:', '');
+                text = (contact.customFields as any)?.[cfKey] || '';
+              } else if (fieldKey.startsWith('var:')) {
+                const varKey = fieldKey.replace('var:', '');
+                text = (templateParams as any)?.[varKey] || (templateParams as any)?.find?.((p: any) => p.name === varKey)?.value || '';
+              } else if (fieldKey) {
+                text = (contact as any)[fieldKey] || '';
+              }
             }
             
             bodyParameters.push({ type: 'text', text: String(text || '') });
