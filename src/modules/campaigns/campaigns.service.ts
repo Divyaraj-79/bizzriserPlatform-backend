@@ -206,7 +206,7 @@ export class CampaignsService {
     return this.prisma.campaign.findUnique({
       where: { id: campaignId, organizationId: orgId },
       include: {
-        recipients: { include: { contact: true }, take: 50 },
+        recipients: { include: { contact: true }, take: 500 },
         logs: { orderBy: { createdAt: 'desc' }, take: 20 }
       }
     });
