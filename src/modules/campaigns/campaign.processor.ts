@@ -39,7 +39,7 @@ export class CampaignProcessor {
       // 1. Check if campaign is STILL running (and not cancelled)
       const campaign = await this.prisma.campaign.findUnique({
         where: { id: campaignId },
-        select: { status: true, name: true, totalRecipients: true, sentCount: true, failedCount: true },
+        select: { status: true, name: true, totalRecipients: true, sentCount: true, failedCount: true, metadata: true },
       });
 
       if (!campaign || campaign.status === ('CANCELLED' as any)) {
