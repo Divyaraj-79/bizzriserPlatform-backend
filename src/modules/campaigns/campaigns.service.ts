@@ -2,7 +2,9 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ContactsService } from '../contacts/contacts.service';
 import { CampaignStatus, CampaignLogLevel, MessageStatus } from '@prisma/client';
+
 
 @Injectable()
 export class CampaignsService {
@@ -10,8 +12,10 @@ export class CampaignsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly contactsService: ContactsService,
     @InjectQueue('campaign-messages') private readonly campaignQueue: Queue,
   ) {}
+
 
   async findAll(orgId: string) {
     return this.prisma.campaign.findMany({
@@ -30,15 +34,31 @@ export class CampaignsService {
     templateParams: any, 
     contactIds?: string[], 
     targetTag?: string,
+    numbers?: string[],
+    tagName?: string,
     autoSegment?: boolean,
     scheduledAt?: string 
   }) {
-    const { name, accountId, templateName, templateParams, contactIds, targetTag, autoSegment, scheduledAt } = data;
+    let { name, accountId, templateName, templateParams, contactIds, targetTag, numbers, tagName, autoSegment, scheduledAt } = data;
+
 
     const account = await this.prisma.whatsAppAccount.findUnique({ where: { id: accountId, organizationId: orgId } });
     if (!account) throw new NotFoundException('Account not found');
 
+    // Handle Pasted Numbers mode
+    if (numbers && numbers.length > 0) {
+       const effectiveTagName = tagName || `pasted_${Date.now()}`;
+       const contactData = numbers.map(num => ({ phone: num, tags: [effectiveTagName] }));
+       
+       // Bulk upsert contacts with the specified tag
+       await this.contactsService.atomicBulkImport(orgId, contactData);
+       
+       // Switch to tag-based targeting for these numbers
+       targetTag = effectiveTagName;
+    }
+
     let finalContactIds: string[] = contactIds || [];
+
 
     // 1. Tag-based targeting
     if (targetTag) {
