@@ -107,7 +107,7 @@ export class CampaignProcessor {
 
       // 4. Send template message 
       await this.messagingService.sendTemplateMessage(
-        orgId, accountId, contactId, templateName, 'en_US', components, { campaignId }
+        orgId, accountId, contactId, templateName, mappingRecord?.language || 'en_US', components, { campaignId }
       );
 
       // 5. Update recipient and campaign
