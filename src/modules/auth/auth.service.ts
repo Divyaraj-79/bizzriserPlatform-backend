@@ -1,3 +1,4 @@
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
@@ -47,7 +48,7 @@ export class AuthService {
       access_token: this.jwtService.sign(accessTokenPayload),
       refresh_token: this.jwtService.sign(refreshTokenPayload, {
         secret: this.configService.get<string>('jwt.refreshSecret'),
-        expiresIn: this.configService.get<string>('jwt.refreshExpiresIn'),
+        expiresIn: this.configService.get<string>('jwt.refreshExpiresIn') as any,
       }),
     };
   }
@@ -68,7 +69,7 @@ export class AuthService {
       access_token: this.jwtService.sign(accessTokenPayload),
       refresh_token: this.jwtService.sign(refreshTokenPayload, {
         secret: this.configService.get<string>('jwt.refreshSecret'),
-        expiresIn: this.configService.get<string>('jwt.refreshExpiresIn'),
+        expiresIn: this.configService.get<string>('jwt.refreshExpiresIn') as any,
       }),
     };
   }
@@ -79,7 +80,7 @@ export class AuthService {
         secret: this.configService.get<string>('jwt.refreshSecret'),
       });
 
-      const user = await this.usersService.findById(payload.sub);
+      const user = await this.usersService.findOne(payload.sub);
       if (!user) throw new UnauthorizedException('User not found');
 
       const accessTokenPayload = { 
