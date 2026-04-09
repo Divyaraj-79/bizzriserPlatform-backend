@@ -52,8 +52,14 @@ export class CampaignProcessor {
       if (!contact) throw new Error('Contact not found');
 
       // 3. Map Parameters using new WhatsAppTemplate mappings
+      const templateLanguage = (campaign.metadata as any)?.templateLanguage;
+
       const mappingRecord = await this.prisma.whatsAppTemplate.findFirst({
-         where: { accountId, name: templateName }
+         where: { 
+            accountId, 
+            name: templateName,
+            language: templateLanguage || undefined
+         }
       });
 
       const variableMapping = mappingRecord?.variableMapping as any || {};
@@ -106,8 +112,9 @@ export class CampaignProcessor {
       const components = [ { type: 'body', parameters: bodyParameters } ];
 
       // 4. Send template message 
+      const finalLanguage = templateLanguage || mappingRecord?.language || 'en_US';
       await this.messagingService.sendTemplateMessage(
-        orgId, accountId, contactId, templateName, mappingRecord?.language || 'en_US', components, { campaignId }
+        orgId, accountId, contactId, templateName, finalLanguage, components, { campaignId }
       );
 
       // 5. Update recipient and campaign

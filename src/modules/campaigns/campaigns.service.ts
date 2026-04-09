@@ -118,7 +118,8 @@ export class CampaignsService {
            hasAutoSegmented: leftoverContactIds.length > 0,
            leftoverCount: leftoverContactIds.length,
            targetTag,
-           messagingLimitCount: (account as any).messagingLimitCount
+           messagingLimitCount: (account as any).messagingLimitCount,
+           templateLanguage: (data as any).templateLanguage || 'en_US'
         }
       }
     });

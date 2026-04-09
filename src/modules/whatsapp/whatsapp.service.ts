@@ -498,20 +498,46 @@ export class WhatsappService {
       
       const metaTemplates = response.data.data || [];
 
-      // Enrich with local mappings
-      const localTemplates = await this.prisma.whatsAppTemplate.findMany({
-        where: { accountId, organizationId: orgId }
+      // 2. Auto-sync meta templates into local DB for background processing safety
+      for (const mt of metaTemplates) {
+         await this.prisma.whatsAppTemplate.upsert({
+            where: {
+               accountId_name_language: {
+                  accountId,
+                  name: mt.name,
+                  language: mt.language
+               }
+            },
+            create: {
+               organizationId: orgId,
+               accountId,
+               name: mt.name,
+               language: mt.language,
+               category: mt.category,
+               components: mt.components,
+               variableMapping: {},
+            },
+            update: {
+               category: mt.category,
+               components: mt.components
+            }
+         });
+      }
+
+      // 3. Enrich response with local mappings (e.g. variable configurations)
+      const finalTemplates = await this.prisma.whatsAppTemplate.findMany({
+         where: { accountId, organizationId: orgId }
       });
 
       return metaTemplates.map((mt: any) => {
-        const local = localTemplates.find(lt => lt.name === mt.name && lt.language === mt.language);
+        const local = finalTemplates.find(lt => lt.name === mt.name && lt.language === mt.language);
         return {
           ...mt,
           variableMapping: local?.variableMapping || {},
         };
       });
     } catch (error) {
-      this.handleError(error, `Failed to fetch templates via account ${accountId}`);
+      this.handleError(error, `Failed to fetch and sync templates via account ${accountId}`);
     }
   }
 
