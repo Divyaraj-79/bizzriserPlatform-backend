@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -13,6 +13,11 @@ export class CustomRolesService {
   }
 
   async create(organizationId: string, data: { name: string; permissions: any }) {
+    const existing = await this.prisma.customRole.findFirst({
+      where: { organizationId, name: data.name },
+    });
+    if (existing) throw new ConflictException('A role with this name already exists');
+
     return this.prisma.customRole.create({
       data: {
         organizationId,
