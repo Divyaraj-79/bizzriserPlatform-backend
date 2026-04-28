@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UnauthorizedException, HttpCode, HttpStatus, UseGuards, Req, Param } from '@nestjs/common';
+import { Controller, Post, Body, UnauthorizedException, HttpCode, HttpStatus, UseGuards, Req, Param, Get } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -41,5 +41,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async refresh(@Body('refresh_token') refreshToken: string) {
     return this.authService.refreshToken(refreshToken);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('permissions/:accountId')
+  async getPermissions(@Req() req: any, @Param('accountId') accountId: string) {
+    const permissions = await this.authService.getAccountPermissions(req.user.sub, accountId);
+    return { permissions };
   }
 }

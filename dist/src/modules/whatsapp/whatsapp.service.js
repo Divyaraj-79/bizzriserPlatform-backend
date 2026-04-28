@@ -288,12 +288,62 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             this.handleError(error, `Failed to send template message via account ${accountId}`);
         }
     }
+    async uploadTemplateMedia(orgId, accountId, file) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.HttpException('Account not found', common_1.HttpStatus.NOT_FOUND);
+        const { token: validatedToken } = await this.getValidToken(account);
+        const appId = this.configService.get('whatsapp.appId');
+        if (!appId) {
+            this.logger.error('CRITICAL: WHATSAPP_APP_ID is not configured in environment.');
+            throw new common_1.HttpException('Media upload failed: Meta App ID is missing in server configuration.', common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        if (!file) {
+            this.logger.error('Upload failed: Multer file object is undefined.');
+            throw new common_1.HttpException('No file provided for upload. Check your multipart/form-data configuration.', common_1.HttpStatus.BAD_REQUEST);
+        }
+        try {
+            this.logger.log(`[RESUMABLE UPLOAD] STEP 1: Creating Session for ${file.originalname} (${file.size} bytes)`);
+            const sessionRes = await axios_1.default.post(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/uploads`, null, {
+                params: {
+                    file_length: file.size,
+                    file_type: file.mimetype,
+                    access_token: validatedToken,
+                },
+            });
+            const sessionId = sessionRes.data.id;
+            this.logger.log(`[RESUMABLE UPLOAD] STEP 2: Uploading data to session ${sessionId}...`);
+            const uploadRes = await axios_1.default.post(`${this.graphBaseUrl}/${this.apiVersion}/${sessionId}`, file.buffer, {
+                headers: {
+                    'Authorization': `Bearer ${validatedToken}`,
+                    'file_offset': '0',
+                    'Content-Type': 'application/octet-stream',
+                    'Content-Length': file.size.toString(),
+                },
+            });
+            const handle = uploadRes.data.h;
+            if (!handle) {
+                this.logger.error(`[RESUMABLE UPLOAD] FAILURE: No handle returned. Response: ${JSON.stringify(uploadRes.data)}`);
+                throw new Error('Meta did not return a header handle after successful upload.');
+            }
+            this.logger.log(`[RESUMABLE UPLOAD] SUCCESS: Received header_handle: ${handle}`);
+            return { handle };
+        }
+        catch (error) {
+            this.handleError(error, `Resumable upload failed for template media`);
+        }
+    }
     async uploadMedia(orgId, accountId, file) {
         const account = await this.prisma.whatsAppAccount.findUnique({
             where: { id: accountId, organizationId: orgId },
         });
         if (!account)
             throw new common_1.ConflictException('Account not found');
+        if (!file) {
+            throw new common_1.ConflictException('No file provided for upload.');
+        }
         const { token: validatedToken } = await this.getValidToken(account);
         const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/media`;
         const formData = new FormData();
@@ -349,9 +399,146 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             this.handleError(error, `Failed to send ${type} message via account ${accountId}`);
         }
     }
-    async listAccounts(orgId) {
+    async sendMediaByUrl(orgId, accountId, to, mediaType, mediaUrl, caption, filename) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+        const mediaObj = { link: mediaUrl };
+        if (caption && (mediaType === 'image' || mediaType === 'video')) {
+            mediaObj.caption = caption;
+        }
+        if (filename && mediaType === 'document') {
+            mediaObj.filename = filename;
+        }
+        const payload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: mediaType,
+            [mediaType]: mediaObj,
+        };
+        try {
+            this.logger.log(`Sending WhatsApp ${mediaType} (URL) for org ${orgId} to ${to}`);
+            const response = await axios_1.default.post(url, payload, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.handleError(error, `Failed to send ${mediaType} URL message via account ${accountId}`);
+        }
+    }
+    async sendInteractiveButtons(orgId, accountId, to, bodyText, buttons, headerText, footerText) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+        const payload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: 'interactive',
+            interactive: {
+                type: 'button',
+                body: { text: bodyText },
+                action: {
+                    buttons: buttons.slice(0, 3).map((btn) => ({
+                        type: 'reply',
+                        reply: { id: btn.id, title: btn.title.substring(0, 20) },
+                    })),
+                },
+            },
+        };
+        if (headerText) {
+            payload.interactive.header = { type: 'text', text: headerText };
+        }
+        if (footerText) {
+            payload.interactive.footer = { text: footerText };
+        }
+        try {
+            this.logger.log(`Sending WhatsApp interactive buttons for org ${orgId} to ${to}`);
+            const response = await axios_1.default.post(url, payload, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.handleError(error, `Failed to send interactive buttons via account ${accountId}`);
+        }
+    }
+    async sendInteractiveList(orgId, accountId, to, bodyText, buttonText, sections, headerText, footerText) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+        const payload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: 'interactive',
+            interactive: {
+                type: 'list',
+                body: { text: bodyText },
+                action: {
+                    button: buttonText.substring(0, 20),
+                    sections: sections.map((s) => ({
+                        title: s.title,
+                        rows: s.rows.map((r) => ({
+                            id: r.id,
+                            title: r.title.substring(0, 24),
+                            ...(r.description ? { description: r.description.substring(0, 72) } : {}),
+                        })),
+                    })),
+                },
+            },
+        };
+        if (headerText) {
+            payload.interactive.header = { type: 'text', text: headerText };
+        }
+        if (footerText) {
+            payload.interactive.footer = { text: footerText };
+        }
+        try {
+            this.logger.log(`Sending WhatsApp interactive list for org ${orgId} to ${to}`);
+            const response = await axios_1.default.post(url, payload, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.handleError(error, `Failed to send interactive list via account ${accountId}`);
+        }
+    }
+    async listAccounts(orgId, user) {
+        const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN';
         return this.prisma.whatsAppAccount.findMany({
-            where: { organizationId: orgId },
+            where: {
+                organizationId: orgId,
+                ...(isAdmin ? {} : {
+                    accountAccess: {
+                        some: { userId: user.sub }
+                    }
+                })
+            },
             select: {
                 id: true,
                 phoneNumberId: true,
@@ -364,26 +551,66 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             },
         });
     }
-    async getTemplates(orgId, accountId) {
+    async getTemplates(orgId, accountId, forceSync = false) {
         const account = await this.prisma.whatsAppAccount.findUnique({
             where: { id: accountId, organizationId: orgId },
         });
         if (!account)
             throw new common_1.ConflictException('Account not found');
+        if (!forceSync) {
+            this.logger.log(`[Templates] Fetching cached templates for account ${accountId} (Local DB)`);
+            return this.prisma.whatsAppTemplate.findMany({
+                where: { accountId, organizationId: orgId, isActive: true },
+                orderBy: { updatedAt: 'desc' }
+            });
+        }
         const { token: validatedToken } = await this.getValidToken(account);
         const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;
         try {
-            this.logger.log(`Fetching WhatsApp templates for org ${orgId} via account ${accountId} (WABA: ${account.wabaId})`);
+            this.logger.log(`[Templates] Forcing synchronization from Meta for account ${accountId}...`);
             const response = await axios_1.default.get(url, {
                 params: { limit: 100 },
                 headers: {
                     Authorization: `Bearer ${validatedToken}`,
                 },
             });
-            return response.data.data;
+            const metaTemplates = response.data.data || [];
+            this.logger.log(`[Templates] Received ${metaTemplates.length} templates from Meta API.`);
+            for (const mt of metaTemplates) {
+                await this.prisma.whatsAppTemplate.upsert({
+                    where: {
+                        accountId_name_language: {
+                            accountId,
+                            name: mt.name,
+                            language: mt.language
+                        }
+                    },
+                    create: {
+                        organizationId: orgId,
+                        accountId,
+                        name: mt.name,
+                        language: mt.language,
+                        category: mt.category,
+                        status: mt.status || 'APPROVED',
+                        components: mt.components,
+                        variableMapping: {},
+                    },
+                    update: {
+                        category: mt.category,
+                        status: mt.status || 'APPROVED',
+                        components: mt.components,
+                        isActive: true
+                    }
+                });
+            }
+            this.logger.log(`[Templates] Cache update complete for account ${accountId}.`);
+            return this.prisma.whatsAppTemplate.findMany({
+                where: { accountId, organizationId: orgId, isActive: true },
+                orderBy: { updatedAt: 'desc' }
+            });
         }
         catch (error) {
-            this.handleError(error, `Failed to fetch templates via account ${accountId}`);
+            this.handleError(error, `Failed to fetch and sync templates via account ${accountId}`);
         }
     }
     async createTemplate(orgId, accountId, data) {
@@ -394,13 +621,82 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             throw new common_1.ConflictException('Account not found');
         const { token: validatedToken } = await this.getValidToken(account);
         const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;
+        const prepareComponents = (components) => {
+            return components.map((comp) => {
+                const processed = { ...comp };
+                Object.keys(processed).forEach(key => {
+                    if (key.startsWith('_'))
+                        delete processed[key];
+                });
+                if (processed.type === 'BODY' && processed.text) {
+                    const variableRegex = /\{\{(\d+)\}\}/g;
+                    const detectedIndices = [];
+                    let match;
+                    while ((match = variableRegex.exec(processed.text)) !== null) {
+                        detectedIndices.push(parseInt(match[1]));
+                    }
+                    if (detectedIndices.length > 0) {
+                        const sortedIndices = [...new Set(detectedIndices)].sort((a, b) => a - b);
+                        const bodySamples = sortedIndices.map(index => {
+                            const fieldName = data.variableMapping?.[index.toString()];
+                            return data.sampleValues?.[fieldName] || `Sample ${index}`;
+                        });
+                        processed.example = { body_text: [bodySamples] };
+                    }
+                }
+                if (processed.type === 'HEADER' && (processed.format === 'IMAGE' || processed.format === 'VIDEO')) {
+                    if (processed.example?.header_handle) {
+                        processed.example = processed.example;
+                    }
+                }
+                if (processed.type === 'CAROUSEL' && processed.cards) {
+                    processed.cards = processed.cards.map((card) => {
+                        const cleanedCard = { ...card };
+                        Object.keys(cleanedCard).forEach(k => k.startsWith('_') && delete cleanedCard[k]);
+                        return {
+                            ...cleanedCard,
+                            components: prepareComponents(card.components)
+                        };
+                    });
+                }
+                return processed;
+            });
+        };
+        const metaPayload = {
+            name: data.name,
+            language: data.language,
+            category: data.category,
+            components: prepareComponents(data.components)
+        };
         try {
-            this.logger.log(`Creating WhatsApp template for org ${orgId} via account ${accountId}`);
-            const response = await axios_1.default.post(url, data, {
+            this.logger.log(`Creating WhatsApp template ${data.name} for org ${orgId}...`);
+            const response = await axios_1.default.post(url, metaPayload, {
                 headers: {
                     Authorization: `Bearer ${validatedToken}`,
                     'Content-Type': 'application/json',
                 },
+            });
+            await this.prisma.whatsAppTemplate.upsert({
+                where: {
+                    accountId_name_language: {
+                        accountId,
+                        name: data.name,
+                        language: data.language
+                    }
+                },
+                create: {
+                    organizationId: orgId,
+                    accountId,
+                    name: data.name,
+                    language: data.language,
+                    category: data.category,
+                    components: data.components,
+                    variableMapping: data.variableMapping || {},
+                },
+                update: {
+                    components: data.components,
+                    variableMapping: data.variableMapping || {},
+                }
             });
             return response.data;
         }
@@ -565,13 +861,19 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             throw new common_1.HttpException(`WhatsApp authentication failed: ${errorMsg}. Your token may have expired.`, common_1.HttpStatus.UNAUTHORIZED);
         }
     }
-    handleError(error, contextMessage) {
-        const status = error.response?.status || common_1.HttpStatus.INTERNAL_SERVER_ERROR;
-        const errorData = error.response?.data?.error || error.response?.data || { message: 'Unknown WhatsApp API error' };
-        this.logger.error(`[WHATSAPP_ERROR] ${contextMessage} (Status: ${status}):`, JSON.stringify(errorData));
-        const metaMessage = errorData.message || 'WhatsApp API Error';
-        const enhancedMessage = `${contextMessage}: ${metaMessage}`;
-        throw new common_1.HttpException({ success: false, message: enhancedMessage, details: errorData }, status);
+    handleError(error, context) {
+        const errorData = error.response?.data;
+        const errorMsg = errorData?.error?.message || errorData?.message || error.message;
+        const errorCode = errorData?.error?.code || errorData?.code;
+        const errorSubcode = errorData?.error?.error_subcode;
+        this.logger.error(`${context}: ${errorMsg} (Code: ${errorCode}, Subcode: ${errorSubcode})`);
+        if (errorData && !errorData.error) {
+            this.logger.error(`${context} Full Response: ${JSON.stringify(errorData)}`);
+        }
+        if (error.response?.status === common_1.HttpStatus.UNAUTHORIZED) {
+            throw new common_1.HttpException(`${context}: Authentication failed. Please reconnect your WhatsApp account.`, common_1.HttpStatus.UNAUTHORIZED);
+        }
+        throw new common_1.HttpException(`${context}: ${errorMsg || 'Unknown WhatsApp API error'}`, error.response?.status || common_1.HttpStatus.INTERNAL_SERVER_ERROR);
     }
 };
 exports.WhatsappService = WhatsappService;

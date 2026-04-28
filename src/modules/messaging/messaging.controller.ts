@@ -2,12 +2,16 @@ import { Controller, Post, Get, Body, Param, UseGuards, Req, UseInterceptors, Up
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MessagingService } from './messaging.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { WhatsAppAccountGuard } from '../../common/guards/whatsapp-account.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @Controller({
   path: 'messaging',
   version: '1',
 })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, WhatsAppAccountGuard)
+@Permissions('view:chat')
 export class MessagingController {
   constructor(private readonly messagingService: MessagingService) {}
 
@@ -57,7 +61,7 @@ export class MessagingController {
 
   @Get('conversations')
   async getConversations(@Req() req: any) {
-    return this.messagingService.getConversations(req.user.orgId);
+    return this.messagingService.getConversations(req.user.orgId, req.user);
   }
 
   @Post('conversations')

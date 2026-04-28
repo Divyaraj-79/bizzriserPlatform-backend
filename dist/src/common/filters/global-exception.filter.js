@@ -38,7 +38,7 @@ let GlobalExceptionFilter = GlobalExceptionFilter_1 = class GlobalExceptionFilte
         }
         else if (exception instanceof client_1.Prisma.PrismaClientValidationError) {
             status = common_1.HttpStatus.BAD_REQUEST;
-            message = 'Invalid data provided';
+            message = exception.message.split('\n').pop() || 'Invalid data provided';
             error = 'ValidationError';
         }
         else if (exception instanceof Error) {

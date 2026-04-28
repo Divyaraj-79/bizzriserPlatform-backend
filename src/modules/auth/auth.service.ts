@@ -1,15 +1,21 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ActivityLoggerService } from '../activity-logs/activity-logger.service';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly activityLogger: ActivityLoggerService,
   ) {}
 
   async validateUser(email: string, pass: string): Promise<any> {
@@ -29,6 +35,7 @@ export class AuthService {
           lastIp: ip,
           lastLoginAt: new Date()
         });
+        await this.activityLogger.log(user.id, 'user_login', { ip, timestamp: new Date() }, ip);
       } catch (err) {
         console.error('[Auth Service] Failed to update login audit:', err);
       }
@@ -39,7 +46,10 @@ export class AuthService {
       sub: user.id, 
       orgId: user.organizationId, 
       role: user.role,
-      originalOrgId: user.organizationId
+      firstName: user.firstName,
+      lastName: user.lastName,
+      originalOrgId: user.organizationId,
+      permissions: user.permissions || {}
     };
 
     const refreshTokenPayload = { sub: user.id };
@@ -59,6 +69,8 @@ export class AuthService {
       sub: user.sub, 
       orgId: targetOrgId, 
       role: user.role,
+      firstName: user.firstName,
+      lastName: user.lastName,
       originalOrgId: user.originalOrgId || user.orgId,
       isImpersonating: true
     };
@@ -88,6 +100,8 @@ export class AuthService {
         sub: user.id, 
         orgId: user.organizationId, 
         role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
         originalOrgId: user.organizationId
       };
 
@@ -97,5 +111,19 @@ export class AuthService {
     } catch (e) {
       throw new UnauthorizedException('Invalid refresh token');
     }
+  }
+
+  async getAccountPermissions(userId: string, accountId: string): Promise<string[]> {
+    const user = await this.usersService.findOne(userId);
+    if (!user) return [];
+
+    // Admins always have all permissions
+    if (user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN') {
+      return ['all'];
+    }
+
+    // Since custom roles are removed we just return their global permissions strings
+    const permissions = user.permissions as Record<string, boolean> || {};
+    return Object.keys(permissions);
   }
 }

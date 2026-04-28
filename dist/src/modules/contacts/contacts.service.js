@@ -35,6 +35,30 @@ let ContactsService = ContactsService_1 = class ContactsService {
         }
         return clean.replace(/\D/g, '');
     }
+    async updateContact(orgId, contactId, data) {
+        console.log('[ContactsService] updateContact request:', { orgId, contactId, data });
+        const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
+        if (!contact || contact.organizationId !== orgId) {
+            console.error('[ContactsService] Contact not found or org mismatch:', { contactId, orgId });
+            throw new common_1.NotFoundException('Contact not found');
+        }
+        const { firstName, lastName, email, phone, status, tags } = data;
+        let cleanPhone = phone ? this.sanitizePhone(phone) : undefined;
+        console.log('[ContactsService] Executing prisma update with data:', { firstName, lastName, email, cleanPhone, status, tags });
+        const result = await this.prisma.contact.update({
+            where: { id: contactId },
+            data: {
+                ...(firstName !== undefined && { firstName }),
+                ...(lastName !== undefined && { lastName }),
+                ...(email !== undefined && { email }),
+                ...(cleanPhone !== undefined && { phone: cleanPhone }),
+                ...(status !== undefined && { status }),
+                ...(tags !== undefined && { tags }),
+            }
+        });
+        console.log('[ContactsService] update success:', result.id);
+        return result;
+    }
     async createOrUpdate(orgId, phone, data) {
         this.logger.log(`[ENTRY] createOrUpdate called for Org: ${orgId}, Phone: ${phone}`);
         const cleanPhone = this.sanitizePhone(phone);
@@ -169,11 +193,56 @@ let ContactsService = ContactsService_1 = class ContactsService {
             error: failedReason
         };
     }
-    async findAll(orgId) {
-        return this.prisma.contact.findMany({
-            where: { organizationId: orgId },
-            orderBy: { updatedAt: 'desc' }
-        });
+    async findAll(orgId, options) {
+        const { page, limit, search, status, tag } = options;
+        const skip = (page - 1) * limit;
+        let finalOrgId = orgId;
+        if (!finalOrgId) {
+            this.logger.warn('[WARNING] ContactsService.findAll called without orgId. Performing potential GLOBAL search.');
+        }
+        const where = finalOrgId ? { organizationId: finalOrgId } : {};
+        this.logger.debug(`[DEBUG] ContactsService.findAll - Org: ${finalOrgId}, Where: ${JSON.stringify(where)}, Options: ${JSON.stringify(options)}`);
+        try {
+            const logMsg = `[${new Date().toISOString()}] FIND_ALL: Org: ${orgId}, Options: ${JSON.stringify(options)}, Where: ${JSON.stringify(where)}\n`;
+            require('fs').appendFileSync('D:/BizzRiser/BizzRiserPlatform/backend/contacts_debug.log', logMsg);
+        }
+        catch (e) { }
+        if (status && status !== 'ALL' && status !== 'All Statuses') {
+            where.status = status.toUpperCase();
+        }
+        if (tag && tag !== 'All Labels') {
+            where.tags = { has: tag };
+        }
+        if (search) {
+            const query = search.toLowerCase();
+            where.OR = [
+                { firstName: { contains: query, mode: 'insensitive' } },
+                { lastName: { contains: query, mode: 'insensitive' } },
+                { phone: { contains: query, mode: 'insensitive' } },
+                { email: { contains: query, mode: 'insensitive' } },
+            ];
+        }
+        const [data, total, activeCount, blockedCount] = await Promise.all([
+            this.prisma.contact.findMany({
+                where,
+                skip,
+                take: limit,
+                orderBy: { updatedAt: 'desc' },
+            }),
+            this.prisma.contact.count({ where }),
+            this.prisma.contact.count({ where: { organizationId: orgId, status: 'ACTIVE' } }),
+            this.prisma.contact.count({ where: { organizationId: orgId, status: 'BLOCKED' } }),
+        ]);
+        return {
+            data,
+            total,
+            activeCount,
+            blockedCount,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+            debugOrgId: orgId,
+        };
     }
     async getTagsAnalytics(orgId) {
         const contacts = await this.prisma.contact.findMany({

@@ -29,8 +29,24 @@ export declare class WhatsappController {
         wabaId: string;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
     }[]>;
-    getTemplates(req: any, id: string): Promise<any>;
+    getTemplates(req: any, id: string, sync?: string): Promise<{
+        id: string;
+        organizationId: string;
+        status: string;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        accountId: string;
+        language: string;
+        category: string;
+        components: import("@prisma/client/runtime/library").JsonValue;
+        variableMapping: import("@prisma/client/runtime/library").JsonValue;
+        isActive: boolean;
+    }[] | undefined>;
     createTemplate(req: any, id: string, data: any): Promise<any>;
+    uploadTemplateMedia(req: any, id: string, file: any): Promise<{
+        handle: any;
+    } | undefined>;
     updateTemplate(req: any, id: string, templateId: string, data: any): Promise<any>;
     deleteTemplate(req: any, id: string, templateName: string): Promise<any>;
     syncAccount(req: any, id: string): Promise<{
@@ -49,7 +65,7 @@ export declare class WhatsappController {
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
         messagingLimitTier: string | null;
         messagingLimitCount: number;
-    }>;
+    } | undefined>;
     disconnectAccount(req: any, id: string): Promise<{
         id: string;
         organizationId: string;

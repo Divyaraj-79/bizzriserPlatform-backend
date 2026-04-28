@@ -19,7 +19,7 @@ async function bootstrap() {
     app.useGlobalPipes(new common_1.ValidationPipe({
         whitelist: true,
         transform: true,
-        forbidNonWhitelisted: true,
+        forbidNonWhitelisted: false,
     }));
     app.useGlobalFilters(new common_2.GlobalExceptionFilter());
     app.enableCors({
@@ -27,7 +27,7 @@ async function bootstrap() {
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
         credentials: true,
     });
-    await app.listen(port);
+    await app.listen(port, '0.0.0.0');
     logger.log(`Application is running on: http://localhost:${port}/api/v1`);
 }
 bootstrap();

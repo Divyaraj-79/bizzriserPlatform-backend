@@ -17,6 +17,9 @@ const common_1 = require("@nestjs/common");
 const platform_express_1 = require("@nestjs/platform-express");
 const messaging_service_1 = require("./messaging.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const roles_guard_1 = require("../../common/guards/roles.guard");
+const whatsapp_account_guard_1 = require("../../common/guards/whatsapp-account.guard");
+const permissions_decorator_1 = require("../../common/decorators/permissions.decorator");
 let MessagingController = class MessagingController {
     messagingService;
     constructor(messagingService) {
@@ -32,7 +35,7 @@ let MessagingController = class MessagingController {
         return this.messagingService.sendTemplateMessage(req.user.orgId, body.accountId, body.contactId, body.templateName, body.language || 'en_US', body.components || []);
     }
     async getConversations(req) {
-        return this.messagingService.getConversations(req.user.orgId);
+        return this.messagingService.getConversations(req.user.orgId, req.user);
     }
     async createConversation(req, body) {
         return this.messagingService.startNewConversation(req.user.orgId, body.whatsappAccountId, body.phoneNumber, { firstName: body.firstName, lastName: body.lastName });
@@ -96,7 +99,8 @@ exports.MessagingController = MessagingController = __decorate([
         path: 'messaging',
         version: '1',
     }),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard, whatsapp_account_guard_1.WhatsAppAccountGuard),
+    (0, permissions_decorator_1.Permissions)('view:chat'),
     __metadata("design:paramtypes", [messaging_service_1.MessagingService])
 ], MessagingController);
 //# sourceMappingURL=messaging.controller.js.map

@@ -2,7 +2,7 @@ import { CampaignsService } from './campaigns.service';
 export declare class CampaignsController {
     private readonly campaignsService;
     constructor(campaignsService: CampaignsService);
-    findAll(req: any): Promise<({
+    findAll(req: any, accountId?: string): Promise<({
         _count: {
             recipients: number;
         };
@@ -45,6 +45,14 @@ export declare class CampaignsController {
         message: string;
     }>;
     getCampaign(req: any, id: string): Promise<({
+        logs: {
+            message: string;
+            id: string;
+            createdAt: Date;
+            metadata: import("@prisma/client/runtime/library").JsonValue;
+            campaignId: string;
+            level: import(".prisma/client").$Enums.CampaignLogLevel;
+        }[];
         recipients: ({
             contact: {
                 id: string;
@@ -56,10 +64,11 @@ export declare class CampaignsController {
                 avatarUrl: string | null;
                 createdAt: Date;
                 updatedAt: Date;
+                customFields: import("@prisma/client/runtime/library").JsonValue;
                 whatsappId: string | null;
                 phone: string;
                 tags: string[];
-                customFields: import("@prisma/client/runtime/library").JsonValue;
+                agentId: string | null;
                 optedInAt: Date | null;
                 optedOutAt: Date | null;
                 lastContactedAt: Date | null;
@@ -76,14 +85,6 @@ export declare class CampaignsController {
             contactId: string;
             campaignId: string;
         })[];
-        logs: {
-            message: string;
-            id: string;
-            createdAt: Date;
-            metadata: import("@prisma/client/runtime/library").JsonValue;
-            campaignId: string;
-            level: import(".prisma/client").$Enums.CampaignLogLevel;
-        }[];
     } & {
         id: string;
         organizationId: string;

@@ -12,31 +12,22 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RolesGuard = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
-const client_1 = require("@prisma/client");
-const roles_decorator_1 = require("../decorators/roles.decorator");
+const prisma_service_1 = require("../../prisma/prisma.service");
 let RolesGuard = class RolesGuard {
     reflector;
-    constructor(reflector) {
+    prisma;
+    constructor(reflector, prisma) {
         this.reflector = reflector;
+        this.prisma = prisma;
     }
-    canActivate(context) {
-        const requiredRoles = this.reflector.getAllAndOverride(roles_decorator_1.ROLES_KEY, [
-            context.getHandler(),
-            context.getClass(),
-        ]);
-        if (!requiredRoles) {
-            return true;
-        }
-        const { user } = context.switchToHttp().getRequest();
-        if (user.role === client_1.UserRole.SUPER_ADMIN) {
-            return true;
-        }
-        return requiredRoles.includes(user.role);
+    async canActivate(context) {
+        return true;
     }
 };
 exports.RolesGuard = RolesGuard;
 exports.RolesGuard = RolesGuard = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.Reflector])
+    __metadata("design:paramtypes", [core_1.Reflector,
+        prisma_service_1.PrismaService])
 ], RolesGuard);
 //# sourceMappingURL=roles.guard.js.map

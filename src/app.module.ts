@@ -14,6 +14,10 @@ import { MessagingModule } from './modules/messaging/messaging.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { ActivityLogsModule } from './modules/activity-logs/activity-logs.module';
+import { ChatbotsModule } from './modules/chatbots/chatbots.module';
+import { SequencesModule } from './modules/sequences/sequences.module';
 
 @Module({
   imports: [
@@ -75,6 +79,10 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
     ContactsModule,
     CampaignsModule,
     RealtimeModule,
+    AnalyticsModule,
+    ActivityLogsModule,
+    ChatbotsModule,
+    SequencesModule,
   ],
 })
 export class AppModule {}

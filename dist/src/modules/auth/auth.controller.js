@@ -42,6 +42,13 @@ let AuthController = class AuthController {
     async switchTenant(req, orgId) {
         return this.authService.switchTenant(req.user, orgId);
     }
+    async refresh(refreshToken) {
+        return this.authService.refreshToken(refreshToken);
+    }
+    async getPermissions(req, accountId) {
+        const permissions = await this.authService.getAccountPermissions(req.user.sub, accountId);
+        return { permissions };
+    }
 };
 exports.AuthController = AuthController;
 __decorate([
@@ -64,6 +71,23 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "switchTenant", null);
+__decorate([
+    (0, common_1.Post)('refresh'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Body)('refresh_token')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "refresh", null);
+__decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.Get)('permissions/:accountId'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('accountId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "getPermissions", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)({
         path: 'auth',

@@ -4,7 +4,8 @@ import { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContactsService } from '../contacts/contacts.service';
 import { MessagingService } from '../messaging/messaging.service';
-import { MessageDirection, MessageType, MessageStatus } from '@prisma/client';
+import { MessageDirection, MessageType, MessageStatus, ChatbotSessionStatus } from '@prisma/client';
+import { FlowExecutorService } from '../chatbots/executor/flow-executor.service';
 
 @Processor('webhooks')
 export class WebhookProcessor {
@@ -14,6 +15,7 @@ export class WebhookProcessor {
     private readonly prisma: PrismaService,
     private readonly contactsService: ContactsService,
     private readonly messagingService: MessagingService,
+    private readonly flowExecutor: FlowExecutorService,
   ) {}
 
   @Process('process-message')
@@ -109,17 +111,32 @@ export class WebhookProcessor {
     } else if (messageData.type === 'interactive') {
       messageType = MessageType.TEXT;
       const it = messageData.interactive.type;
-      content = { 
-        body: messageData.interactive[it]?.title || '[Interactive]',
-        payload: messageData.interactive[it]?.id 
-      };
+      if (it === 'button_reply') {
+        content = {
+          body: messageData.interactive.button_reply?.title || '[Button Reply]',
+          payload: messageData.interactive.button_reply?.id,
+        };
+      } else if (it === 'list_reply') {
+        content = {
+          body: messageData.interactive.list_reply?.title || '[List Reply]',
+          payload: messageData.interactive.list_reply?.id,
+        };
+      } else {
+        content = {
+          body: messageData.interactive[it]?.title || '[Interactive]',
+          payload: messageData.interactive[it]?.id,
+        };
+      }
     } else if (messageData.type === 'button') {
       messageType = MessageType.TEXT;
       content = { body: messageData.button.text, payload: messageData.button.payload };
+    } else if (messageData.type === 'audio') {
+      messageType = MessageType.AUDIO;
+      content = { audio: messageData.audio, body: '[Audio]' };
     }
 
     // 3. Create message record
-    await this.messagingService.createMessage({
+    const savedMessage = await this.messagingService.createMessage({
       organizationId,
       whatsappAccountId: accountId,
       contactId: contact.id,
@@ -130,5 +147,48 @@ export class WebhookProcessor {
       content,
       sentAt: new Date(parseInt(messageData.timestamp) * 1000),
     });
+
+    try {
+      // 4. Check for active chatbot session (WAITING_REPLY)
+      const existingSession = await this.prisma.chatbotSession.findFirst({
+        where: { contactId: contact.id, organizationId, status: ChatbotSessionStatus.WAITING_REPLY }
+      });
+
+      if (existingSession) {
+        await this.flowExecutor.resumeSession(existingSession, contact, messageData);
+        return; 
+      }
+
+      // 5. Check for matching chatbot trigger (NEW session)
+      const activeBots = await this.prisma.chatbot.findMany({
+        where: { organizationId, status: 'ACTIVE', channel: 'WHATSAPP' }
+      });
+
+      let matched = null;
+      const msgText = messageData.text?.body?.toLowerCase() ?? '';
+
+      matched = activeBots.find(b =>
+        b.triggerType === 'KEYWORD_MATCH' &&
+        b.keywords.some(k => msgText.includes(k.toLowerCase()))
+      );
+
+      if (!matched) {
+        if (!existingContact) {
+          matched = activeBots.find(b => b.triggerType === 'NEW_CONVERSATION');
+        }
+      }
+
+      if (!matched)
+        matched = activeBots.find(b => b.triggerType === 'MESSAGE_RECEIVED');
+
+      if (!matched)
+        matched = activeBots.find(b => b.triggerType === 'NO_MATCH_REPLY');
+
+      if (matched) {
+        await this.flowExecutor.startSession(organizationId, accountId, matched, contact, messageData);
+      }
+    } catch (err) {
+      this.logger.error(`Error processing chatbot flow logic: ${err.message}`);
+    }
   }
 }

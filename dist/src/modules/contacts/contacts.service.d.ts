@@ -5,6 +5,25 @@ export declare class ContactsService {
     private readonly logger;
     constructor(prisma: PrismaService, importQueue: any);
     private sanitizePhone;
+    updateContact(orgId: string, contactId: string, data: any): Promise<{
+        id: string;
+        organizationId: string;
+        email: string | null;
+        firstName: string | null;
+        lastName: string | null;
+        status: import(".prisma/client").$Enums.ContactStatus;
+        avatarUrl: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+        customFields: import("@prisma/client/runtime/library").JsonValue;
+        whatsappId: string | null;
+        phone: string;
+        tags: string[];
+        agentId: string | null;
+        optedInAt: Date | null;
+        optedOutAt: Date | null;
+        lastContactedAt: Date | null;
+    }>;
     createOrUpdate(orgId: string, phone: string, data: any): Promise<{
         id: string;
         organizationId: string;
@@ -15,10 +34,11 @@ export declare class ContactsService {
         avatarUrl: string | null;
         createdAt: Date;
         updatedAt: Date;
+        customFields: import("@prisma/client/runtime/library").JsonValue;
         whatsappId: string | null;
         phone: string;
         tags: string[];
-        customFields: import("@prisma/client/runtime/library").JsonValue;
+        agentId: string | null;
         optedInAt: Date | null;
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
@@ -38,24 +58,40 @@ export declare class ContactsService {
         result: any;
         error: any;
     }>;
-    findAll(orgId: string): Promise<{
-        id: string;
-        organizationId: string;
-        email: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        status: import(".prisma/client").$Enums.ContactStatus;
-        avatarUrl: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        whatsappId: string | null;
-        phone: string;
-        tags: string[];
-        customFields: import("@prisma/client/runtime/library").JsonValue;
-        optedInAt: Date | null;
-        optedOutAt: Date | null;
-        lastContactedAt: Date | null;
-    }[]>;
+    findAll(orgId: string, options: {
+        page: number;
+        limit: number;
+        search?: string;
+        status?: string;
+        tag?: string;
+    }): Promise<{
+        data: {
+            id: string;
+            organizationId: string;
+            email: string | null;
+            firstName: string | null;
+            lastName: string | null;
+            status: import(".prisma/client").$Enums.ContactStatus;
+            avatarUrl: string | null;
+            createdAt: Date;
+            updatedAt: Date;
+            customFields: import("@prisma/client/runtime/library").JsonValue;
+            whatsappId: string | null;
+            phone: string;
+            tags: string[];
+            agentId: string | null;
+            optedInAt: Date | null;
+            optedOutAt: Date | null;
+            lastContactedAt: Date | null;
+        }[];
+        total: number;
+        activeCount: number;
+        blockedCount: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+        debugOrgId: string;
+    }>;
     getTagsAnalytics(orgId: string): Promise<{
         name: string;
         count: number;
@@ -70,10 +106,11 @@ export declare class ContactsService {
         avatarUrl: string | null;
         createdAt: Date;
         updatedAt: Date;
+        customFields: import("@prisma/client/runtime/library").JsonValue;
         whatsappId: string | null;
         phone: string;
         tags: string[];
-        customFields: import("@prisma/client/runtime/library").JsonValue;
+        agentId: string | null;
         optedInAt: Date | null;
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
@@ -88,10 +125,11 @@ export declare class ContactsService {
         avatarUrl: string | null;
         createdAt: Date;
         updatedAt: Date;
+        customFields: import("@prisma/client/runtime/library").JsonValue;
         whatsappId: string | null;
         phone: string;
         tags: string[];
-        customFields: import("@prisma/client/runtime/library").JsonValue;
+        agentId: string | null;
         optedInAt: Date | null;
         optedOutAt: Date | null;
         lastContactedAt: Date | null;

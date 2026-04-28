@@ -6,4 +6,9 @@ export declare class CreateUserDto {
     password: string;
     role?: UserRole;
     organizationId?: string;
+    accountAssignments?: {
+        whatsappAccountId: string;
+    }[];
+    permissions?: any;
+    timezone?: string;
 }

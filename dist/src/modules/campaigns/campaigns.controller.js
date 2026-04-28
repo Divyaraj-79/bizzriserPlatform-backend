@@ -16,13 +16,16 @@ exports.CampaignsController = void 0;
 const common_1 = require("@nestjs/common");
 const campaigns_service_1 = require("./campaigns.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const roles_guard_1 = require("../../common/guards/roles.guard");
+const whatsapp_account_guard_1 = require("../../common/guards/whatsapp-account.guard");
+const permissions_decorator_1 = require("../../common/decorators/permissions.decorator");
 let CampaignsController = class CampaignsController {
     campaignsService;
     constructor(campaignsService) {
         this.campaignsService = campaignsService;
     }
-    async findAll(req) {
-        return this.campaignsService.findAll(req.user.orgId);
+    async findAll(req, accountId) {
+        return this.campaignsService.findAll(req.user.orgId, accountId || req.allowedAccountIds);
     }
     async createBroadcast(req, data) {
         return this.campaignsService.createBroadcast(req.user.orgId, data);
@@ -44,8 +47,9 @@ exports.CampaignsController = CampaignsController;
 __decorate([
     (0, common_1.Get)(),
     __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('accountId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], CampaignsController.prototype, "findAll", null);
 __decorate([
@@ -90,7 +94,8 @@ __decorate([
 ], CampaignsController.prototype, "exportCampaign", null);
 exports.CampaignsController = CampaignsController = __decorate([
     (0, common_1.Controller)('campaigns'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard, whatsapp_account_guard_1.WhatsAppAccountGuard),
+    (0, permissions_decorator_1.Permissions)('view:campaigns'),
     __metadata("design:paramtypes", [campaigns_service_1.CampaignsService])
 ], CampaignsController);
 //# sourceMappingURL=campaigns.controller.js.map

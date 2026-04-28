@@ -1,15 +1,22 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, Query } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { WhatsAppAccountGuard } from '../../common/guards/whatsapp-account.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @Controller('campaigns')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, WhatsAppAccountGuard)
+@Permissions('view:campaigns')
 export class CampaignsController {
   constructor(private readonly campaignsService: CampaignsService) {}
 
   @Get()
-  async findAll(@Req() req: any) {
-    return this.campaignsService.findAll(req.user.orgId);
+  async findAll(
+    @Req() req: any,
+    @Query('accountId') accountId?: string
+  ) {
+    return this.campaignsService.findAll(req.user.orgId, accountId || req.allowedAccountIds);
   }
 
   @Post('broadcast')

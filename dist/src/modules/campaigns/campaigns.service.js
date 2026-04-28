@@ -18,18 +18,30 @@ const common_1 = require("@nestjs/common");
 const bull_1 = require("@nestjs/bull");
 const bullmq_1 = require("bullmq");
 const prisma_service_1 = require("../../prisma/prisma.service");
+const contacts_service_1 = require("../contacts/contacts.service");
 const client_1 = require("@prisma/client");
 let CampaignsService = CampaignsService_1 = class CampaignsService {
     prisma;
+    contactsService;
     campaignQueue;
     logger = new common_1.Logger(CampaignsService_1.name);
-    constructor(prisma, campaignQueue) {
+    constructor(prisma, contactsService, campaignQueue) {
         this.prisma = prisma;
+        this.contactsService = contactsService;
         this.campaignQueue = campaignQueue;
     }
-    async findAll(orgId) {
+    async findAll(orgId, accountContext) {
+        const where = { organizationId: orgId };
+        if (accountContext) {
+            if (Array.isArray(accountContext)) {
+                where.whatsappAccountId = { in: accountContext };
+            }
+            else {
+                where.whatsappAccountId = accountContext;
+            }
+        }
         return this.prisma.campaign.findMany({
-            where: { organizationId: orgId },
+            where,
             orderBy: { createdAt: 'desc' },
             include: {
                 _count: { select: { recipients: true } }
@@ -37,10 +49,16 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         });
     }
     async createBroadcast(orgId, data) {
-        const { name, accountId, templateName, templateParams, contactIds, targetTag, autoSegment, scheduledAt } = data;
+        let { name, accountId, templateName, templateParams, contactIds, targetTag, numbers, tagName, autoSegment, scheduledAt } = data;
         const account = await this.prisma.whatsAppAccount.findUnique({ where: { id: accountId, organizationId: orgId } });
         if (!account)
             throw new common_1.NotFoundException('Account not found');
+        if (numbers && numbers.length > 0) {
+            const effectiveTagName = tagName || `pasted_${Date.now()}`;
+            const contactData = numbers.map(num => ({ phone: num, tags: [effectiveTagName] }));
+            await this.contactsService.atomicBulkImport(orgId, contactData);
+            targetTag = effectiveTagName;
+        }
         let finalContactIds = contactIds || [];
         if (targetTag) {
             const taggedContacts = await this.prisma.contact.findMany({
@@ -90,7 +108,8 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
                     hasAutoSegmented: leftoverContactIds.length > 0,
                     leftoverCount: leftoverContactIds.length,
                     targetTag,
-                    messagingLimitCount: account.messagingLimitCount
+                    messagingLimitCount: account.messagingLimitCount,
+                    templateLanguage: data.templateLanguage || 'en_US'
                 }
             }
         });
@@ -162,7 +181,7 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         return this.prisma.campaign.findUnique({
             where: { id: campaignId, organizationId: orgId },
             include: {
-                recipients: { include: { contact: true }, take: 50 },
+                recipients: { include: { contact: true }, take: 500 },
                 logs: { orderBy: { createdAt: 'desc' }, take: 20 }
             }
         });
@@ -194,8 +213,9 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
 exports.CampaignsService = CampaignsService;
 exports.CampaignsService = CampaignsService = CampaignsService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(1, (0, bull_1.InjectQueue)('campaign-messages')),
+    __param(2, (0, bull_1.InjectQueue)('campaign-messages')),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        contacts_service_1.ContactsService,
         bullmq_1.Queue])
 ], CampaignsService);
 //# sourceMappingURL=campaigns.service.js.map

@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { ContactsService } from './contacts.service';
 import { ContactsController } from './contacts.controller';
+import { CustomFieldsController } from './custom-fields.controller';
+import { CustomFieldsService } from './custom-fields.service';
 import { ImportProcessor } from './import.processor';
 import { PrismaModule } from '../../prisma/prisma.module';
 
@@ -12,8 +14,8 @@ import { PrismaModule } from '../../prisma/prisma.module';
     }),
     PrismaModule,
   ],
-  controllers: [ContactsController],
-  providers: [ContactsService, ImportProcessor],
+  controllers: [ContactsController, CustomFieldsController],
+  providers: [ContactsService, ImportProcessor, CustomFieldsService],
   exports: [ContactsService],
 })
 export class ContactsModule {}

@@ -45,7 +45,7 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
         try {
             const campaign = await this.prisma.campaign.findUnique({
                 where: { id: campaignId },
-                select: { status: true, name: true, totalRecipients: true, sentCount: true, failedCount: true },
+                select: { status: true, name: true, totalRecipients: true, sentCount: true, failedCount: true, metadata: true },
             });
             if (!campaign || campaign.status === 'CANCELLED') {
                 this.logger.warn(`Campaign ${campaignId} is CANCELLED. Skipping message for recipient ${recipientId}.`);
@@ -54,20 +54,60 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
             const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
             if (!contact)
                 throw new Error('Contact not found');
-            const bodyParameters = (templateParams || [])
-                .sort((a, b) => a.index - b.index)
-                .map((p) => {
-                let text = '';
-                if (p.field) {
-                    text = contact[p.field] || contact.customFields?.[p.field] || '';
+            const templateLanguage = campaign.metadata?.templateLanguage;
+            const mappingRecord = await this.prisma.whatsAppTemplate.findFirst({
+                where: {
+                    accountId,
+                    name: templateName,
+                    language: templateLanguage || undefined
                 }
-                else {
-                    text = p.value || '';
-                }
-                return { type: 'text', text };
             });
+            const variableMapping = mappingRecord?.variableMapping || {};
+            const bodyParameters = [];
+            if (Object.keys(variableMapping).length > 0) {
+                const broadcastParams = templateParams || [];
+                Object.keys(variableMapping)
+                    .sort((a, b) => parseInt(a) - parseInt(b))
+                    .forEach(index => {
+                    const broadcastParam = broadcastParams.find(p => String(p.index) === String(index));
+                    let text = '';
+                    if (broadcastParam?.value) {
+                        text = broadcastParam.value;
+                    }
+                    else {
+                        const fieldKey = broadcastParam?.field || variableMapping[index];
+                        if (fieldKey.startsWith('custom:')) {
+                            const cfKey = fieldKey.replace('custom:', '');
+                            text = contact.customFields?.[cfKey] || '';
+                        }
+                        else if (fieldKey.startsWith('var:')) {
+                            const varKey = fieldKey.replace('var:', '');
+                            text = templateParams?.[varKey] || templateParams?.find?.((p) => p.name === varKey)?.value || '';
+                        }
+                        else if (fieldKey) {
+                            text = contact[fieldKey] || '';
+                        }
+                    }
+                    bodyParameters.push({ type: 'text', text: String(text || '') });
+                });
+            }
+            else {
+                (templateParams || [])
+                    .sort((a, b) => a.index - b.index)
+                    .forEach((p) => {
+                    let text = '';
+                    if (p.field) {
+                        text = contact[p.field] || contact.customFields?.[p.field] || '';
+                    }
+                    else {
+                        text = p.value || '';
+                    }
+                    bodyParameters.push({ type: 'text', text: String(text || '') });
+                });
+            }
             const components = [{ type: 'body', parameters: bodyParameters }];
-            await this.messagingService.sendTemplateMessage(orgId, accountId, contactId, templateName, 'en_US', components, { campaignId });
+            const finalLanguage = templateLanguage || mappingRecord?.language || 'en_US';
+            await this.messagingService.sendTemplateMessage(orgId, accountId, contactId, templateName, finalLanguage, components, { campaignId });
             const updatedCampaign = await this.prisma.campaign.update({
                 where: { id: campaignId },
                 data: {

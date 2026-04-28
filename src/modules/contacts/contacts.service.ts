@@ -22,6 +22,36 @@ export class ContactsService {
     return clean.replace(/\D/g, '');
   }
 
+  async updateContact(orgId: string, contactId: string, data: any) {
+    console.log('[ContactsService] updateContact request:', { orgId, contactId, data });
+    const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
+    if (!contact || contact.organizationId !== orgId) {
+      console.error('[ContactsService] Contact not found or org mismatch:', { contactId, orgId });
+      throw new NotFoundException('Contact not found');
+    }
+    
+    // Only update specified fields
+    const { firstName, lastName, email, phone, status, tags } = data;
+    let cleanPhone = phone ? this.sanitizePhone(phone) : undefined;
+    
+    console.log('[ContactsService] Executing prisma update with data:', { firstName, lastName, email, cleanPhone, status, tags });
+    
+    const result = await this.prisma.contact.update({
+      where: { id: contactId },
+      data: {
+        ...(firstName !== undefined && { firstName }),
+        ...(lastName !== undefined && { lastName }),
+        ...(email !== undefined && { email }),
+        ...(cleanPhone !== undefined && { phone: cleanPhone }),
+        ...(status !== undefined && { status }),
+        ...(tags !== undefined && { tags }),
+      }
+    });
+
+    console.log('[ContactsService] update success:', result.id);
+    return result;
+  }
+
   async createOrUpdate(orgId: string, phone: string, data: any) {
     this.logger.log(`[ENTRY] createOrUpdate called for Org: ${orgId}, Phone: ${phone}`);
     const cleanPhone = this.sanitizePhone(phone);
@@ -180,11 +210,79 @@ export class ContactsService {
     };
   }
 
-  async findAll(orgId: string) {
-    return this.prisma.contact.findMany({
-      where: { organizationId: orgId },
-      orderBy: { updatedAt: 'desc' }
-    });
+  /**
+   * Fetches contacts for an organization with support for server-side pagination and filtering.
+   */
+  async findAll(orgId: string, options: { 
+    page: number; 
+    limit: number; 
+    search?: string; 
+    status?: string; 
+    tag?: string;
+  }) {
+    const { page, limit, search, status, tag } = options;
+    const skip = (page - 1) * limit;
+
+    // Building the where clause dynamically
+    let finalOrgId = orgId;
+    
+    // Fallback: If orgId is missing, it's a critical failure for strict filtering.
+    // NUCLEAR FIX: For SuperAdmins, if orgId is missing, we allow a global result.
+    if (!finalOrgId) {
+      this.logger.warn('[WARNING] ContactsService.findAll called without orgId. Performing potential GLOBAL search.');
+    }
+
+    const where: any = finalOrgId ? { organizationId: finalOrgId } : {};
+
+    // Deep diagnostic log
+    this.logger.debug(`[DEBUG] ContactsService.findAll - Org: ${finalOrgId}, Where: ${JSON.stringify(where)}, Options: ${JSON.stringify(options)}`);
+
+    // DIAGNOSTIC LOGGING
+    try {
+      const logMsg = `[${new Date().toISOString()}] FIND_ALL: Org: ${orgId}, Options: ${JSON.stringify(options)}, Where: ${JSON.stringify(where)}\n`;
+      require('fs').appendFileSync('D:/BizzRiser/BizzRiserPlatform/backend/contacts_debug.log', logMsg);
+    } catch (e) {}
+
+    if (status && status !== 'ALL' && status !== 'All Statuses') {
+      where.status = status.toUpperCase();
+    }
+
+    if (tag && tag !== 'All Labels') {
+      where.tags = { has: tag };
+    }
+
+    if (search) {
+      const query = search.toLowerCase();
+      where.OR = [
+        { firstName: { contains: query, mode: 'insensitive' } },
+        { lastName: { contains: query, mode: 'insensitive' } },
+        { phone: { contains: query, mode: 'insensitive' } },
+        { email: { contains: query, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total, activeCount, blockedCount] = await Promise.all([
+      this.prisma.contact.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { updatedAt: 'desc' },
+      }),
+      this.prisma.contact.count({ where }),
+      this.prisma.contact.count({ where: { organizationId: orgId, status: 'ACTIVE' } }),
+      this.prisma.contact.count({ where: { organizationId: orgId, status: 'BLOCKED' } }),
+    ]);
+
+    return {
+      data,
+      total,
+      activeCount,
+      blockedCount,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      debugOrgId: orgId, // TEMP DEBUG
+    };
   }
 
   async getTagsAnalytics(orgId: string) {

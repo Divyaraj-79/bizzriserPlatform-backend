@@ -1,19 +1,22 @@
-import { Controller, Get, Post, Body, UseGuards, Req, ForbiddenException, Param, Delete, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req, ForbiddenException, Param, Delete, Patch, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { UserRole } from '@prisma/client';
 
 import { CreateUserDto } from './dto/create-user.dto';
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
   @Roles(UserRole.ORG_ADMIN, UserRole.SUPER_ADMIN)
+  @Permissions('view:manage-users')
   async findAll(@Req() req: any) {
     // If Super Admin, they might want all users (global), 
     // but for the Staff page we usually want the current org.
@@ -23,16 +26,18 @@ export class UsersController {
 
   @Post()
   @Roles(UserRole.ORG_ADMIN, UserRole.SUPER_ADMIN)
+  @Permissions('manage:team')
   async create(@Req() req: any, @Body() createUserDto: CreateUserDto) {
     const currentUser = req.user;
 
-    // RBAC: Org Admin can only create users for their own organization
-    if (currentUser.role === UserRole.ORG_ADMIN) {
+    // RBAC: Ensure organizationId is assigned from the current user's context
+    if (currentUser.orgId) {
       createUserDto.organizationId = currentUser.orgId;
-      // Org Admin cannot create Super Admins
-      if (createUserDto.role === UserRole.SUPER_ADMIN) {
-        throw new ForbiddenException('Cannot create Super Admin');
-      }
+    }
+
+    // RBAC: Org Admin cannot create Super Admins
+    if (currentUser.role === UserRole.ORG_ADMIN && createUserDto.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Cannot create Super Admin');
     }
 
     return this.usersService.create(createUserDto);
@@ -43,8 +48,20 @@ export class UsersController {
     return this.usersService.findOne(req.user.userId);
   }
 
+  @Patch(':id')
+  @Roles(UserRole.ORG_ADMIN, UserRole.SUPER_ADMIN)
+  @Permissions('manage:team')
+  async updateUser(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { accountAssignments?: any[]; status?: string; firstName?: string; lastName?: string; permissions?: any; timezone?: string },
+  ) {
+    return this.usersService.updateUser(id, req.user.orgId, body);
+  }
+
   @Delete(':id')
   @Roles(UserRole.ORG_ADMIN, UserRole.SUPER_ADMIN)
+  @Permissions('manage:team')
   async remove(@Req() req: any, @Param('id') id: string) {
     // RBAC: Org Admin can only remove users from their own organization
     return this.usersService.remove(id, req.user.orgId);
@@ -63,5 +80,20 @@ export class UsersController {
     }
 
     return this.usersService.updateRole(id, req.user.orgId, role);
+  }
+
+  @Get('me/permissions')
+  async getMyPermissions(@Req() req: any) {
+    // 1. Fetch fresh user from DB to avoid staleness in JWT
+    const user = await this.usersService.findOne(req.user.sub);
+    const userPermissions = user.permissions || {};
+    
+    // STRICT GLOBAL PERMISSIONS ONLY (Role System Removed)
+    const finalPermissions: Record<string, boolean> = { ...userPermissions };
+    
+    // Dashboard is common to all
+    finalPermissions['dashboard:view'] = true;
+
+    return finalPermissions;
   }
 }

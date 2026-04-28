@@ -46,14 +46,24 @@ exports.UsersService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const bcrypt = __importStar(require("bcryptjs"));
+const activity_logger_service_1 = require("../activity-logs/activity-logger.service");
 let UsersService = class UsersService {
     prisma;
-    constructor(prisma) {
+    activityLogger;
+    constructor(prisma, activityLogger) {
         this.prisma = prisma;
+        this.activityLogger = activityLogger;
     }
     async findOne(id) {
         const user = await this.prisma.user.findUnique({
             where: { id },
+            include: {
+                accountAccess: {
+                    include: {
+                        whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
+                    }
+                }
+            },
         });
         if (!user)
             throw new common_1.NotFoundException(`User with ID ${id} not found`);
@@ -62,54 +72,115 @@ let UsersService = class UsersService {
     async findByEmail(email) {
         return this.prisma.user.findUnique({
             where: { email },
+            include: {
+                accountAccess: {
+                    include: {
+                        whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
+                    }
+                }
+            },
         });
     }
     async update(id, data) {
-        return this.prisma.user.update({
-            where: { id },
-            data,
-        });
+        return this.prisma.user.update({ where: { id }, data });
     }
     async findAllByOrganization(organizationId) {
         return this.prisma.user.findMany({
             where: { organizationId },
+            include: {
+                accountAccess: {
+                    include: {
+                        whatsappAccount: { select: { id: true, displayName: true } }
+                    }
+                }
+            },
+            orderBy: { createdAt: 'asc' },
         });
     }
     async create(data) {
-        const passwordHash = await bcrypt.hash(data.password, 10);
-        const { password, ...userData } = data;
-        return this.prisma.user.create({
+        const { password, accountAssignments, ...userData } = data;
+        const passwordHash = await bcrypt.hash(password, 10);
+        const user = await this.prisma.user.create({
             data: {
-                ...userData,
+                email: userData.email,
                 passwordHash,
+                firstName: userData.firstName,
+                lastName: userData.lastName || '',
+                role: userData.role || 'AGENT',
+                organization: { connect: { id: userData.organizationId } },
+                status: userData.status || 'ACTIVE',
+                timezone: userData.timezone || 'UTC',
+                permissions: userData.permissions || {},
+                accountAccess: {
+                    create: accountAssignments?.map((a) => ({
+                        whatsappAccountId: a.whatsappAccountId
+                    })) || []
+                }
+            },
+        });
+        await this.activityLogger.log(userData.organizationId, 'member_created', { email: userData.email, role: userData.role || 'AGENT' });
+        return user;
+    }
+    async updateUser(id, organizationId, data) {
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId } });
+        if (!user)
+            throw new common_1.NotFoundException('User not found in this organization');
+        const updateData = {};
+        if (data.firstName !== undefined)
+            updateData.firstName = data.firstName;
+        if (data.lastName !== undefined)
+            updateData.lastName = data.lastName;
+        if (data.status !== undefined)
+            updateData.status = data.status;
+        if (data.permissions !== undefined)
+            updateData.permissions = data.permissions;
+        if (data.timezone !== undefined)
+            updateData.timezone = data.timezone;
+        if (data.accountAssignments) {
+            await this.prisma.whatsAppAccountAccess.deleteMany({ where: { userId: id } });
+            updateData.accountAccess = {
+                create: data.accountAssignments.map((a) => ({
+                    whatsappAccountId: a.whatsappAccountId
+                }))
+            };
+        }
+        return this.prisma.user.update({
+            where: { id },
+            data: updateData,
+            include: {
+                accountAccess: true
             },
         });
     }
     async remove(id, organizationId) {
-        const user = await this.prisma.user.findFirst({
-            where: { id, organizationId },
-        });
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId } });
         if (!user)
             throw new common_1.NotFoundException('User not found in this organization');
-        return this.prisma.user.delete({
-            where: { id },
-        });
+        const deletedUser = await this.prisma.user.delete({ where: { id } });
+        await this.activityLogger.log(organizationId, 'member_removed', { email: user.email, userId: id });
+        return deletedUser;
     }
     async updateRole(id, organizationId, role) {
-        const user = await this.prisma.user.findFirst({
-            where: { id, organizationId },
-        });
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId } });
         if (!user)
             throw new common_1.NotFoundException('User not found in this organization');
-        return this.prisma.user.update({
-            where: { id },
-            data: { role },
+        return this.prisma.user.update({ where: { id }, data: { role } });
+    }
+    async getAccountAccess(userId, whatsappAccountId) {
+        return this.prisma.whatsAppAccountAccess.findUnique({
+            where: {
+                userId_whatsappAccountId: {
+                    userId,
+                    whatsappAccountId,
+                },
+            }
         });
     }
 };
 exports.UsersService = UsersService;
 exports.UsersService = UsersService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        activity_logger_service_1.ActivityLoggerService])
 ], UsersService);
 //# sourceMappingURL=users.service.js.map

@@ -1,0 +1,33 @@
+import { Queue } from 'bullmq';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { ChatbotSession, Contact, Chatbot } from '@prisma/client';
+import { WhatsappService } from '../../whatsapp/whatsapp.service';
+export declare class FlowExecutorService {
+    private prisma;
+    private whatsappService;
+    private delayQueue;
+    private readonly logger;
+    constructor(prisma: PrismaService, whatsappService: WhatsappService, delayQueue: Queue);
+    startSession(orgId: string, accountId: string, chatbot: Chatbot, contact: Contact, messageData: any): Promise<void>;
+    resumeSession(session: ChatbotSession, contact: Contact, messageData: any): Promise<void>;
+    private executeNode;
+    private handleSendText;
+    private handleAskQuestion;
+    private handleSendButton;
+    private handleSendList;
+    private handleSendMedia;
+    private handleSendTemplate;
+    private handleDelay;
+    private handleCondition;
+    private evaluateCondition;
+    private handleJumpTo;
+    private handleUpdateField;
+    private handleUpdateLabel;
+    private handleAssignTeam;
+    private handleResolveConversation;
+    private handleHttpApi;
+    resolveVariables(template: string, session: ChatbotSession, contact: Contact, messageData: any): Promise<string>;
+    private advanceFromNode;
+    private markCompleted;
+    private extractJsonPath;
+}

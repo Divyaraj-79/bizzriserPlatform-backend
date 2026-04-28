@@ -17,7 +17,9 @@ const common_1 = require("@nestjs/common");
 const users_service_1 = require("./users.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../../common/guards/roles.guard");
+const permissions_guard_1 = require("../../common/guards/permissions.guard");
 const roles_decorator_1 = require("../../common/decorators/roles.decorator");
+const permissions_decorator_1 = require("../../common/decorators/permissions.decorator");
 const client_1 = require("@prisma/client");
 const create_user_dto_1 = require("./dto/create-user.dto");
 let UsersController = class UsersController {
@@ -30,16 +32,19 @@ let UsersController = class UsersController {
     }
     async create(req, createUserDto) {
         const currentUser = req.user;
-        if (currentUser.role === client_1.UserRole.ORG_ADMIN) {
+        if (currentUser.orgId) {
             createUserDto.organizationId = currentUser.orgId;
-            if (createUserDto.role === client_1.UserRole.SUPER_ADMIN) {
-                throw new common_1.ForbiddenException('Cannot create Super Admin');
-            }
+        }
+        if (currentUser.role === client_1.UserRole.ORG_ADMIN && createUserDto.role === client_1.UserRole.SUPER_ADMIN) {
+            throw new common_1.ForbiddenException('Cannot create Super Admin');
         }
         return this.usersService.create(createUserDto);
     }
     async getProfile(req) {
         return this.usersService.findOne(req.user.userId);
+    }
+    async updateUser(req, id, body) {
+        return this.usersService.updateUser(id, req.user.orgId, body);
     }
     async remove(req, id) {
         return this.usersService.remove(id, req.user.orgId);
@@ -50,11 +55,19 @@ let UsersController = class UsersController {
         }
         return this.usersService.updateRole(id, req.user.orgId, role);
     }
+    async getMyPermissions(req) {
+        const user = await this.usersService.findOne(req.user.sub);
+        const userPermissions = user.permissions || {};
+        const finalPermissions = { ...userPermissions };
+        finalPermissions['dashboard:view'] = true;
+        return finalPermissions;
+    }
 };
 exports.UsersController = UsersController;
 __decorate([
     (0, common_1.Get)(),
     (0, roles_decorator_1.Roles)(client_1.UserRole.ORG_ADMIN, client_1.UserRole.SUPER_ADMIN),
+    (0, permissions_decorator_1.Permissions)('view:manage-users'),
     __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -63,6 +76,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)(),
     (0, roles_decorator_1.Roles)(client_1.UserRole.ORG_ADMIN, client_1.UserRole.SUPER_ADMIN),
+    (0, permissions_decorator_1.Permissions)('manage:team'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -77,8 +91,20 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "getProfile", null);
 __decorate([
+    (0, common_1.Patch)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.UserRole.ORG_ADMIN, client_1.UserRole.SUPER_ADMIN),
+    (0, permissions_decorator_1.Permissions)('manage:team'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "updateUser", null);
+__decorate([
     (0, common_1.Delete)(':id'),
     (0, roles_decorator_1.Roles)(client_1.UserRole.ORG_ADMIN, client_1.UserRole.SUPER_ADMIN),
+    (0, permissions_decorator_1.Permissions)('manage:team'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
@@ -95,9 +121,16 @@ __decorate([
     __metadata("design:paramtypes", [Object, String, String]),
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "updateRole", null);
+__decorate([
+    (0, common_1.Get)('me/permissions'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "getMyPermissions", null);
 exports.UsersController = UsersController = __decorate([
     (0, common_1.Controller)('users'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [users_service_1.UsersService])
 ], UsersController);
 //# sourceMappingURL=users.controller.js.map

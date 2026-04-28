@@ -14,10 +14,13 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WhatsappController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const whatsapp_service_1 = require("./whatsapp.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_decorator_1 = require("../../common/decorators/roles.decorator");
+const permissions_decorator_1 = require("../../common/decorators/permissions.decorator");
 const roles_guard_1 = require("../../common/guards/roles.guard");
+const whatsapp_account_guard_1 = require("../../common/guards/whatsapp-account.guard");
 const client_1 = require("@prisma/client");
 let WhatsappController = class WhatsappController {
     whatsappService;
@@ -28,13 +31,17 @@ let WhatsappController = class WhatsappController {
         return this.whatsappService.connectAccount(req.user.orgId, data);
     }
     async listAccounts(req) {
-        return this.whatsappService.listAccounts(req.user.orgId);
+        return this.whatsappService.listAccounts(req.user.orgId, req.user);
     }
-    async getTemplates(req, id) {
-        return this.whatsappService.getTemplates(req.user.orgId, id);
+    async getTemplates(req, id, sync) {
+        const forceSync = sync === 'true';
+        return this.whatsappService.getTemplates(req.user.orgId, id, forceSync);
     }
     async createTemplate(req, id, data) {
         return this.whatsappService.createTemplate(req.user.orgId, id, data);
+    }
+    async uploadTemplateMedia(req, id, file) {
+        return this.whatsappService.uploadTemplateMedia(req.user.orgId, id, file);
     }
     async updateTemplate(req, id, templateId, data) {
         return this.whatsappService.updateTemplate(req.user.orgId, id, templateId, data);
@@ -77,8 +84,9 @@ __decorate([
     (0, common_1.Get)('accounts/:id/templates'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Query)('sync')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:paramtypes", [Object, String, String]),
     __metadata("design:returntype", Promise)
 ], WhatsappController.prototype, "getTemplates", null);
 __decorate([
@@ -90,6 +98,16 @@ __decorate([
     __metadata("design:paramtypes", [Object, String, Object]),
     __metadata("design:returntype", Promise)
 ], WhatsappController.prototype, "createTemplate", null);
+__decorate([
+    (0, common_1.Post)('accounts/:id/templates/upload'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], WhatsappController.prototype, "uploadTemplateMedia", null);
 __decorate([
     (0, common_1.Patch)('accounts/:id/templates/:templateId'),
     __param(0, (0, common_1.Req)()),
@@ -136,7 +154,8 @@ exports.WhatsappController = WhatsappController = __decorate([
         path: 'whatsapp',
         version: '1',
     }),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard, whatsapp_account_guard_1.WhatsAppAccountGuard),
+    (0, permissions_decorator_1.Permissions)('view:whatsapp-account'),
     __metadata("design:paramtypes", [whatsapp_service_1.WhatsappService])
 ], WhatsappController);
 //# sourceMappingURL=whatsapp.controller.js.map

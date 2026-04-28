@@ -457,11 +457,202 @@ export class WhatsappService {
   }
 
   /**
+   * Sends media by a public URL (for use in chatbot flows).
+   * Supports both URL-based and pre-uploaded mediaId delivery.
+   */
+  async sendMediaByUrl(
+    orgId: string,
+    accountId: string,
+    to: string,
+    mediaType: 'image' | 'video' | 'document' | 'audio',
+    mediaUrl: string,
+    caption?: string,
+    filename?: string,
+  ) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const mediaObj: any = { link: mediaUrl };
+    if (caption && (mediaType === 'image' || mediaType === 'video')) {
+      mediaObj.caption = caption;
+    }
+    if (filename && mediaType === 'document') {
+      mediaObj.filename = filename;
+    }
+
+    const payload: any = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: mediaType,
+      [mediaType]: mediaObj,
+    };
+
+    try {
+      this.logger.log(`Sending WhatsApp ${mediaType} (URL) for org ${orgId} to ${to}`);
+      const response = await axios.post(url, payload, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to send ${mediaType} URL message via account ${accountId}`);
+    }
+  }
+
+  /**
+   * Sends an interactive message with up to 3 quick-reply buttons.
+   * Used by the SendButton node in chatbot flows.
+   */
+  async sendInteractiveButtons(
+    orgId: string,
+    accountId: string,
+    to: string,
+    bodyText: string,
+    buttons: Array<{ id: string; title: string }>,
+    headerText?: string,
+    footerText?: string,
+  ) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const payload: any = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: bodyText },
+        action: {
+          buttons: buttons.slice(0, 3).map((btn) => ({
+            type: 'reply',
+            reply: { id: btn.id, title: btn.title.substring(0, 20) },
+          })),
+        },
+      },
+    };
+
+    if (headerText) {
+      payload.interactive.header = { type: 'text', text: headerText };
+    }
+    if (footerText) {
+      payload.interactive.footer = { text: footerText };
+    }
+
+    try {
+      this.logger.log(`Sending WhatsApp interactive buttons for org ${orgId} to ${to}`);
+      const response = await axios.post(url, payload, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to send interactive buttons via account ${accountId}`);
+    }
+  }
+
+  /**
+   * Sends an interactive list menu message.
+   * Used by the SendList node in chatbot flows.
+   */
+  async sendInteractiveList(
+    orgId: string,
+    accountId: string,
+    to: string,
+    bodyText: string,
+    buttonText: string,
+    sections: Array<{
+      title: string;
+      rows: Array<{ id: string; title: string; description?: string }>;
+    }>,
+    headerText?: string,
+    footerText?: string,
+  ) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const payload: any = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        body: { text: bodyText },
+        action: {
+          button: buttonText.substring(0, 20),
+          sections: sections.map((s) => ({
+            title: s.title,
+            rows: s.rows.map((r) => ({
+              id: r.id,
+              title: r.title.substring(0, 24),
+              ...(r.description ? { description: r.description.substring(0, 72) } : {}),
+            })),
+          })),
+        },
+      },
+    };
+
+    if (headerText) {
+      payload.interactive.header = { type: 'text', text: headerText };
+    }
+    if (footerText) {
+      payload.interactive.footer = { text: footerText };
+    }
+
+    try {
+      this.logger.log(`Sending WhatsApp interactive list for org ${orgId} to ${to}`);
+      const response = await axios.post(url, payload, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to send interactive list via account ${accountId}`);
+    }
+  }
+
+
+  /**
    * Lists all WhatsApp accounts belonging to an organization.
    */
-  async listAccounts(orgId: string) {
+  /**
+   * Lists WhatsApp accounts belonging to an organization, filtered by user assignment.
+   */
+  async listAccounts(orgId: string, user: { role: string; sub: string }) {
+    const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN';
+
     return this.prisma.whatsAppAccount.findMany({
-      where: { organizationId: orgId },
+      where: {
+        organizationId: orgId,
+        ...(isAdmin ? {} : {
+          accountAccess: {
+            some: { userId: user.sub }
+          }
+        })
+      },
       select: {
         id: true,
         phoneNumberId: true,
@@ -476,19 +667,30 @@ export class WhatsappService {
   }
 
   /**
-   * Fetches message templates for a WhatsApp Business Account from Meta.
+   * Fetches message templates for a WhatsApp Business Account.
+   * By default, returns locally cached templates. If forceSync is true, fetches from Meta.
    */
-  async getTemplates(orgId: string, accountId: string) {
+  async getTemplates(orgId: string, accountId: string, forceSync = false) {
     const account = await this.prisma.whatsAppAccount.findUnique({
       where: { id: accountId, organizationId: orgId },
     });
     if (!account) throw new ConflictException('Account not found');
 
+    // 1. If not forcing a sync, return from local database immediately (FAST)
+    if (!forceSync) {
+      this.logger.log(`[Templates] Fetching cached templates for account ${accountId} (Local DB)`);
+      return this.prisma.whatsAppTemplate.findMany({
+        where: { accountId, organizationId: orgId, isActive: true },
+        orderBy: { updatedAt: 'desc' }
+      });
+    }
+
+    // 2. Otherwise, fetch from Meta Graph API (SLOW)
     const { token: validatedToken } = await this.getValidToken(account);
     const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;
 
     try {
-      this.logger.log(`Fetching WhatsApp templates for org ${orgId} via account ${accountId} (WABA: ${account.wabaId})`);
+      this.logger.log(`[Templates] Forcing synchronization from Meta for account ${accountId}...`);
       const response = await axios.get(url, {
         params: { limit: 100 },
         headers: {
@@ -497,8 +699,9 @@ export class WhatsappService {
       });
       
       const metaTemplates = response.data.data || [];
+      this.logger.log(`[Templates] Received ${metaTemplates.length} templates from Meta API.`);
 
-      // 2. Auto-sync meta templates into local DB for background processing safety
+      // 3. Sync meta templates into local DB
       for (const mt of metaTemplates) {
          await this.prisma.whatsAppTemplate.upsert({
             where: {
@@ -514,27 +717,25 @@ export class WhatsappService {
                name: mt.name,
                language: mt.language,
                category: mt.category,
+               status: mt.status || 'APPROVED',
                components: mt.components,
                variableMapping: {},
             },
             update: {
                category: mt.category,
-               components: mt.components
+               status: mt.status || 'APPROVED',
+               components: mt.components,
+               isActive: true
             }
          });
       }
 
-      // 3. Enrich response with local mappings (e.g. variable configurations)
-      const finalTemplates = await this.prisma.whatsAppTemplate.findMany({
-         where: { accountId, organizationId: orgId }
-      });
+      this.logger.log(`[Templates] Cache update complete for account ${accountId}.`);
 
-      return metaTemplates.map((mt: any) => {
-        const local = finalTemplates.find(lt => lt.name === mt.name && lt.language === mt.language);
-        return {
-          ...mt,
-          variableMapping: local?.variableMapping || {},
-        };
+      // 4. Return the refreshed local list
+      return this.prisma.whatsAppTemplate.findMany({
+         where: { accountId, organizationId: orgId, isActive: true },
+         orderBy: { updatedAt: 'desc' }
       });
     } catch (error) {
       this.handleError(error, `Failed to fetch and sync templates via account ${accountId}`);

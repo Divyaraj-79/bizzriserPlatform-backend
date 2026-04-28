@@ -38,7 +38,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       error = 'DatabaseError';
     } else if (exception instanceof Prisma.PrismaClientValidationError) {
       status = HttpStatus.BAD_REQUEST;
-      message = 'Invalid data provided';
+      message = exception.message.split('\n').pop() || 'Invalid data provided';
       error = 'ValidationError';
     } else if (exception instanceof Error) {
       message = exception.message;

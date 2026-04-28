@@ -13,6 +13,7 @@ const campaigns_service_1 = require("./campaigns.service");
 const campaign_processor_1 = require("./campaign.processor");
 const messaging_module_1 = require("../messaging/messaging.module");
 const prisma_module_1 = require("../../prisma/prisma.module");
+const contacts_module_1 = require("../contacts/contacts.module");
 const campaigns_controller_1 = require("./campaigns.controller");
 let CampaignsModule = class CampaignsModule {
 };
@@ -25,6 +26,7 @@ exports.CampaignsModule = CampaignsModule = __decorate([
             }),
             messaging_module_1.MessagingModule,
             prisma_module_1.PrismaModule,
+            contacts_module_1.ContactsModule,
         ],
         controllers: [campaigns_controller_1.CampaignsController],
         providers: [campaigns_service_1.CampaignsService, campaign_processor_1.CampaignProcessor],

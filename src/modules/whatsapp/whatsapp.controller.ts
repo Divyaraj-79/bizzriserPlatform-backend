@@ -1,16 +1,19 @@
-import { Controller, Post, Get, Body, UseGuards, Req, Version, Param, Patch, Delete, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Req, Version, Param, Patch, Delete, UseInterceptors, UploadedFile, Query } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WhatsappService } from './whatsapp.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { WhatsAppAccountGuard } from '../../common/guards/whatsapp-account.guard';
 import { UserRole } from '@prisma/client';
 
 @Controller({
   path: 'whatsapp',
   version: '1',
 })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, WhatsAppAccountGuard)
+@Permissions('view:whatsapp-account')
 export class WhatsappController {
   constructor(private readonly whatsappService: WhatsappService) {}
 
@@ -26,12 +29,13 @@ export class WhatsappController {
 
   @Get('accounts')
   async listAccounts(@Req() req: any) {
-    return this.whatsappService.listAccounts(req.user.orgId);
+    return this.whatsappService.listAccounts(req.user.orgId, req.user);
   }
 
   @Get('accounts/:id/templates')
-  async getTemplates(@Req() req: any, @Param('id') id: string) {
-    return this.whatsappService.getTemplates(req.user.orgId, id);
+  async getTemplates(@Req() req: any, @Param('id') id: string, @Query('sync') sync?: string) {
+    const forceSync = sync === 'true';
+    return this.whatsappService.getTemplates(req.user.orgId, id, forceSync);
   }
 
   @Post('accounts/:id/templates')

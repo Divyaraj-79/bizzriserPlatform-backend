@@ -4,22 +4,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 export declare class UsersController {
     private readonly usersService;
     constructor(usersService: UsersService);
-    findAll(req: any): Promise<{
-        id: string;
-        organizationId: string;
-        email: string;
-        passwordHash: string;
-        firstName: string;
-        lastName: string;
-        role: import(".prisma/client").$Enums.UserRole;
-        status: import(".prisma/client").$Enums.UserStatus;
-        avatarUrl: string | null;
-        lastIp: string | null;
-        lastLoginAt: Date | null;
-        refreshToken: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-    }[]>;
+    findAll(req: any): Promise<any[]>;
     create(req: any, createUserDto: CreateUserDto): Promise<{
         id: string;
         organizationId: string;
@@ -33,25 +18,20 @@ export declare class UsersController {
         lastIp: string | null;
         lastLoginAt: Date | null;
         refreshToken: string | null;
+        timezone: string;
+        permissions: import("@prisma/client/runtime/library").JsonValue;
         createdAt: Date;
         updatedAt: Date;
     }>;
-    getProfile(req: any): Promise<{
-        id: string;
-        organizationId: string;
-        email: string;
-        passwordHash: string;
-        firstName: string;
-        lastName: string;
-        role: import(".prisma/client").$Enums.UserRole;
-        status: import(".prisma/client").$Enums.UserStatus;
-        avatarUrl: string | null;
-        lastIp: string | null;
-        lastLoginAt: Date | null;
-        refreshToken: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-    } | null>;
+    getProfile(req: any): Promise<any>;
+    updateUser(req: any, id: string, body: {
+        accountAssignments?: any[];
+        status?: string;
+        firstName?: string;
+        lastName?: string;
+        permissions?: any;
+        timezone?: string;
+    }): Promise<any>;
     remove(req: any, id: string): Promise<{
         id: string;
         organizationId: string;
@@ -65,6 +45,8 @@ export declare class UsersController {
         lastIp: string | null;
         lastLoginAt: Date | null;
         refreshToken: string | null;
+        timezone: string;
+        permissions: import("@prisma/client/runtime/library").JsonValue;
         createdAt: Date;
         updatedAt: Date;
     }>;
@@ -81,7 +63,10 @@ export declare class UsersController {
         lastIp: string | null;
         lastLoginAt: Date | null;
         refreshToken: string | null;
+        timezone: string;
+        permissions: import("@prisma/client/runtime/library").JsonValue;
         createdAt: Date;
         updatedAt: Date;
     }>;
+    getMyPermissions(req: any): Promise<Record<string, boolean>>;
 }

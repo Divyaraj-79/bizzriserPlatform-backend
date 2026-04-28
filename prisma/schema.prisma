@@ -92,6 +92,50 @@ enum WebhookEventType {
   TEMPLATE_STATUS_UPDATE
 }
 
+enum ChatbotChannel {
+  WHATSAPP
+  INSTAGRAM
+  WEBCHAT
+}
+
+enum ChatbotTriggerType {
+  MESSAGE_RECEIVED
+  NEW_CONVERSATION
+  NO_MATCH_REPLY
+  RECEIVE_WEBHOOK
+  TRIGGER_SEQUENCE
+  KEYWORD_MATCH
+  COMMENT_ON_POST
+  STORY_REPLY
+}
+
+enum ChatbotStatus {
+  ACTIVE
+  INACTIVE
+  DRAFT
+}
+
+enum ChatbotSessionStatus {
+  ACTIVE
+  WAITING_REPLY
+  COMPLETED
+  FAILED
+  TIMED_OUT
+}
+
+enum SequenceStatus {
+  ACTIVE
+  INACTIVE
+  DRAFT
+}
+
+enum SequenceEnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
 enum SubscriptionPackage {
   FREE
   BASIC
@@ -127,6 +171,12 @@ model Organization {
   conversations   Conversation[]
   templates       WhatsAppTemplate[]
   webhookEvents   WebhookEvent[]
+  customFields    CustomField[]
+  chatbots        Chatbot[]
+  sessions        ChatbotSession[]
+  sequences       Sequence[]
+  enrollments     SequenceEnrollment[]
+  googleCredentials GoogleCredential[]
 
   @@map("organizations")
 }
@@ -144,14 +194,35 @@ model User {
   lastIp         String?
   lastLoginAt    DateTime?
   refreshToken   String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  timezone       String                   @default("UTC")
+  permissions    Json                     @default("{}")
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  accountAccess  WhatsAppAccountAccess[]
+  activityLogs   ActivityLog[]
+  googleCredentials GoogleCredential[]
 
   @@index([organizationId])
   @@index([email])
   @@map("users")
+}
+
+model WhatsAppAccountAccess {
+  id                String   @id @default(uuid())
+  userId            String
+  whatsappAccountId String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount   WhatsAppAccount @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, whatsappAccountId])
+  @@index([userId])
+  @@index([whatsappAccountId])
+  @@map("whatsapp_account_access")
 }
 
 model WhatsAppAccount {
@@ -176,6 +247,7 @@ model WhatsAppAccount {
   conversations Conversation[]
   contacts     Contact[]       @relation("WhatsAppContacts")
   templates    WhatsAppTemplate[]
+  accountAccess WhatsAppAccountAccess[]
 
   @@index([organizationId])
   @@index([wabaId])
@@ -206,11 +278,29 @@ model Contact {
   conversations   Conversation[]
   campaignRecipients CampaignRecipient[]
   whatsappAccounts WhatsAppAccount[] @relation("WhatsAppContacts")
+  sessions        ChatbotSession[]
+  enrollments     SequenceEnrollment[]
 
   @@unique([organizationId, phone])
   @@index([organizationId])
   @@index([phone])
   @@map("contacts")
+}
+
+model CustomField {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  type           String       @default("TEXT")
+  isRequired     Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("custom_fields")
 }
 
 model Message {
@@ -363,6 +453,7 @@ model WhatsAppTemplate {
   name            String   // Meta template name
   language        String
   category        String
+  status          String   @default("APPROVED") // APPROVED, REJECTED, PENDING, etc.
   components      Json     // The raw components sent to Meta
   variableMapping Json     // e.g. { "1": "firstName", "2": "email", "3": "custom:EnglishMarks" }
   isActive        Boolean  @default(true)
@@ -376,4 +467,147 @@ model WhatsAppTemplate {
   @@index([organizationId])
   @@index([accountId])
   @@map("whatsapp_templates")
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  details   Json     @default("{}")
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@map("activity_logs")
+}
+
+model Chatbot {
+  id             String             @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  channel        ChatbotChannel
+  triggerType    ChatbotTriggerType
+  status         ChatbotStatus      @default(DRAFT)
+  keywords       String[]           @default([])
+  flowData       Json               @default("{}")
+  executions     Int                @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sessions       ChatbotSession[]
+
+  @@index([organizationId])
+  @@index([channel])
+  @@index([status])
+  @@map("chatbots")
+}
+
+model ChatbotSession {
+  id              String               @id @default(uuid())
+  organizationId  String
+  chatbotId       String
+  contactId       String
+  accountId       String               // WhatsApp account ID
+  currentNodeId   String
+  variables       Json                 @default("{}")
+  status          ChatbotSessionStatus @default(ACTIVE)
+  waitingForInput Boolean              @default(false)
+  waitingNodeType String?              // "button" | "list" | "ask"
+  expiresAt       DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chatbot         Chatbot      @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  contact         Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, status])
+  @@index([organizationId])
+  @@index([chatbotId])
+  @@map("chatbot_sessions")
+}
+
+model Sequence {
+  id             String         @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  status         SequenceStatus @default(DRAFT)
+  triggerType    String         @default("MANUAL") // MANUAL | ON_CONTACT_CREATED | ON_TAG_ADDED
+  triggerValue   String?        // e.g. tag name for ON_TAG_ADDED
+  executions     Int            @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  steps          SequenceStep[]
+  enrollments    SequenceEnrollment[]
+
+  @@index([organizationId])
+  @@map("sequences")
+}
+
+model SequenceStep {
+  id          String   @id @default(uuid())
+  sequenceId  String
+  orderIndex  Int
+  delayAmount Int      @default(0)
+  delayUnit   String   @default("minutes") // seconds | minutes | hours | days
+  actionType  String   // SEND_TEXT | SEND_TEMPLATE | SEND_MEDIA | SEND_BUTTON
+  actionData  Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sequence    Sequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  @@index([sequenceId])
+  @@map("sequence_steps")
+}
+
+model SequenceEnrollment {
+  id               String                   @id @default(uuid())
+  organizationId   String
+  sequenceId       String
+  contactId        String
+  accountId        String
+  currentStepIndex Int                      @default(0)
+  status           SequenceEnrollmentStatus @default(ACTIVE)
+  nextExecuteAt    DateTime?
+  startedAt        DateTime                 @default(now())
+  completedAt      DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sequence         Sequence      @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  contact          Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, status])
+  @@index([sequenceId])
+  @@index([organizationId])
+  @@map("sequence_enrollments")
+}
+
+model GoogleCredential {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String   
+  accessToken    String   
+  refreshToken   String   
+  expiresAt      DateTime
+  email          String   
+  scopes         String[] 
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@map("google_credentials")
 }

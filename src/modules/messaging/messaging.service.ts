@@ -290,11 +290,23 @@ export class MessagingService {
     });
   }
 
-  async getConversations(orgId: string) {
+  async getConversations(orgId: string, user?: { role: string; sub: string }) {
+    const isAdmin = !user || user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN';
+
     return this.prisma.conversation.findMany({
-      where: { organizationId: orgId },
+      where: { 
+        organizationId: orgId,
+        ...(isAdmin ? {} : {
+          whatsappAccount: {
+            accountAccess: {
+              some: { userId: user.sub }
+            }
+          }
+        })
+      },
       include: {
         contact: { select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true } },
+        whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
       },
       orderBy: { lastMessageAt: 'desc' },
     });

@@ -41,18 +41,29 @@ var __importStar = (this && this.__importStar) || (function () {
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var AuthService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
+const config_1 = require("@nestjs/config");
 const users_service_1 = require("../users/users.service");
+const prisma_service_1 = require("../../prisma/prisma.service");
+const activity_logger_service_1 = require("../activity-logs/activity-logger.service");
 const bcrypt = __importStar(require("bcryptjs"));
-let AuthService = class AuthService {
+let AuthService = AuthService_1 = class AuthService {
     usersService;
     jwtService;
-    constructor(usersService, jwtService) {
+    configService;
+    prisma;
+    activityLogger;
+    logger = new common_1.Logger(AuthService_1.name);
+    constructor(usersService, jwtService, configService, prisma, activityLogger) {
         this.usersService = usersService;
         this.jwtService = jwtService;
+        this.configService = configService;
+        this.prisma = prisma;
+        this.activityLogger = activityLogger;
     }
     async validateUser(email, pass) {
         const user = await this.usersService.findByEmail(email);
@@ -69,40 +80,94 @@ let AuthService = class AuthService {
                     lastIp: ip,
                     lastLoginAt: new Date()
                 });
+                await this.activityLogger.log(user.id, 'user_login', { ip, timestamp: new Date() }, ip);
             }
             catch (err) {
                 console.error('[Auth Service] Failed to update login audit:', err);
             }
         }
-        const payload = {
+        const accessTokenPayload = {
             email: user.email,
             sub: user.id,
             orgId: user.organizationId,
             role: user.role,
-            originalOrgId: user.organizationId
+            firstName: user.firstName,
+            lastName: user.lastName,
+            originalOrgId: user.organizationId,
+            permissions: user.permissions || {}
         };
+        const refreshTokenPayload = { sub: user.id };
         return {
-            access_token: this.jwtService.sign(payload),
+            access_token: this.jwtService.sign(accessTokenPayload),
+            refresh_token: this.jwtService.sign(refreshTokenPayload, {
+                secret: this.configService.get('jwt.refreshSecret'),
+                expiresIn: this.configService.get('jwt.refreshExpiresIn'),
+            }),
         };
     }
     async switchTenant(user, targetOrgId) {
-        const payload = {
+        const accessTokenPayload = {
             email: user.email,
             sub: user.sub,
             orgId: targetOrgId,
             role: user.role,
+            firstName: user.firstName,
+            lastName: user.lastName,
             originalOrgId: user.originalOrgId || user.orgId,
             isImpersonating: true
         };
+        const refreshTokenPayload = { sub: user.userId || user.sub };
         return {
-            access_token: this.jwtService.sign(payload),
+            access_token: this.jwtService.sign(accessTokenPayload),
+            refresh_token: this.jwtService.sign(refreshTokenPayload, {
+                secret: this.configService.get('jwt.refreshSecret'),
+                expiresIn: this.configService.get('jwt.refreshExpiresIn'),
+            }),
         };
+    }
+    async refreshToken(refreshToken) {
+        try {
+            const payload = this.jwtService.verify(refreshToken, {
+                secret: this.configService.get('jwt.refreshSecret'),
+            });
+            const user = await this.usersService.findOne(payload.sub);
+            if (!user)
+                throw new common_1.UnauthorizedException('User not found');
+            const accessTokenPayload = {
+                email: user.email,
+                sub: user.id,
+                orgId: user.organizationId,
+                role: user.role,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                originalOrgId: user.organizationId
+            };
+            return {
+                access_token: this.jwtService.sign(accessTokenPayload),
+            };
+        }
+        catch (e) {
+            throw new common_1.UnauthorizedException('Invalid refresh token');
+        }
+    }
+    async getAccountPermissions(userId, accountId) {
+        const user = await this.usersService.findOne(userId);
+        if (!user)
+            return [];
+        if (user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN') {
+            return ['all'];
+        }
+        const permissions = user.permissions || {};
+        return Object.keys(permissions);
     }
 };
 exports.AuthService = AuthService;
-exports.AuthService = AuthService = __decorate([
+exports.AuthService = AuthService = AuthService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [users_service_1.UsersService,
-        jwt_1.JwtService])
+        jwt_1.JwtService,
+        config_1.ConfigService,
+        prisma_service_1.PrismaService,
+        activity_logger_service_1.ActivityLoggerService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

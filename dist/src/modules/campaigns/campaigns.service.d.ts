@@ -1,12 +1,14 @@
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ContactsService } from '../contacts/contacts.service';
 import { CampaignLogLevel } from '@prisma/client';
 export declare class CampaignsService {
     private readonly prisma;
+    private readonly contactsService;
     private readonly campaignQueue;
     private readonly logger;
-    constructor(prisma: PrismaService, campaignQueue: Queue);
-    findAll(orgId: string): Promise<({
+    constructor(prisma: PrismaService, contactsService: ContactsService, campaignQueue: Queue);
+    findAll(orgId: string, accountContext?: string | string[]): Promise<({
         _count: {
             recipients: number;
         };
@@ -37,6 +39,8 @@ export declare class CampaignsService {
         templateParams: any;
         contactIds?: string[];
         targetTag?: string;
+        numbers?: string[];
+        tagName?: string;
         autoSegment?: boolean;
         scheduledAt?: string;
     }): Promise<{
@@ -88,6 +92,14 @@ export declare class CampaignsService {
         failedCount: number;
     }>;
     getCampaign(orgId: string, campaignId: string): Promise<({
+        logs: {
+            message: string;
+            id: string;
+            createdAt: Date;
+            metadata: import("@prisma/client/runtime/library").JsonValue;
+            campaignId: string;
+            level: import(".prisma/client").$Enums.CampaignLogLevel;
+        }[];
         recipients: ({
             contact: {
                 id: string;
@@ -99,10 +111,11 @@ export declare class CampaignsService {
                 avatarUrl: string | null;
                 createdAt: Date;
                 updatedAt: Date;
+                customFields: import("@prisma/client/runtime/library").JsonValue;
                 whatsappId: string | null;
                 phone: string;
                 tags: string[];
-                customFields: import("@prisma/client/runtime/library").JsonValue;
+                agentId: string | null;
                 optedInAt: Date | null;
                 optedOutAt: Date | null;
                 lastContactedAt: Date | null;
@@ -119,14 +132,6 @@ export declare class CampaignsService {
             contactId: string;
             campaignId: string;
         })[];
-        logs: {
-            message: string;
-            id: string;
-            createdAt: Date;
-            metadata: import("@prisma/client/runtime/library").JsonValue;
-            campaignId: string;
-            level: import(".prisma/client").$Enums.CampaignLogLevel;
-        }[];
     } & {
         id: string;
         organizationId: string;

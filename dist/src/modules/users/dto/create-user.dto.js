@@ -19,6 +19,9 @@ class CreateUserDto {
     password;
     role;
     organizationId;
+    accountAssignments;
+    permissions;
+    timezone;
 }
 exports.CreateUserDto = CreateUserDto;
 __decorate([
@@ -56,4 +59,17 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "organizationId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Array)
+], CreateUserDto.prototype, "accountAssignments", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Object)
+], CreateUserDto.prototype, "permissions", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreateUserDto.prototype, "timezone", void 0);
 //# sourceMappingURL=create-user.dto.js.map

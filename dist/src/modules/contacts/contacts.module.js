@@ -11,6 +11,8 @@ const common_1 = require("@nestjs/common");
 const bull_1 = require("@nestjs/bull");
 const contacts_service_1 = require("./contacts.service");
 const contacts_controller_1 = require("./contacts.controller");
+const custom_fields_controller_1 = require("./custom-fields.controller");
+const custom_fields_service_1 = require("./custom-fields.service");
 const import_processor_1 = require("./import.processor");
 const prisma_module_1 = require("../../prisma/prisma.module");
 let ContactsModule = class ContactsModule {
@@ -24,8 +26,8 @@ exports.ContactsModule = ContactsModule = __decorate([
             }),
             prisma_module_1.PrismaModule,
         ],
-        controllers: [contacts_controller_1.ContactsController],
-        providers: [contacts_service_1.ContactsService, import_processor_1.ImportProcessor],
+        controllers: [contacts_controller_1.ContactsController, custom_fields_controller_1.CustomFieldsController],
+        providers: [contacts_service_1.ContactsService, import_processor_1.ImportProcessor, custom_fields_service_1.CustomFieldsService],
         exports: [contacts_service_1.ContactsService],
     })
 ], ContactsModule);

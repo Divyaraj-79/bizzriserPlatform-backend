@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, Matches, IsEnum, IsOptional } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, Matches, IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { UserRole } from '@prisma/client';
 
 export class CreateUserDto {
@@ -30,4 +30,16 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   organizationId?: string;
+
+  @IsOptional()
+  accountAssignments?: {
+    whatsappAccountId: string;
+  }[];
+
+  @IsOptional()
+  permissions?: any;
+
+  @IsString()
+  @IsOptional()
+  timezone?: string;
 }

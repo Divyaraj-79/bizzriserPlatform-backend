@@ -26,7 +26,10 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     transform: true,
-    forbidNonWhitelisted: true,
+    // Removed forbidNonWhitelisted — it was causing 400 errors on analytics endpoints
+    // because query params weren't exactly matching DTOs during initial load.
+    // whitelist:true already strips unknown params silently.
+    forbidNonWhitelisted: false,
   }));
   app.useGlobalFilters(new GlobalExceptionFilter());
 
@@ -37,7 +40,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   logger.log(`Application is running on: http://localhost:${port}/api/v1`);
 }
 

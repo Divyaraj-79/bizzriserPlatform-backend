@@ -3,6 +3,9 @@ export declare class OrganizationsController {
     private readonly orgsService;
     constructor(orgsService: OrganizationsService);
     findAll(): Promise<({
+        _count: {
+            users: number;
+        };
         users: {
             email: string;
             firstName: string;
@@ -10,12 +13,10 @@ export declare class OrganizationsController {
             lastIp: string | null;
             lastLoginAt: Date | null;
         }[];
-        _count: {
-            users: number;
-        };
     } & {
         id: string;
         status: import(".prisma/client").$Enums.OrganizationStatus;
+        timezone: string;
         createdAt: Date;
         updatedAt: Date;
         name: string;
@@ -27,7 +28,6 @@ export declare class OrganizationsController {
         expiryDate: Date | null;
         package: import(".prisma/client").$Enums.SubscriptionPackage;
         isPhoneVerified: boolean;
-        timezone: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
     })[]>;
     onboard(orgData: any, adminData: {
@@ -39,6 +39,7 @@ export declare class OrganizationsController {
         org: {
             id: string;
             status: import(".prisma/client").$Enums.OrganizationStatus;
+            timezone: string;
             createdAt: Date;
             updatedAt: Date;
             name: string;
@@ -50,7 +51,6 @@ export declare class OrganizationsController {
             expiryDate: Date | null;
             package: import(".prisma/client").$Enums.SubscriptionPackage;
             isPhoneVerified: boolean;
-            timezone: string;
             metadata: import("@prisma/client/runtime/library").JsonValue;
         };
         admin: {
@@ -66,6 +66,8 @@ export declare class OrganizationsController {
             lastIp: string | null;
             lastLoginAt: Date | null;
             refreshToken: string | null;
+            timezone: string;
+            permissions: import("@prisma/client/runtime/library").JsonValue;
             createdAt: Date;
             updatedAt: Date;
         };
@@ -84,12 +86,15 @@ export declare class OrganizationsController {
             lastIp: string | null;
             lastLoginAt: Date | null;
             refreshToken: string | null;
+            timezone: string;
+            permissions: import("@prisma/client/runtime/library").JsonValue;
             createdAt: Date;
             updatedAt: Date;
         }[];
     } & {
         id: string;
         status: import(".prisma/client").$Enums.OrganizationStatus;
+        timezone: string;
         createdAt: Date;
         updatedAt: Date;
         name: string;
@@ -101,12 +106,12 @@ export declare class OrganizationsController {
         expiryDate: Date | null;
         package: import(".prisma/client").$Enums.SubscriptionPackage;
         isPhoneVerified: boolean;
-        timezone: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
     }) | null>;
     update(id: string, updateData: any): Promise<{
         id: string;
         status: import(".prisma/client").$Enums.OrganizationStatus;
+        timezone: string;
         createdAt: Date;
         updatedAt: Date;
         name: string;
@@ -118,12 +123,12 @@ export declare class OrganizationsController {
         expiryDate: Date | null;
         package: import(".prisma/client").$Enums.SubscriptionPackage;
         isPhoneVerified: boolean;
-        timezone: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
     }>;
     delete(id: string): Promise<{
         id: string;
         status: import(".prisma/client").$Enums.OrganizationStatus;
+        timezone: string;
         createdAt: Date;
         updatedAt: Date;
         name: string;
@@ -135,7 +140,6 @@ export declare class OrganizationsController {
         expiryDate: Date | null;
         package: import(".prisma/client").$Enums.SubscriptionPackage;
         isPhoneVerified: boolean;
-        timezone: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
     }>;
 }
