@@ -177,6 +177,7 @@ model Organization {
   sequences       Sequence[]
   enrollments     SequenceEnrollment[]
   googleCredentials GoogleCredential[]
+  customRoles     CustomRole[]
 
   @@map("organizations")
 }
@@ -207,6 +208,20 @@ model User {
   @@index([organizationId])
   @@index([email])
   @@map("users")
+}
+
+model CustomRole {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  permissions    Json         @default("{}")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  @@index([organizationId])
+  @@map("custom_roles")
 }
 
 model WhatsAppAccountAccess {
