@@ -10,8 +10,14 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   
   // CRITICAL: Increase body size limits for massive bulk imports (1 Lakh+ records)
-  // Must be applied before pipes and other middlewares
-  app.use(json({ limit: '50mb' }));
+  // Must be applied before pipes and other middlewares.
+  // We MUST attach the raw buffer (buf) to req.rawBody so WhatsApp Webhook signature validation doesn't crash!
+  app.use(json({ 
+    limit: '50mb',
+    verify: (req: any, res, buf) => {
+      req.rawBody = buf;
+    }
+  }));
   app.use(urlencoded({ limit: '50mb', extended: true }));
 
   const configService = app.get(ConfigService);

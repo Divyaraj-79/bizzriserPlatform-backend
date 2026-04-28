@@ -9,7 +9,12 @@ const express_1 = require("express");
 async function bootstrap() {
     const logger = new common_1.Logger('Bootstrap');
     const app = await core_1.NestFactory.create(app_module_1.AppModule, { rawBody: true });
-    app.use((0, express_1.json)({ limit: '50mb' }));
+    app.use((0, express_1.json)({
+        limit: '50mb',
+        verify: (req, res, buf) => {
+            req.rawBody = buf;
+        }
+    }));
     app.use((0, express_1.urlencoded)({ limit: '50mb', extended: true }));
     const configService = app.get(config_1.ConfigService);
     const port = configService.get('app.port') ?? 3001;
