@@ -22,6 +22,13 @@ export declare class AnalyticsService {
             uniqueContacts: number;
             totalRecipients: number;
         };
+        automations: {
+            totalChatbots: number;
+            chatbotExecutions: number;
+            totalSequences: number;
+            sequenceExecutions: number;
+            totalAutomations: number;
+        };
         chartData: {
             label: string;
             fullDate: string;
@@ -31,6 +38,9 @@ export declare class AnalyticsService {
         }[];
     }>;
     getCampaignsAnalytics(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string): Promise<{
+        deliveryRate: number;
+        readRate: number;
+        failureRate: number;
         id: string;
         organizationId: string;
         status: import(".prisma/client").$Enums.CampaignStatus;
@@ -50,6 +60,22 @@ export declare class AnalyticsService {
         readCount: number;
         failedCount: number;
     }[]>;
+    getAutomationsAnalytics(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string): Promise<{
+        chatbots: {
+            id: string;
+            status: import(".prisma/client").$Enums.ChatbotStatus;
+            updatedAt: Date;
+            name: string;
+            executions: number;
+        }[];
+        sequences: {
+            id: string;
+            status: import(".prisma/client").$Enums.SequenceStatus;
+            updatedAt: Date;
+            name: string;
+            executions: number;
+        }[];
+    }>;
     getExportData(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string): Promise<{
         id: string;
         name: string;

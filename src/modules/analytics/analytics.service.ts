@@ -27,8 +27,6 @@ export class AnalyticsService {
           messageWhere.whatsappAccountId = { in: accountContext };
         } else {
           messageWhere.whatsappAccountId = accountContext;
-          // Note: Campaign filtering by account is currently skipped to avoid JSON query performance issues and 400 errors.
-          // It will fallback to organization-wide campaign stats for now.
         }
       }
 
@@ -78,6 +76,35 @@ export class AnalyticsService {
       const replyRate = totalOutbound > 0 ? (inboundCount / totalOutbound) * 100 : 0;
       const failureRate = totalOutbound > 0 ? (failed / totalOutbound) * 100 : 0;
 
+      // Calculate Average Response Time (Simplistic approach)
+      // Find outbound messages that are replies to inbound messages
+      const recentPairs = await this.prisma.message.findMany({
+        where: messageWhere,
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        select: { createdAt: true, direction: true, contactId: true }
+      });
+
+      let totalResponseTime = 0;
+      let responseCount = 0;
+      
+      for (let i = 0; i < recentPairs.length - 1; i++) {
+        const current = recentPairs[i]; // Newer
+        const next = recentPairs[i+1];  // Older
+        
+        if (current.direction === 'OUTBOUND' && next.direction === 'INBOUND' && current.contactId === next.contactId) {
+          const diff = current.createdAt.getTime() - next.createdAt.getTime();
+          if (diff > 0 && diff < 1000 * 60 * 60 * 2) { // Only count if within 2 hours
+            totalResponseTime += diff;
+            responseCount++;
+          }
+        }
+      }
+      
+      const avgResponseMs = responseCount > 0 ? totalResponseTime / responseCount : 0;
+      const avgResponseMin = Math.round(avgResponseMs / (1000 * 60) * 10) / 10;
+      const avgResponseLabel = avgResponseMin > 0 ? `${avgResponseMin}m` : (responseCount > 0 ? '< 1m' : 'N/A');
+
       // Campaigns Summary
       const activeCampaigns = await this.prisma.campaign.count({
         where: {
@@ -92,6 +119,19 @@ export class AnalyticsService {
 
       const uniqueContacts = await this.prisma.contact.count({
         where: { organizationId: orgId },
+      });
+
+      // Automations Stats
+      const totalChatbots = await this.prisma.chatbot.count({ where: { organizationId: orgId } });
+      const chatbotExecutions = await this.prisma.chatbot.aggregate({
+        where: { organizationId: orgId },
+        _sum: { executions: true }
+      });
+      
+      const totalSequences = await this.prisma.sequence.count({ where: { organizationId: orgId } });
+      const sequenceExecutions = await this.prisma.sequence.aggregate({
+        where: { organizationId: orgId },
+        _sum: { executions: true }
       });
 
       // Time series for Charts
@@ -144,13 +184,20 @@ export class AnalyticsService {
         messages: {
           outbound: totalOutbound,
           inbound: inboundCount,
-          avgResponseTime: '2.5m',
+          avgResponseTime: avgResponseLabel,
         },
         summary: {
           activeCampaigns,
           totalCampaigns,
           uniqueContacts,
           totalRecipients: totalOutbound,
+        },
+        automations: {
+          totalChatbots,
+          chatbotExecutions: chatbotExecutions._sum.executions || 0,
+          totalSequences,
+          sequenceExecutions: sequenceExecutions._sum.executions || 0,
+          totalAutomations: (chatbotExecutions._sum.executions || 0) + (sequenceExecutions._sum.executions || 0)
         },
         chartData,
       };
@@ -160,6 +207,7 @@ export class AnalyticsService {
     }
   }
 
+
   async getCampaignsAnalytics(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string) {
     // Sanitize
     if (typeof accountContext === 'string' && (accountContext === 'null' || accountContext === 'undefined' || accountContext === 'all' || !accountContext.trim())) {
@@ -168,9 +216,6 @@ export class AnalyticsService {
 
     const where: any = { organizationId: orgId };
 
-    // Standard campaign listing - organizational view fallback for stability
-    // TODO: Implement safe metadata filtering once specific account logic is finalized
-
     if (startDate || endDate) {
       where.createdAt = {
         ...(startDate && { gte: new Date(startDate) }),
@@ -178,12 +223,40 @@ export class AnalyticsService {
       };
     }
     
-    return this.prisma.campaign.findMany({
+    const campaigns = await this.prisma.campaign.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+
+    return campaigns.map(c => {
+      const total = c.totalRecipients || 0;
+      return {
+        ...c,
+        deliveryRate: total > 0 ? parseFloat(((c.deliveredCount / total) * 100).toFixed(2)) : 0,
+        readRate: total > 0 ? parseFloat(((c.readCount / total) * 100).toFixed(2)) : 0,
+        failureRate: total > 0 ? parseFloat(((c.failedCount / total) * 100).toFixed(2)) : 0,
+      };
+    });
   }
+
+  async getAutomationsAnalytics(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string) {
+    const chatbots = await this.prisma.chatbot.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, name: true, executions: true, status: true, updatedAt: true }
+    });
+
+    const sequences = await this.prisma.sequence.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, name: true, executions: true, status: true, updatedAt: true }
+    });
+
+    return {
+      chatbots,
+      sequences
+    };
+  }
+
 
   async getExportData(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string) {
     // Sanitize

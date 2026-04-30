@@ -6,6 +6,8 @@ import { CustomFieldsController } from './custom-fields.controller';
 import { CustomFieldsService } from './custom-fields.service';
 import { ImportProcessor } from './import.processor';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { RealtimeModule } from '../realtime/realtime.module';
+
 
 @Module({
   imports: [
@@ -13,7 +15,9 @@ import { PrismaModule } from '../../prisma/prisma.module';
       name: 'contact-import',
     }),
     PrismaModule,
+    RealtimeModule,
   ],
+
   controllers: [ContactsController, CustomFieldsController],
   providers: [ContactsService, ImportProcessor, CustomFieldsService],
   exports: [ContactsService],

@@ -131,6 +131,8 @@ export declare class ContactsController {
         id: string;
         status: any;
         progress: number;
+        current: number;
+        total: number;
         result: any;
         error: any;
     }>;

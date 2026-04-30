@@ -22,6 +22,13 @@ export declare class AnalyticsController {
             uniqueContacts: number;
             totalRecipients: number;
         };
+        automations: {
+            totalChatbots: number;
+            chatbotExecutions: number;
+            totalSequences: number;
+            sequenceExecutions: number;
+            totalAutomations: number;
+        };
         chartData: {
             label: string;
             fullDate: string;
@@ -31,15 +38,18 @@ export declare class AnalyticsController {
         }[];
     }>;
     getCampaigns(req: any, query: AnalyticsQueryDto): Promise<{
+        deliveryRate: number;
+        readRate: number;
+        failureRate: number;
         id: string;
-        organizationId: string;
-        status: import(".prisma/client").$Enums.CampaignStatus;
         createdAt: Date;
         updatedAt: Date;
         name: string;
+        organizationId: string;
+        status: import(".prisma/client").$Enums.CampaignStatus;
+        templateName: string | null;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         description: string | null;
-        templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
         scheduledAt: Date | null;
         startedAt: Date | null;
@@ -50,6 +60,22 @@ export declare class AnalyticsController {
         readCount: number;
         failedCount: number;
     }[]>;
+    getAutomations(req: any, query: AnalyticsQueryDto): Promise<{
+        chatbots: {
+            id: string;
+            updatedAt: Date;
+            name: string;
+            status: import(".prisma/client").$Enums.ChatbotStatus;
+            executions: number;
+        }[];
+        sequences: {
+            id: string;
+            updatedAt: Date;
+            name: string;
+            status: import(".prisma/client").$Enums.SequenceStatus;
+            executions: number;
+        }[];
+    }>;
     exportData(req: any, query: AnalyticsQueryDto): Promise<{
         id: string;
         name: string;

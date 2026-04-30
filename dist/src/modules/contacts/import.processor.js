@@ -14,11 +14,14 @@ exports.ImportProcessor = void 0;
 const common_1 = require("@nestjs/common");
 const bull_1 = require("@nestjs/bull");
 const contacts_service_1 = require("./contacts.service");
+const realtime_gateway_1 = require("../realtime/realtime.gateway");
 let ImportProcessor = ImportProcessor_1 = class ImportProcessor {
     contactsService;
+    realtimeGateway;
     logger = new common_1.Logger(ImportProcessor_1.name);
-    constructor(contactsService) {
+    constructor(contactsService, realtimeGateway) {
         this.contactsService = contactsService;
+        this.realtimeGateway = realtimeGateway;
     }
     onModuleInit() {
         this.logger.log('🚀 Bulk Import Processor successfully initialized and connected to Redis.');
@@ -26,14 +29,23 @@ let ImportProcessor = ImportProcessor_1 = class ImportProcessor {
     async handleImport(job) {
         const { orgId, contacts } = job.data;
         const total = contacts.length;
-        this.logger.log(`📥 Starting background import for ${total} contacts (Org: ${orgId}, Job ID: ${job.id})`);
+        const jobId = job.id;
+        this.logger.log(`📥 Starting background import for ${total} contacts (Org: ${orgId}, Job ID: ${jobId})`);
         try {
-            await job.progress(1);
-            await this.contactsService.atomicBulkImport(orgId, contacts, async (p) => {
-                const scaledProgress = 5 + Math.floor(p * 0.9);
-                await job.progress(scaledProgress);
+            const setProgress = async (val) => {
+                if (typeof job.updateProgress === 'function')
+                    await job.updateProgress(val);
+                else if (typeof job.progress === 'function')
+                    await job.progress(val);
+                const stats = typeof val === 'object' ? val : { progress: val, current: val === 100 ? total : 0, total };
+                this.realtimeGateway.emitImportProgress(orgId, jobId, stats);
+            };
+            await setProgress({ progress: 1, current: 0, total });
+            await this.contactsService.atomicBulkImport(orgId, contacts, async (stats) => {
+                const p = Math.max(1, Math.floor((stats.current / stats.total) * 100));
+                await setProgress({ ...stats, progress: p });
             });
-            await job.progress(100);
+            await setProgress({ progress: 100, current: total, total });
             this.logger.log(`✅ Import completed successfully for Org: ${orgId}`);
             return { success: true, count: total };
         }
@@ -52,6 +64,7 @@ __decorate([
 ], ImportProcessor.prototype, "handleImport", null);
 exports.ImportProcessor = ImportProcessor = ImportProcessor_1 = __decorate([
     (0, bull_1.Processor)('contact-import'),
-    __metadata("design:paramtypes", [contacts_service_1.ContactsService])
+    __metadata("design:paramtypes", [contacts_service_1.ContactsService,
+        realtime_gateway_1.RealtimeGateway])
 ], ImportProcessor);
 //# sourceMappingURL=import.processor.js.map

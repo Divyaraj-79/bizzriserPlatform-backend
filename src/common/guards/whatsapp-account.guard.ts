@@ -33,11 +33,11 @@ export class WhatsAppAccountGuard implements CanActivate {
 
       // 2. Extract Account ID from various possible locations
       const accountId = 
-        request.params.accountId || 
-        request.params.id || 
-        request.query.accountId || 
-        request.body.accountId || 
-        request.body.whatsappAccountId;
+        request.params?.accountId || 
+        request.params?.id || 
+        request.query?.accountId || 
+        request.body?.accountId || 
+        request.body?.whatsappAccountId;
 
       if (!accountId) {
         return true;

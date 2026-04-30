@@ -85,6 +85,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.server.to(`org_${orgId}`).emit('conversation:update', conversation);
   }
 
+  /**
+   * Emits real-time progress for bulk contact imports.
+   */
+  emitImportProgress(orgId: string, jobId: string, stats: any) {
+    this.server.to(`org_${orgId}`).emit('import:progress', { jobId, ...stats });
+  }
+
+
   @SubscribeMessage('subscribe:conversation')
   handleJoinConversation(socket: Socket, conversationId: string) {
     // Optionally allow deeper subscription to specific conversation threads

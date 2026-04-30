@@ -50,11 +50,19 @@ export declare class ContactsService {
         status: string;
     }>;
     private escapeSql;
-    atomicBulkImport(orgId: string, contacts: any[], onProgress?: (p: number) => void): Promise<void>;
+    atomicBulkImport(orgId: string, contacts: any[], onProgress?: (stats: {
+        current: number;
+        total: number;
+    }) => void): Promise<{
+        success: boolean;
+        count: number;
+    }>;
     getImportStatus(jobId: string): Promise<{
         id: string;
         status: any;
         progress: number;
+        current: number;
+        total: number;
         result: any;
         error: any;
     }>;

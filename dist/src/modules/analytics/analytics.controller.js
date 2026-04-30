@@ -31,6 +31,9 @@ let AnalyticsController = class AnalyticsController {
     async getCampaigns(req, query) {
         return this.analyticsService.getCampaignsAnalytics(req.user.orgId, query.accountId || req.allowedAccountIds, query.startDate, query.endDate);
     }
+    async getAutomations(req, query) {
+        return this.analyticsService.getAutomationsAnalytics(req.user.orgId, query.accountId || req.allowedAccountIds, query.startDate, query.endDate);
+    }
     async exportData(req, query) {
         return this.analyticsService.getExportData(req.user.orgId, query.accountId || req.allowedAccountIds, query.startDate, query.endDate);
     }
@@ -52,6 +55,14 @@ __decorate([
     __metadata("design:paramtypes", [Object, analytics_query_dto_1.AnalyticsQueryDto]),
     __metadata("design:returntype", Promise)
 ], AnalyticsController.prototype, "getCampaigns", null);
+__decorate([
+    (0, common_1.Get)('automations'),
+    __param(0, (0, common_1.Request)()),
+    __param(1, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, analytics_query_dto_1.AnalyticsQueryDto]),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getAutomations", null);
 __decorate([
     (0, common_1.Get)('export'),
     __param(0, (0, common_1.Request)()),

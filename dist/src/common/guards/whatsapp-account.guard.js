@@ -39,11 +39,11 @@ let WhatsAppAccountGuard = class WhatsAppAccountGuard {
                     user.allowedAccountIds = [];
                 }
             }
-            const accountId = request.params.accountId ||
-                request.params.id ||
-                request.query.accountId ||
-                request.body.accountId ||
-                request.body.whatsappAccountId;
+            const accountId = request.params?.accountId ||
+                request.params?.id ||
+                request.query?.accountId ||
+                request.body?.accountId ||
+                request.body?.whatsappAccountId;
             if (!accountId) {
                 return true;
             }

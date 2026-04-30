@@ -38,6 +38,20 @@ export class AnalyticsController {
     );
   }
 
+  @Get('automations')
+  async getAutomations(
+    @Request() req: any,
+    @Query() query: AnalyticsQueryDto,
+  ) {
+    return this.analyticsService.getAutomationsAnalytics(
+      req.user.orgId, 
+      query.accountId || req.allowedAccountIds,
+      query.startDate, 
+      query.endDate
+    );
+  }
+
+
   @Get('export')
   async exportData(
     @Request() req: any,

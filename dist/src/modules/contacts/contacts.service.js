@@ -131,44 +131,52 @@ let ContactsService = ContactsService_1 = class ContactsService {
     escapeSql(val) {
         if (val === null || val === undefined)
             return '';
-        return String(val).replace(/'/g, "''");
+        return String(val)
+            .replace(/'/g, "''")
+            .replace(/\\/g, "\\\\")
+            .replace(/\0/g, "");
     }
     async atomicBulkImport(orgId, contacts, onProgress) {
-        const CHUNK_SIZE = 1000;
+        const CHUNK_SIZE = 200;
         const total = contacts.length;
+        let processed = 0;
         try {
-            return await this.prisma.$transaction(async (tx) => {
-                for (let i = 0; i < total; i += CHUNK_SIZE) {
-                    const chunk = contacts.slice(i, i + CHUNK_SIZE);
-                    const values = chunk.map(c => {
-                        const id = (0, uuid_1.v4)();
-                        const phone = this.escapeSql(c.phone);
-                        const firstName = this.escapeSql(c.name || c.firstName || '');
-                        const fields = this.escapeSql(JSON.stringify(c.customFields || {}));
-                        const tagArray = (c.tags || []).map((t) => `'${this.escapeSql(t)}'`);
-                        const tagsSql = tagArray.length > 0 ? `ARRAY[${tagArray.join(',')}]::text[]` : `ARRAY[]::text[]`;
-                        return `('${id}', '${orgId}', '${phone}', '${firstName}', '${fields}'::jsonb, ${tagsSql}, NOW(), NOW())`;
-                    }).join(',');
-                    const query = `
-            INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "customFields", "tags", "createdAt", "updatedAt")
-            VALUES ${values}
-            ON CONFLICT ("organizationId", "phone") DO UPDATE SET
-              "firstName" = EXCLUDED."firstName",
-              "customFields" = EXCLUDED."customFields",
-              "tags" = EXCLUDED."tags",
-              "updatedAt" = NOW();
-          `;
-                    await tx.$executeRawUnsafe(query);
-                    if (onProgress) {
-                        onProgress(Math.min(100, Math.floor(((i + chunk.length) / total) * 100)));
-                    }
+            for (let i = 0; i < total; i += CHUNK_SIZE) {
+                const chunk = contacts.slice(i, i + CHUNK_SIZE);
+                const values = chunk.map(c => {
+                    const id = (0, uuid_1.v4)();
+                    const phone = this.escapeSql(c.phone);
+                    const firstName = this.escapeSql(c.name || c.firstName || '');
+                    const fields = this.escapeSql(JSON.stringify(c.customFields || {}));
+                    const tagArray = (c.tags || []).map((t) => `'${this.escapeSql(t)}'`);
+                    const tagsSql = tagArray.length > 0 ? `ARRAY[${tagArray.join(',')}]::text[]` : `ARRAY[]::text[]`;
+                    return `('${id}', '${orgId}', '${phone}', '${firstName}', '${fields}'::jsonb, ${tagsSql}, NOW(), NOW())`;
+                }).join(',');
+                const query = `
+          INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "customFields", "tags", "createdAt", "updatedAt")
+          VALUES ${values}
+          ON CONFLICT ("organizationId", "phone") DO UPDATE SET
+            "firstName" = EXCLUDED."firstName",
+            "customFields" = EXCLUDED."customFields",
+            "tags" = EXCLUDED."tags",
+            "updatedAt" = NOW();
+        `;
+                try {
+                    await this.prisma.$executeRawUnsafe(query);
                 }
-            }, {
-                timeout: 600000
-            });
+                catch (queryErr) {
+                    this.logger.error(`Query failed for chunk starting at ${processed}. First 500 chars: ${query.substring(0, 500)}`);
+                    throw queryErr;
+                }
+                processed += chunk.length;
+                if (onProgress) {
+                    onProgress({ current: processed, total });
+                }
+            }
+            return { success: true, count: total };
         }
         catch (err) {
-            this.logger.error(`Atomic bulk import failed: ${err.message}`, err.stack);
+            this.logger.error(`Bulk import failed at chunk starting ${processed}: ${err.message}`, err.stack);
             throw err;
         }
     }
@@ -177,18 +185,29 @@ let ContactsService = ContactsService_1 = class ContactsService {
         if (!job)
             throw new common_1.NotFoundException('Import job not found');
         const state = await job.getState();
-        const progress = job.progress || 0;
+        const progressData = job.progress;
         const result = job.returnvalue;
         const failedReason = job.failedReason;
         let status = state.toUpperCase();
         if (status === 'WAITING' || status === 'DELAYED')
             status = 'QUEUED';
-        if (status === 'COMPLETED')
-            status = 'COMPLETED';
+        let progress = 0;
+        let current = 0;
+        let total = 0;
+        if (typeof progressData === 'object' && progressData !== null) {
+            current = progressData.current || 0;
+            total = progressData.total || 0;
+            progress = progressData.progress || (total > 0 ? Math.floor((current / total) * 100) : 0);
+        }
+        else {
+            progress = typeof progressData === 'number' ? progressData : 0;
+        }
         return {
             id: jobId,
             status,
-            progress: typeof progress === 'number' ? progress : 0,
+            progress,
+            current,
+            total,
             result,
             error: failedReason
         };

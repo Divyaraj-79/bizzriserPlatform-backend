@@ -13,12 +13,13 @@ async function bootstrap() {
   // Must be applied before pipes and other middlewares.
   // We MUST attach the raw buffer (buf) to req.rawBody so WhatsApp Webhook signature validation doesn't crash!
   app.use(json({ 
-    limit: '50mb',
+    limit: '150mb',
     verify: (req: any, res, buf) => {
       req.rawBody = buf;
     }
   }));
-  app.use(urlencoded({ limit: '50mb', extended: true }));
+  app.use(urlencoded({ limit: '150mb', extended: true }));
+
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('app.port') ?? 3001;

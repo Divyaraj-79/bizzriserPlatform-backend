@@ -61,6 +61,9 @@ let RealtimeGateway = RealtimeGateway_1 = class RealtimeGateway {
     emitConversationUpdate(orgId, conversation) {
         this.server.to(`org_${orgId}`).emit('conversation:update', conversation);
     }
+    emitImportProgress(orgId, jobId, stats) {
+        this.server.to(`org_${orgId}`).emit('import:progress', { jobId, ...stats });
+    }
     handleJoinConversation(socket, conversationId) {
         socket.join(`conversation_${conversationId}`);
         return { status: 'subscribed', conversationId };
