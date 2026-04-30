@@ -204,11 +204,12 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                 },
             });
             try {
+                const operationToken = systemAccessToken;
                 await axios_1.default.post(`${this.graphBaseUrl}/${this.apiVersion}/${wabaId}/subscribed_apps`, {}, {
-                    headers: { Authorization: `Bearer ${accessToken}` },
+                    headers: { Authorization: `Bearer ${operationToken}` },
                 });
                 this.logger.log(`WABA ${wabaId} subscribed to webhooks successfully.`);
-                await this.registerPhoneNumber(orgId, account.id);
+                await this.registerPhoneNumber(orgId, account.id, true);
                 await this.syncAccount(orgId, account.id);
             }
             catch (subErr) {
@@ -888,14 +889,9 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             });
             const phoneInfo = phoneRes.data?.data?.find((p) => p.id === account.phoneNumberId);
             this.logger.log(`[Registration] Meta status for ${account.phoneNumberId} (${phoneInfo?.display_phone_number}): ${phoneInfo?.code_verification_status}`);
-            if (phoneInfo?.code_verification_status === 'VERIFIED' && !force) {
-                this.logger.log(`[Registration] Phone number ${account.phoneNumberId} is already VERIFIED. Skipping registration.`);
-                if (account.status !== 'ACTIVE') {
-                    await this.prisma.whatsAppAccount.update({
-                        where: { id: accountId },
-                        data: { status: 'ACTIVE' }
-                    });
-                }
+            const profile = typeof account.businessProfile === 'object' ? account.businessProfile : {};
+            if (phoneInfo?.code_verification_status === 'VERIFIED' && profile.registrationStatus === 'SUCCESS' && !force) {
+                this.logger.log(`[Registration] Phone number ${account.phoneNumberId} is already VERIFIED and registered. Skipping.`);
                 return;
             }
             const profile = typeof account.businessProfile === 'object' ? account.businessProfile : {};

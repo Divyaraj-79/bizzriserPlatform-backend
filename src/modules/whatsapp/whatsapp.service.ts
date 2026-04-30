@@ -221,14 +221,17 @@ export class WhatsappService {
 
       // 6. Register & Subscribe Webhooks
       try {
+        // IMPORTANT: Use the stable System Access Token for these operations
+        const operationToken = systemAccessToken;
+
         // Subscribe the WABA to our App's webhooks
         await axios.post(`${this.graphBaseUrl}/${this.apiVersion}/${wabaId}/subscribed_apps`, {}, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: { Authorization: `Bearer ${operationToken}` },
         });
         this.logger.log(`WABA ${wabaId} subscribed to webhooks successfully.`);
 
         // Also register phone number for Cloud API use (Smart Registration)
-        await this.registerPhoneNumber(orgId, account.id);
+        await this.registerPhoneNumber(orgId, account.id, true); // Force on first connect
 
         await this.syncAccount(orgId, account.id);
       } catch (subErr: any) {
@@ -1090,14 +1093,10 @@ export class WhatsappService {
       
       this.logger.log(`[Registration] Meta status for ${account.phoneNumberId} (${phoneInfo?.display_phone_number}): ${phoneInfo?.code_verification_status}`);
 
-      if (phoneInfo?.code_verification_status === 'VERIFIED' && !force) {
-        this.logger.log(`[Registration] Phone number ${account.phoneNumberId} is already VERIFIED. Skipping registration.`);
-        if (account.status !== 'ACTIVE') {
-           await this.prisma.whatsAppAccount.update({
-             where: { id: accountId },
-             data: { status: 'ACTIVE' }
-           });
-        }
+      // We only skip if it's VERIFIED AND we have a record of a recent successful registration
+      const profile = typeof account.businessProfile === 'object' ? (account.businessProfile as any) : {};
+      if (phoneInfo?.code_verification_status === 'VERIFIED' && profile.registrationStatus === 'SUCCESS' && !force) {
+        this.logger.log(`[Registration] Phone number ${account.phoneNumberId} is already VERIFIED and registered. Skipping.`);
         return;
       }
 
