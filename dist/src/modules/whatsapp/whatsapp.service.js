@@ -894,7 +894,6 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                 this.logger.log(`[Registration] Phone number ${account.phoneNumberId} is already VERIFIED and registered. Skipping.`);
                 return;
             }
-            const profile = typeof account.businessProfile === 'object' ? account.businessProfile : {};
             const lastAttempt = profile.lastRegistrationAttemptAt ? new Date(profile.lastRegistrationAttemptAt) : null;
             const cooldownMs = 12 * 60 * 60 * 1000;
             if (lastAttempt && (Date.now() - lastAttempt.getTime() < cooldownMs) && !force) {

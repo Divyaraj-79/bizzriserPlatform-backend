@@ -1101,7 +1101,6 @@ export class WhatsappService {
       }
 
       // 2. Cooldown check: Don't attempt more than once every 12 hours unless forced
-      const profile = typeof account.businessProfile === 'object' ? (account.businessProfile as any) : {};
       const lastAttempt = profile.lastRegistrationAttemptAt ? new Date(profile.lastRegistrationAttemptAt) : null;
       const cooldownMs = 12 * 60 * 60 * 1000; // 12 hours
 
