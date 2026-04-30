@@ -150,7 +150,16 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             const phoneRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/${wabaId}/phone_numbers`, {
                 headers: { Authorization: `Bearer ${systemAccessToken}` },
             });
-            phoneData = phoneRes.data.data?.[0];
+            const allPhones = phoneRes.data.data || [];
+            phoneData = phoneNumberId
+                ? allPhones.find((p) => p.id === phoneNumberId)
+                : allPhones[0];
+            if (!phoneData && allPhones.length > 0) {
+                if (phoneNumberId) {
+                    this.logger.warn(`Provided phoneNumberId ${phoneNumberId} not found in WABA ${wabaId}. Falling back to first available: ${allPhones[0].id}`);
+                }
+                phoneData = allPhones[0];
+            }
         }
         catch (phoneErr) {
             const errorMsg = phoneErr.response?.data?.error?.message || phoneErr.message;
@@ -802,6 +811,12 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     businessProfile,
                 },
             });
+            if (phoneInfo.code_verification_status !== 'VERIFIED') {
+                this.logger.log(`[SYNC] Account ${accountId} is not VERIFIED (Status: ${phoneInfo.code_verification_status}). Triggering smart registration...`);
+                this.registerPhoneNumber(orgId, accountId, true).catch(err => {
+                    this.logger.error(`[SYNC] Auto-registration failed during sync: ${err.message}`);
+                });
+            }
             this.logger.log(`[SYNC SUCCESS] Account ${accountId} updated. Status: ${updatedAccount.status}`);
             return updatedAccount;
         }
@@ -864,12 +879,15 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             return;
         try {
             this.logger.log(`[Registration] Starting smart registration check for ${account.phoneNumberId}...`);
+            const systemToken = this.configService.get('whatsapp.accessToken');
             const { token: validatedToken } = await this.getValidToken(account);
+            const registrationToken = systemToken || validatedToken;
             const phoneRes = await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/phone_numbers`, {
-                params: { fields: 'code_verification_status' },
-                headers: { Authorization: `Bearer ${validatedToken}` },
+                params: { fields: 'code_verification_status,display_phone_number' },
+                headers: { Authorization: `Bearer ${registrationToken}` },
             });
             const phoneInfo = phoneRes.data?.data?.find((p) => p.id === account.phoneNumberId);
+            this.logger.log(`[Registration] Meta status for ${account.phoneNumberId} (${phoneInfo?.display_phone_number}): ${phoneInfo?.code_verification_status}`);
             if (phoneInfo?.code_verification_status === 'VERIFIED' && !force) {
                 this.logger.log(`[Registration] Phone number ${account.phoneNumberId} is already VERIFIED. Skipping registration.`);
                 if (account.status !== 'ACTIVE') {
@@ -887,14 +905,14 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                 this.logger.warn(`[Registration] Registration cooldown active for ${account.phoneNumberId}. Skipping. Last attempt: ${lastAttempt.toISOString()}`);
                 return;
             }
-            this.logger.log(`[Registration] Sending registration request for ${account.phoneNumberId} (PIN: 123456)...`);
-            await axios_1.default.post(`${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/register`, {
+            this.logger.log(`[Registration] Sending registration request for ${account.phoneNumberId} (PIN: 123456) using token: ${registrationToken.substring(0, 10)}...`);
+            const regRes = await axios_1.default.post(`${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/register`, {
                 messaging_product: 'whatsapp',
                 pin: '123456',
             }, {
-                headers: { Authorization: `Bearer ${validatedToken}` },
+                headers: { Authorization: `Bearer ${registrationToken}` },
             });
-            this.logger.log(`[Registration] SUCCESS: Phone number ${account.phoneNumberId} registered.`);
+            this.logger.log(`[Registration] SUCCESS: Phone number ${account.phoneNumberId} registered. Meta response: ${JSON.stringify(regRes.data)}`);
             await this.prisma.whatsAppAccount.update({
                 where: { id: accountId },
                 data: {
@@ -902,14 +920,18 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     businessProfile: {
                         ...profile,
                         lastRegistrationAttemptAt: new Date().toISOString(),
-                        registrationStatus: 'SUCCESS'
+                        registrationStatus: 'SUCCESS',
+                        metaRegistrationResponse: regRes.data
                     }
                 }
             });
         }
         catch (error) {
-            const errorMsg = error.response?.data?.error?.message || error.message;
-            this.logger.error(`[Registration] FAILED for ${account.phoneNumberId}: ${errorMsg}`);
+            const errorData = error.response?.data?.error;
+            const errorMsg = errorData?.message || error.message;
+            const errorCode = errorData?.code;
+            const errorSubcode = errorData?.error_subcode;
+            this.logger.error(`[Registration] FAILED for ${account.phoneNumberId}: ${errorMsg} (Code: ${errorCode}, Subcode: ${errorSubcode})`);
             const profile = typeof account.businessProfile === 'object' ? account.businessProfile : {};
             await this.prisma.whatsAppAccount.update({
                 where: { id: accountId },
@@ -917,7 +939,9 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     businessProfile: {
                         ...profile,
                         lastRegistrationAttemptAt: new Date().toISOString(),
-                        registrationError: errorMsg
+                        registrationError: errorMsg,
+                        metaErrorCode: errorCode,
+                        metaErrorSubcode: errorSubcode
                     }
                 }
             });

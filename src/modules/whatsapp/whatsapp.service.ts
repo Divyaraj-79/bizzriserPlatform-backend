@@ -152,7 +152,19 @@ export class WhatsappService {
       const phoneRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${wabaId}/phone_numbers`, {
         headers: { Authorization: `Bearer ${systemAccessToken}` },
       });
-      phoneData = phoneRes.data.data?.[0];
+      const allPhones = phoneRes.data.data || [];
+      
+      // Prioritize the phoneNumberId passed from frontend/onboarding
+      phoneData = phoneNumberId 
+        ? allPhones.find((p: any) => p.id === phoneNumberId) 
+        : allPhones[0];
+
+      if (!phoneData && allPhones.length > 0) {
+        if (phoneNumberId) {
+          this.logger.warn(`Provided phoneNumberId ${phoneNumberId} not found in WABA ${wabaId}. Falling back to first available: ${allPhones[0].id}`);
+        }
+        phoneData = allPhones[0];
+      }
     } catch (phoneErr: any) {
       const errorMsg = phoneErr.response?.data?.error?.message || phoneErr.message;
       this.logger.error(`CRITICAL FAILURE: System Token Fetch failed. Message: ${errorMsg}`);
@@ -972,6 +984,15 @@ export class WhatsappService {
         },
       });
 
+      // NEW: If the account is still not verified, trigger a smart registration attempt
+      if (phoneInfo.code_verification_status !== 'VERIFIED') {
+        this.logger.log(`[SYNC] Account ${accountId} is not VERIFIED (Status: ${phoneInfo.code_verification_status}). Triggering smart registration...`);
+        // Use force=true during manual sync to bypass the 12-hour cooldown
+        this.registerPhoneNumber(orgId, accountId, true).catch(err => {
+          this.logger.error(`[SYNC] Auto-registration failed during sync: ${err.message}`);
+        });
+      }
+
       this.logger.log(`[SYNC SUCCESS] Account ${accountId} updated. Status: ${updatedAccount.status}`);
       return updatedAccount;
     } catch (error) {
@@ -1054,15 +1075,21 @@ export class WhatsappService {
 
     try {
       this.logger.log(`[Registration] Starting smart registration check for ${account.phoneNumberId}...`);
+      
+      // Use the system token for registration as it's more reliable
+      const systemToken = this.configService.get<string>('whatsapp.accessToken');
       const { token: validatedToken } = await this.getValidToken(account);
+      const registrationToken = systemToken || validatedToken;
 
       // 1. Fetch current status from Meta to see if registration is actually needed
       const phoneRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/phone_numbers`, {
-        params: { fields: 'code_verification_status' },
-        headers: { Authorization: `Bearer ${validatedToken}` },
+        params: { fields: 'code_verification_status,display_phone_number' },
+        headers: { Authorization: `Bearer ${registrationToken}` },
       });
       const phoneInfo = phoneRes.data?.data?.find((p: any) => p.id === account.phoneNumberId);
       
+      this.logger.log(`[Registration] Meta status for ${account.phoneNumberId} (${phoneInfo?.display_phone_number}): ${phoneInfo?.code_verification_status}`);
+
       if (phoneInfo?.code_verification_status === 'VERIFIED' && !force) {
         this.logger.log(`[Registration] Phone number ${account.phoneNumberId} is already VERIFIED. Skipping registration.`);
         if (account.status !== 'ACTIVE') {
@@ -1085,15 +1112,15 @@ export class WhatsappService {
       }
 
       // 3. Perform the actual registration
-      this.logger.log(`[Registration] Sending registration request for ${account.phoneNumberId} (PIN: 123456)...`);
-      await axios.post(`${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/register`, {
+      this.logger.log(`[Registration] Sending registration request for ${account.phoneNumberId} (PIN: 123456) using token: ${registrationToken.substring(0, 10)}...`);
+      const regRes = await axios.post(`${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/register`, {
         messaging_product: 'whatsapp',
         pin: '123456',
       }, {
-        headers: { Authorization: `Bearer ${validatedToken}` },
+        headers: { Authorization: `Bearer ${registrationToken}` },
       });
 
-      this.logger.log(`[Registration] SUCCESS: Phone number ${account.phoneNumberId} registered.`);
+      this.logger.log(`[Registration] SUCCESS: Phone number ${account.phoneNumberId} registered. Meta response: ${JSON.stringify(regRes.data)}`);
 
       // 4. Update local state and timestamp
       await this.prisma.whatsAppAccount.update({
@@ -1103,14 +1130,19 @@ export class WhatsappService {
           businessProfile: {
             ...profile,
             lastRegistrationAttemptAt: new Date().toISOString(),
-            registrationStatus: 'SUCCESS'
+            registrationStatus: 'SUCCESS',
+            metaRegistrationResponse: regRes.data
           }
         }
       });
 
     } catch (error: any) {
-      const errorMsg = error.response?.data?.error?.message || error.message;
-      this.logger.error(`[Registration] FAILED for ${account.phoneNumberId}: ${errorMsg}`);
+      const errorData = error.response?.data?.error;
+      const errorMsg = errorData?.message || error.message;
+      const errorCode = errorData?.code;
+      const errorSubcode = errorData?.error_subcode;
+      
+      this.logger.error(`[Registration] FAILED for ${account.phoneNumberId}: ${errorMsg} (Code: ${errorCode}, Subcode: ${errorSubcode})`);
       
       // Update attempt timestamp even on failure to respect cooldown
       const profile = typeof account.businessProfile === 'object' ? (account.businessProfile as any) : {};
@@ -1120,7 +1152,9 @@ export class WhatsappService {
           businessProfile: {
             ...profile,
             lastRegistrationAttemptAt: new Date().toISOString(),
-            registrationError: errorMsg
+            registrationError: errorMsg,
+            metaErrorCode: errorCode,
+            metaErrorSubcode: errorSubcode
           }
         }
       });
