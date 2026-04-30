@@ -8,23 +8,23 @@ export declare class MessagingController {
         text: string;
     }): Promise<{
         id: string;
-        whatsappAccountId: string;
-        createdAt: Date;
-        updatedAt: Date;
         organizationId: string;
         status: import(".prisma/client").$Enums.MessageStatus;
-        waMessageId: string | null;
-        contactId: string;
-        direction: import(".prisma/client").$Enums.MessageDirection;
+        createdAt: Date;
+        updatedAt: Date;
         type: import(".prisma/client").$Enums.MessageType;
-        content: import("@prisma/client/runtime/library").JsonValue;
+        whatsappAccountId: string;
+        contactId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
-        conversationId: string | null;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        content: import("@prisma/client/runtime/library").JsonValue;
         sentAt: Date | null;
         deliveredAt: Date | null;
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        conversationId: string | null;
     }>;
     sendMedia(req: any, body: {
         accountId: string;
@@ -32,23 +32,23 @@ export declare class MessagingController {
         caption?: string;
     }, file: any): Promise<{
         id: string;
-        whatsappAccountId: string;
-        createdAt: Date;
-        updatedAt: Date;
         organizationId: string;
         status: import(".prisma/client").$Enums.MessageStatus;
-        waMessageId: string | null;
-        contactId: string;
-        direction: import(".prisma/client").$Enums.MessageDirection;
+        createdAt: Date;
+        updatedAt: Date;
         type: import(".prisma/client").$Enums.MessageType;
-        content: import("@prisma/client/runtime/library").JsonValue;
+        whatsappAccountId: string;
+        contactId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
-        conversationId: string | null;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        content: import("@prisma/client/runtime/library").JsonValue;
         sentAt: Date | null;
         deliveredAt: Date | null;
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        conversationId: string | null;
     }>;
     sendTemplate(req: any, body: {
         accountId: string;
@@ -58,23 +58,23 @@ export declare class MessagingController {
         components?: any[];
     }): Promise<{
         id: string;
-        whatsappAccountId: string;
-        createdAt: Date;
-        updatedAt: Date;
         organizationId: string;
         status: import(".prisma/client").$Enums.MessageStatus;
-        waMessageId: string | null;
-        contactId: string;
-        direction: import(".prisma/client").$Enums.MessageDirection;
+        createdAt: Date;
+        updatedAt: Date;
         type: import(".prisma/client").$Enums.MessageType;
-        content: import("@prisma/client/runtime/library").JsonValue;
+        whatsappAccountId: string;
+        contactId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
-        conversationId: string | null;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        content: import("@prisma/client/runtime/library").JsonValue;
         sentAt: Date | null;
         deliveredAt: Date | null;
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        conversationId: string | null;
     }>;
     getConversations(req: any): Promise<({
         whatsappAccount: {
@@ -91,14 +91,14 @@ export declare class MessagingController {
         };
     } & {
         id: string;
-        whatsappAccountId: string;
+        organizationId: string;
         createdAt: Date;
         updatedAt: Date;
-        organizationId: string;
+        whatsappAccountId: string;
         contactId: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
         lastMessageBody: string | null;
         lastMessageAt: Date;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
     })[]>;
     createConversation(req: any, body: {
         whatsappAccountId: string;
@@ -107,33 +107,33 @@ export declare class MessagingController {
         lastName?: string;
     }): Promise<{
         id: string;
-        whatsappAccountId: string;
+        organizationId: string;
         createdAt: Date;
         updatedAt: Date;
-        organizationId: string;
+        whatsappAccountId: string;
         contactId: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
         lastMessageBody: string | null;
         lastMessageAt: Date;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
     }>;
     getMessages(conversationId: string, req: any): Promise<{
         id: string;
-        whatsappAccountId: string;
-        createdAt: Date;
-        updatedAt: Date;
         organizationId: string;
         status: import(".prisma/client").$Enums.MessageStatus;
-        waMessageId: string | null;
-        contactId: string;
-        direction: import(".prisma/client").$Enums.MessageDirection;
+        createdAt: Date;
+        updatedAt: Date;
         type: import(".prisma/client").$Enums.MessageType;
-        content: import("@prisma/client/runtime/library").JsonValue;
+        whatsappAccountId: string;
+        contactId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
-        conversationId: string | null;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        content: import("@prisma/client/runtime/library").JsonValue;
         sentAt: Date | null;
         deliveredAt: Date | null;
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        conversationId: string | null;
     }[]>;
 }

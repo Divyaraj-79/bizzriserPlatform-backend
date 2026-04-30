@@ -19,17 +19,20 @@ const contacts_service_1 = require("../contacts/contacts.service");
 const messaging_service_1 = require("../messaging/messaging.service");
 const client_1 = require("@prisma/client");
 const flow_executor_service_1 = require("../chatbots/executor/flow-executor.service");
+const whatsapp_service_1 = require("../whatsapp/whatsapp.service");
 let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
     prisma;
     contactsService;
     messagingService;
     flowExecutor;
+    whatsappService;
     logger = new common_1.Logger(WebhookProcessor_1.name);
-    constructor(prisma, contactsService, messagingService, flowExecutor) {
+    constructor(prisma, contactsService, messagingService, flowExecutor, whatsappService) {
         this.prisma = prisma;
         this.contactsService = contactsService;
         this.messagingService = messagingService;
         this.flowExecutor = flowExecutor;
+        this.whatsappService = whatsappService;
     }
     async handleProcessMessage(job) {
         const { eventId, accountId, organizationId, data } = job.data;
@@ -180,6 +183,16 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
             this.logger.error(`Error processing chatbot flow logic: ${err.message}`);
         }
     }
+    async handlePaymentUpdate(job) {
+        const { accountId, organizationId, wabaId } = job.data;
+        this.logger.log(`Processing payment update for WABA ${wabaId}, Account ${accountId}`);
+        try {
+            await this.whatsappService.registerPhoneNumber(organizationId, accountId);
+        }
+        catch (error) {
+            this.logger.error(`Error handling payment update for account ${accountId}: ${error.message}`);
+        }
+    }
 };
 exports.WebhookProcessor = WebhookProcessor;
 __decorate([
@@ -188,11 +201,18 @@ __decorate([
     __metadata("design:paramtypes", [bullmq_1.Job]),
     __metadata("design:returntype", Promise)
 ], WebhookProcessor.prototype, "handleProcessMessage", null);
+__decorate([
+    (0, bull_1.Process)('process-payment-update'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [bullmq_1.Job]),
+    __metadata("design:returntype", Promise)
+], WebhookProcessor.prototype, "handlePaymentUpdate", null);
 exports.WebhookProcessor = WebhookProcessor = WebhookProcessor_1 = __decorate([
     (0, bull_1.Processor)('webhooks'),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         contacts_service_1.ContactsService,
         messaging_service_1.MessagingService,
-        flow_executor_service_1.FlowExecutorService])
+        flow_executor_service_1.FlowExecutorService,
+        whatsapp_service_1.WhatsappService])
 ], WebhookProcessor);
 //# sourceMappingURL=webhook.processor.js.map

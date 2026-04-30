@@ -65,6 +65,23 @@ export class WebhookService {
             }
           }
         }
+
+        // C. Handle payment configuration updates (Trigger re-registration)
+        if (change.field === 'payment_configuration_update') {
+           this.logger.log(`Detected payment configuration update for WABA: ${entry.id}`);
+           const accounts = await this.prisma.whatsAppAccount.findMany({
+             where: { wabaId: entry.id },
+             select: { id: true, organizationId: true }
+           });
+
+           for (const account of accounts) {
+             await this.webhookQueue.add('process-payment-update', {
+               accountId: account.id,
+               organizationId: account.organizationId,
+               wabaId: entry.id
+             });
+           }
+        }
       }
     }
 

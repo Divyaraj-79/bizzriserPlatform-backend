@@ -6,6 +6,7 @@ import { ContactsService } from '../contacts/contacts.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { MessageDirection, MessageType, MessageStatus, ChatbotSessionStatus } from '@prisma/client';
 import { FlowExecutorService } from '../chatbots/executor/flow-executor.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 
 @Processor('webhooks')
 export class WebhookProcessor {
@@ -16,6 +17,7 @@ export class WebhookProcessor {
     private readonly contactsService: ContactsService,
     private readonly messagingService: MessagingService,
     private readonly flowExecutor: FlowExecutorService,
+    private readonly whatsappService: WhatsappService,
   ) {}
 
   @Process('process-message')
@@ -189,6 +191,19 @@ export class WebhookProcessor {
       }
     } catch (err) {
       this.logger.error(`Error processing chatbot flow logic: ${err.message}`);
+    }
+  }
+
+  @Process('process-payment-update')
+  async handlePaymentUpdate(job: Job<any>) {
+    const { accountId, organizationId, wabaId } = job.data;
+    this.logger.log(`Processing payment update for WABA ${wabaId}, Account ${accountId}`);
+
+    try {
+      // Trigger registration (smart registration will check if actually needed)
+      await this.whatsappService.registerPhoneNumber(organizationId, accountId);
+    } catch (error) {
+      this.logger.error(`Error handling payment update for account ${accountId}: ${error.message}`);
     }
   }
 }

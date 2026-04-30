@@ -215,13 +215,8 @@ export class WhatsappService {
         });
         this.logger.log(`WABA ${wabaId} subscribed to webhooks successfully.`);
 
-        // Also register phone number for Cloud API use
-        await axios.post(`${this.graphBaseUrl}/${this.apiVersion}/${phoneNumberId}/register`, {
-          messaging_product: 'whatsapp',
-          pin: '123456',
-        }, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        // Also register phone number for Cloud API use (Smart Registration)
+        await this.registerPhoneNumber(orgId, account.id);
 
         await this.syncAccount(orgId, account.id);
       } catch (subErr: any) {
@@ -1044,6 +1039,91 @@ export class WhatsappService {
       
       // If no fallback available, throw clear error
       throw new HttpException(`WhatsApp authentication failed: ${errorMsg}. Your token may have expired.`, HttpStatus.UNAUTHORIZED);
+    }
+  }
+
+  /**
+   * Registers a phone number for WhatsApp Cloud API.
+   * Includes smart checks to avoid exceeding Meta's rate limits (10 attempts / 72 hours).
+   */
+  async registerPhoneNumber(orgId: string, accountId: string, force = false) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) return;
+
+    try {
+      this.logger.log(`[Registration] Starting smart registration check for ${account.phoneNumberId}...`);
+      const { token: validatedToken } = await this.getValidToken(account);
+
+      // 1. Fetch current status from Meta to see if registration is actually needed
+      const phoneRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/phone_numbers`, {
+        params: { fields: 'code_verification_status' },
+        headers: { Authorization: `Bearer ${validatedToken}` },
+      });
+      const phoneInfo = phoneRes.data?.data?.find((p: any) => p.id === account.phoneNumberId);
+      
+      if (phoneInfo?.code_verification_status === 'VERIFIED' && !force) {
+        this.logger.log(`[Registration] Phone number ${account.phoneNumberId} is already VERIFIED. Skipping registration.`);
+        if (account.status !== 'ACTIVE') {
+           await this.prisma.whatsAppAccount.update({
+             where: { id: accountId },
+             data: { status: 'ACTIVE' }
+           });
+        }
+        return;
+      }
+
+      // 2. Cooldown check: Don't attempt more than once every 12 hours unless forced
+      const profile = typeof account.businessProfile === 'object' ? (account.businessProfile as any) : {};
+      const lastAttempt = profile.lastRegistrationAttemptAt ? new Date(profile.lastRegistrationAttemptAt) : null;
+      const cooldownMs = 12 * 60 * 60 * 1000; // 12 hours
+
+      if (lastAttempt && (Date.now() - lastAttempt.getTime() < cooldownMs) && !force) {
+        this.logger.warn(`[Registration] Registration cooldown active for ${account.phoneNumberId}. Skipping. Last attempt: ${lastAttempt.toISOString()}`);
+        return;
+      }
+
+      // 3. Perform the actual registration
+      this.logger.log(`[Registration] Sending registration request for ${account.phoneNumberId} (PIN: 123456)...`);
+      await axios.post(`${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/register`, {
+        messaging_product: 'whatsapp',
+        pin: '123456',
+      }, {
+        headers: { Authorization: `Bearer ${validatedToken}` },
+      });
+
+      this.logger.log(`[Registration] SUCCESS: Phone number ${account.phoneNumberId} registered.`);
+
+      // 4. Update local state and timestamp
+      await this.prisma.whatsAppAccount.update({
+        where: { id: accountId },
+        data: {
+          status: 'ACTIVE',
+          businessProfile: {
+            ...profile,
+            lastRegistrationAttemptAt: new Date().toISOString(),
+            registrationStatus: 'SUCCESS'
+          }
+        }
+      });
+
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error?.message || error.message;
+      this.logger.error(`[Registration] FAILED for ${account.phoneNumberId}: ${errorMsg}`);
+      
+      // Update attempt timestamp even on failure to respect cooldown
+      const profile = typeof account.businessProfile === 'object' ? (account.businessProfile as any) : {};
+      await this.prisma.whatsAppAccount.update({
+        where: { id: accountId },
+        data: {
+          businessProfile: {
+            ...profile,
+            lastRegistrationAttemptAt: new Date().toISOString(),
+            registrationError: errorMsg
+          }
+        }
+      });
     }
   }
 

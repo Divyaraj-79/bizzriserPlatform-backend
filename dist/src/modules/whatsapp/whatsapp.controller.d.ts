@@ -4,8 +4,6 @@ export declare class WhatsappController {
     constructor(whatsappService: WhatsappService);
     connectAccount(req: any, data: any): Promise<{
         id: string;
-        createdAt: Date;
-        updatedAt: Date;
         phoneNumber: string;
         phoneNumberId: string;
         verifyToken: string;
@@ -18,24 +16,26 @@ export declare class WhatsappController {
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
         messagingLimitTier: string | null;
         messagingLimitCount: number;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     listAccounts(req: any): Promise<{
         id: string;
-        createdAt: Date;
         phoneNumber: string;
         phoneNumberId: string;
         displayName: string;
         wabaId: string;
         status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
     }[]>;
     getTemplates(req: any, id: string, sync?: string): Promise<{
         id: string;
+        organizationId: string;
+        status: string;
         createdAt: Date;
         updatedAt: Date;
         name: string;
-        organizationId: string;
-        status: string;
         accountId: string;
         language: string;
         category: string;
@@ -51,8 +51,6 @@ export declare class WhatsappController {
     deleteTemplate(req: any, id: string, templateName: string): Promise<any>;
     syncAccount(req: any, id: string): Promise<{
         id: string;
-        createdAt: Date;
-        updatedAt: Date;
         phoneNumber: string;
         phoneNumberId: string;
         verifyToken: string;
@@ -65,11 +63,11 @@ export declare class WhatsappController {
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
         messagingLimitTier: string | null;
         messagingLimitCount: number;
+        createdAt: Date;
+        updatedAt: Date;
     } | undefined>;
     disconnectAccount(req: any, id: string): Promise<{
         id: string;
-        createdAt: Date;
-        updatedAt: Date;
         phoneNumber: string;
         phoneNumberId: string;
         verifyToken: string;
@@ -82,6 +80,8 @@ export declare class WhatsappController {
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
         messagingLimitTier: string | null;
         messagingLimitCount: number;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     getSignupConfig(): Promise<{
         appId: string | undefined;

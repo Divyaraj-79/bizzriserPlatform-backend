@@ -15,6 +15,7 @@ const webhook_processor_1 = require("./webhook.processor");
 const contacts_module_1 = require("../contacts/contacts.module");
 const messaging_module_1 = require("../messaging/messaging.module");
 const chatbots_module_1 = require("../chatbots/chatbots.module");
+const whatsapp_module_1 = require("../whatsapp/whatsapp.module");
 let WebhookModule = class WebhookModule {
 };
 exports.WebhookModule = WebhookModule;
@@ -27,6 +28,7 @@ exports.WebhookModule = WebhookModule = __decorate([
             contacts_module_1.ContactsModule,
             messaging_module_1.MessagingModule,
             chatbots_module_1.ChatbotsModule,
+            whatsapp_module_1.WhatsappModule,
         ],
         controllers: [webhook_controller_1.WebhookController],
         providers: [webhook_service_1.WebhookService, webhook_processor_1.WebhookProcessor],
