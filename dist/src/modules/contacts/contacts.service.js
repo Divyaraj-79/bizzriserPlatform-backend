@@ -106,11 +106,13 @@ let ContactsService = ContactsService_1 = class ContactsService {
             });
             const uniqueContacts = Array.from(uniqueMap.values());
             const uniqueCount = uniqueContacts.length;
-            this.logger.log(`Queueing ${uniqueCount} unique contacts for Org: ${resolvedOrgId} (Original: ${contacts.length})`);
+            const duplicatesRemoved = contacts.length - uniqueCount;
+            this.logger.log(`Queueing ${uniqueCount} unique contacts for Org: ${resolvedOrgId} (Duplicates removed: ${duplicatesRemoved})`);
             const job = await this.importQueue.add('import-contacts', {
                 orgId,
                 contacts: uniqueContacts,
-                originalCount: contacts.length
+                originalCount: contacts.length,
+                duplicatesRemoved
             }, {
                 attempts: 3,
                 backoff: { type: 'exponential', delay: 2000 },
@@ -121,6 +123,7 @@ let ContactsService = ContactsService_1 = class ContactsService {
                 jobId: job.id,
                 totalContacts: uniqueCount,
                 originalCount: contacts.length,
+                duplicatesRemoved,
                 status: 'QUEUED'
             };
         }

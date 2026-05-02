@@ -10,5 +10,6 @@ export declare class ImportProcessor implements OnModuleInit {
     handleImport(job: any): Promise<{
         success: boolean;
         count: any;
+        duplicatesRemoved: any;
     }>;
 }

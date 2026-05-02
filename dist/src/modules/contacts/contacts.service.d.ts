@@ -47,6 +47,7 @@ export declare class ContactsService {
         jobId: any;
         totalContacts: number;
         originalCount: number;
+        duplicatesRemoved: number;
         status: string;
     }>;
     private escapeSql;

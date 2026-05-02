@@ -27,10 +27,10 @@ let ImportProcessor = ImportProcessor_1 = class ImportProcessor {
         this.logger.log('🚀 Bulk Import Processor successfully initialized and connected to Redis.');
     }
     async handleImport(job) {
-        const { orgId, contacts } = job.data;
+        const { orgId, contacts, duplicatesRemoved } = job.data;
         const total = contacts.length;
         const jobId = job.id;
-        this.logger.log(`📥 Starting background import for ${total} contacts (Org: ${orgId}, Job ID: ${jobId})`);
+        this.logger.log(`📥 Starting background import for ${total} contacts (Org: ${orgId}, Job ID: ${jobId}, Duplicates: ${duplicatesRemoved || 0})`);
         try {
             const setProgress = async (val) => {
                 if (typeof job.updateProgress === 'function')
@@ -38,7 +38,7 @@ let ImportProcessor = ImportProcessor_1 = class ImportProcessor {
                 else if (typeof job.progress === 'function')
                     await job.progress(val);
                 const stats = typeof val === 'object' ? val : { progress: val, current: val === 100 ? total : 0, total };
-                this.realtimeGateway.emitImportProgress(orgId, jobId, stats);
+                this.realtimeGateway.emitImportProgress(orgId, jobId, { ...stats, duplicatesRemoved });
             };
             await setProgress({ progress: 1, current: 0, total });
             await this.contactsService.atomicBulkImport(orgId, contacts, async (stats) => {
@@ -47,7 +47,7 @@ let ImportProcessor = ImportProcessor_1 = class ImportProcessor {
             });
             await setProgress({ progress: 100, current: total, total });
             this.logger.log(`✅ Import completed successfully for Org: ${orgId}`);
-            return { success: true, count: total };
+            return { success: true, count: total, duplicatesRemoved };
         }
         catch (err) {
             this.logger.error(`❌ Import failed for Org: ${orgId}: ${err.message}`);

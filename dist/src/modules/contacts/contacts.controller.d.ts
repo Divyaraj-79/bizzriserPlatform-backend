@@ -27,6 +27,7 @@ export declare class ContactsController {
         jobId: any;
         totalContacts: number;
         originalCount: number;
+        duplicatesRemoved: number;
         status: string;
     }>;
     findAll(req: any, page?: string, limit?: string, search?: string, status?: string, tag?: string): Promise<{
