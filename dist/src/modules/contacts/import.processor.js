@@ -51,6 +51,11 @@ let ImportProcessor = ImportProcessor_1 = class ImportProcessor {
         }
         catch (err) {
             this.logger.error(`❌ Import failed for Org: ${orgId}: ${err.message}`);
+            try {
+                await job.updateProgress({ progress: 0, error: err.message, status: 'FAILED' });
+                this.realtimeGateway.emitImportProgress(orgId, jobId, { progress: 0, error: err.message, status: 'FAILED' });
+            }
+            catch (e) { }
             throw err;
         }
     }

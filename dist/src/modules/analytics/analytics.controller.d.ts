@@ -42,14 +42,14 @@ export declare class AnalyticsController {
         readRate: number;
         failureRate: number;
         id: string;
+        organizationId: string;
+        status: import(".prisma/client").$Enums.CampaignStatus;
         createdAt: Date;
         updatedAt: Date;
         name: string;
-        organizationId: string;
-        status: import(".prisma/client").$Enums.CampaignStatus;
-        templateName: string | null;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         description: string | null;
+        templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
         scheduledAt: Date | null;
         startedAt: Date | null;
@@ -63,16 +63,16 @@ export declare class AnalyticsController {
     getAutomations(req: any, query: AnalyticsQueryDto): Promise<{
         chatbots: {
             id: string;
+            status: import(".prisma/client").$Enums.ChatbotStatus;
             updatedAt: Date;
             name: string;
-            status: import(".prisma/client").$Enums.ChatbotStatus;
             executions: number;
         }[];
         sequences: {
             id: string;
+            status: import(".prisma/client").$Enums.SequenceStatus;
             updatedAt: Date;
             name: string;
-            status: import(".prisma/client").$Enums.SequenceStatus;
             executions: number;
         }[];
     }>;

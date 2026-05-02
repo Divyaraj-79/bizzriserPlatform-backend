@@ -105,21 +105,22 @@ let ContactsService = ContactsService_1 = class ContactsService {
                 }
             });
             const uniqueContacts = Array.from(uniqueMap.values());
+            const uniqueCount = uniqueContacts.length;
+            this.logger.log(`Queueing ${uniqueCount} unique contacts for Org: ${resolvedOrgId} (Original: ${contacts.length})`);
             const job = await this.importQueue.add('import-contacts', {
                 orgId,
                 contacts: uniqueContacts,
+                originalCount: contacts.length
             }, {
                 attempts: 3,
                 backoff: { type: 'exponential', delay: 2000 },
                 removeOnComplete: { age: 3600 },
                 removeOnFail: { age: 86400 },
             });
-            this.logger.log(`Successfully queued job ${job?.id} for ${uniqueContacts.length} contacts`);
-            this.logger.debug(`Job details: ${JSON.stringify(job)}`);
             return {
                 jobId: job.id,
-                totalContacts: contacts.length,
-                uniqueContacts: uniqueContacts.length,
+                totalContacts: uniqueCount,
+                originalCount: contacts.length,
                 status: 'QUEUED'
             };
         }
@@ -141,42 +142,40 @@ let ContactsService = ContactsService_1 = class ContactsService {
         const total = contacts.length;
         let processed = 0;
         try {
-            for (let i = 0; i < total; i += CHUNK_SIZE) {
-                const chunk = contacts.slice(i, i + CHUNK_SIZE);
-                const values = chunk.map(c => {
-                    const id = (0, uuid_1.v4)();
-                    const phone = this.escapeSql(c.phone);
-                    const firstName = this.escapeSql(c.name || c.firstName || '');
-                    const fields = this.escapeSql(JSON.stringify(c.customFields || {}));
-                    const tagArray = (c.tags || []).map((t) => `'${this.escapeSql(t)}'`);
-                    const tagsSql = tagArray.length > 0 ? `ARRAY[${tagArray.join(',')}]::text[]` : `ARRAY[]::text[]`;
-                    return `('${id}', '${orgId}', '${phone}', '${firstName}', '${fields}'::jsonb, ${tagsSql}, NOW(), NOW())`;
-                }).join(',');
-                const query = `
-          INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "customFields", "tags", "createdAt", "updatedAt")
-          VALUES ${values}
-          ON CONFLICT ("organizationId", "phone") DO UPDATE SET
-            "firstName" = EXCLUDED."firstName",
-            "customFields" = EXCLUDED."customFields",
-            "tags" = EXCLUDED."tags",
-            "updatedAt" = NOW();
-        `;
-                try {
-                    await this.prisma.$executeRawUnsafe(query);
+            await this.prisma.$transaction(async (tx) => {
+                for (let i = 0; i < total; i += CHUNK_SIZE) {
+                    const chunk = contacts.slice(i, i + CHUNK_SIZE);
+                    const values = chunk.map(c => {
+                        const id = (0, uuid_1.v4)();
+                        const phone = this.escapeSql(this.sanitizePhone(c.phone));
+                        const firstName = this.escapeSql(c.name || c.firstName || '');
+                        const fields = this.escapeSql(JSON.stringify(c.customFields || {}));
+                        const tagArray = (c.tags || []).map((t) => `'${this.escapeSql(t)}'`);
+                        const tagsSql = tagArray.length > 0 ? `ARRAY[${tagArray.join(',')}]::text[]` : `ARRAY[]::text[]`;
+                        return `('${id}', '${orgId}', '${phone}', '${firstName}', '${fields}'::jsonb, ${tagsSql}, NOW(), NOW())`;
+                    }).join(',');
+                    const query = `
+            INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "customFields", "tags", "createdAt", "updatedAt")
+            VALUES ${values}
+            ON CONFLICT ("organizationId", "phone") DO UPDATE SET
+              "firstName" = EXCLUDED."firstName",
+              "customFields" = EXCLUDED."customFields",
+              "tags" = EXCLUDED."tags",
+              "updatedAt" = NOW();
+          `;
+                    await tx.$executeRawUnsafe(query);
+                    processed += chunk.length;
+                    if (onProgress) {
+                        onProgress({ current: Math.min(processed, total), total });
+                    }
                 }
-                catch (queryErr) {
-                    this.logger.error(`Query failed for chunk starting at ${processed}. First 500 chars: ${query.substring(0, 500)}`);
-                    throw queryErr;
-                }
-                processed += chunk.length;
-                if (onProgress) {
-                    onProgress({ current: processed, total });
-                }
-            }
+            }, {
+                timeout: 60000
+            });
             return { success: true, count: total };
         }
         catch (err) {
-            this.logger.error(`Bulk import failed at chunk starting ${processed}: ${err.message}`, err.stack);
+            this.logger.error(`Bulk import failed. Rollback triggered. Error: ${err.message}`, err.stack);
             throw err;
         }
     }

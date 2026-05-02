@@ -48,8 +48,15 @@ export class ImportProcessor implements OnModuleInit {
 
       this.logger.log(`✅ Import completed successfully for Org: ${orgId}`);
       return { success: true, count: total };
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(`❌ Import failed for Org: ${orgId}: ${err.message}`);
+      
+      // Notify UI of failure immediately via socket
+      try {
+        await job.updateProgress({ progress: 0, error: err.message, status: 'FAILED' });
+        this.realtimeGateway.emitImportProgress(orgId, jobId, { progress: 0, error: err.message, status: 'FAILED' });
+      } catch (e) {}
+
       throw err; 
     }
   }

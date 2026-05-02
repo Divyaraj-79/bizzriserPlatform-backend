@@ -105,11 +105,15 @@ export class ContactsService {
       });
 
       const uniqueContacts = Array.from(uniqueMap.values());
+      const uniqueCount = uniqueContacts.length;
       
+      this.logger.log(`Queueing ${uniqueCount} unique contacts for Org: ${resolvedOrgId} (Original: ${contacts.length})`);
+
       // Add to background queue with industrial reliability settings
       const job = await this.importQueue.add('import-contacts', {
         orgId,
         contacts: uniqueContacts,
+        originalCount: contacts.length
       }, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
@@ -117,13 +121,10 @@ export class ContactsService {
         removeOnFail: { age: 86400 },   // Keep failed for 24 hours
       });
 
-      this.logger.log(`Successfully queued job ${job?.id} for ${uniqueContacts.length} contacts`);
-      this.logger.debug(`Job details: ${JSON.stringify(job)}`);
-
       return {
         jobId: job.id,
-        totalContacts: contacts.length,
-        uniqueContacts: uniqueContacts.length,
+        totalContacts: uniqueCount, // Return unique count to frontend for accurate progress
+        originalCount: contacts.length,
         status: 'QUEUED'
       };
     } catch (err: any) {
@@ -148,51 +149,54 @@ export class ContactsService {
    * Ensures 'all or nothing' via a single database transaction.
    */
   async atomicBulkImport(orgId: string, contacts: any[], onProgress?: (stats: { current: number, total: number }) => void) {
-    const CHUNK_SIZE = 200; // Reduced for maximum reliability in massive imports
+    const CHUNK_SIZE = 200; 
     const total = contacts.length;
     let processed = 0;
 
     try {
-      for (let i = 0; i < total; i += CHUNK_SIZE) {
-        const chunk = contacts.slice(i, i + CHUNK_SIZE);
-        
-        const values = chunk.map(c => {
-          const id = uuidv4();
-          const phone = this.escapeSql(c.phone);
-          const firstName = this.escapeSql(c.name || c.firstName || '');
-          const fields = this.escapeSql(JSON.stringify(c.customFields || {}));
-          const tagArray = (c.tags || []).map((t: string) => `'${this.escapeSql(t)}'`);
-          const tagsSql = tagArray.length > 0 ? `ARRAY[${tagArray.join(',')}]::text[]` : `ARRAY[]::text[]`;
+      // Use a single transaction to ensure 'All or Nothing' integrity
+      await this.prisma.$transaction(async (tx) => {
+        for (let i = 0; i < total; i += CHUNK_SIZE) {
+          const chunk = contacts.slice(i, i + CHUNK_SIZE);
           
-          return `('${id}', '${orgId}', '${phone}', '${firstName}', '${fields}'::jsonb, ${tagsSql}, NOW(), NOW())`;
-        }).join(',');
+          const values = chunk.map(c => {
+            const id = uuidv4();
+            // CRITICAL: Must sanitize phone to match DB unique constraint (digits only)
+            const phone = this.escapeSql(this.sanitizePhone(c.phone));
+            const firstName = this.escapeSql(c.name || c.firstName || '');
+            const fields = this.escapeSql(JSON.stringify(c.customFields || {}));
+            const tagArray = (c.tags || []).map((t: string) => `'${this.escapeSql(t)}'`);
+            const tagsSql = tagArray.length > 0 ? `ARRAY[${tagArray.join(',')}]::text[]` : `ARRAY[]::text[]`;
+            
+            return `('${id}', '${orgId}', '${phone}', '${firstName}', '${fields}'::jsonb, ${tagsSql}, NOW(), NOW())`;
+          }).join(',');
 
-        const query = `
-          INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "customFields", "tags", "createdAt", "updatedAt")
-          VALUES ${values}
-          ON CONFLICT ("organizationId", "phone") DO UPDATE SET
-            "firstName" = EXCLUDED."firstName",
-            "customFields" = EXCLUDED."customFields",
-            "tags" = EXCLUDED."tags",
-            "updatedAt" = NOW();
-        `;
+          const query = `
+            INSERT INTO "contacts" ("id", "organizationId", "phone", "firstName", "customFields", "tags", "createdAt", "updatedAt")
+            VALUES ${values}
+            ON CONFLICT ("organizationId", "phone") DO UPDATE SET
+              "firstName" = EXCLUDED."firstName",
+              "customFields" = EXCLUDED."customFields",
+              "tags" = EXCLUDED."tags",
+              "updatedAt" = NOW();
+          `;
 
-        try {
-          await this.prisma.$executeRawUnsafe(query);
-        } catch (queryErr: any) {
-          this.logger.error(`Query failed for chunk starting at ${processed}. First 500 chars: ${query.substring(0, 500)}`);
-          throw queryErr;
+          await tx.$executeRawUnsafe(query);
+          
+          processed += chunk.length;
+
+          // Emit progress outside the async block if needed, but here we call the callback
+          if (onProgress) {
+            onProgress({ current: Math.min(processed, total), total });
+          }
         }
+      }, {
+        timeout: 60000 // 60s timeout for large batches
+      });
 
-        processed += chunk.length;
-
-        if (onProgress) {
-          onProgress({ current: processed, total });
-        }
-      }
       return { success: true, count: total };
     } catch (err: any) {
-      this.logger.error(`Bulk import failed at chunk starting ${processed}: ${err.message}`, err.stack);
+      this.logger.error(`Bulk import failed. Rollback triggered. Error: ${err.message}`, err.stack);
       throw err;
     }
   }

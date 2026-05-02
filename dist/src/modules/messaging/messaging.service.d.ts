@@ -38,12 +38,12 @@ export declare class MessagingService {
         status: import(".prisma/client").$Enums.MessageStatus;
         createdAt: Date;
         updatedAt: Date;
-        type: import(".prisma/client").$Enums.MessageType;
         whatsappAccountId: string;
         contactId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
         content: import("@prisma/client/runtime/library").JsonValue;
         sentAt: Date | null;
         deliveredAt: Date | null;
@@ -58,12 +58,12 @@ export declare class MessagingService {
         status: import(".prisma/client").$Enums.MessageStatus;
         createdAt: Date;
         updatedAt: Date;
-        type: import(".prisma/client").$Enums.MessageType;
         whatsappAccountId: string;
         contactId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
         content: import("@prisma/client/runtime/library").JsonValue;
         sentAt: Date | null;
         deliveredAt: Date | null;
@@ -78,12 +78,12 @@ export declare class MessagingService {
         status: import(".prisma/client").$Enums.MessageStatus;
         createdAt: Date;
         updatedAt: Date;
-        type: import(".prisma/client").$Enums.MessageType;
         whatsappAccountId: string;
         contactId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
         content: import("@prisma/client/runtime/library").JsonValue;
         sentAt: Date | null;
         deliveredAt: Date | null;
@@ -98,12 +98,12 @@ export declare class MessagingService {
         status: import(".prisma/client").$Enums.MessageStatus;
         createdAt: Date;
         updatedAt: Date;
-        type: import(".prisma/client").$Enums.MessageType;
         whatsappAccountId: string;
         contactId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
         content: import("@prisma/client/runtime/library").JsonValue;
         sentAt: Date | null;
         deliveredAt: Date | null;
@@ -139,12 +139,12 @@ export declare class MessagingService {
         status: import(".prisma/client").$Enums.MessageStatus;
         createdAt: Date;
         updatedAt: Date;
-        type: import(".prisma/client").$Enums.MessageType;
         whatsappAccountId: string;
         contactId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
         content: import("@prisma/client/runtime/library").JsonValue;
         sentAt: Date | null;
         deliveredAt: Date | null;
@@ -157,17 +157,17 @@ export declare class MessagingService {
         role: string;
         sub: string;
     }): Promise<({
-        whatsappAccount: {
-            id: string;
-            phoneNumber: string;
-            displayName: string;
-        };
         contact: {
             id: string;
             phone: string;
             firstName: string | null;
             lastName: string | null;
             avatarUrl: string | null;
+        };
+        whatsappAccount: {
+            id: string;
+            phoneNumber: string;
+            displayName: string;
         };
     } & {
         id: string;
