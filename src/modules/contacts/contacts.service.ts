@@ -106,16 +106,31 @@ export class ContactsService {
 
       const uniqueContacts = Array.from(uniqueMap.values());
       const uniqueCount = uniqueContacts.length;
-      const duplicatesRemoved = contacts.length - uniqueCount;
+      const duplicatesInFile = contacts.length - uniqueCount;
+
+      // CROSS-CHECK WITH DATABASE: Identify how many already exist
+      const existingInDb = await this.prisma.contact.findMany({
+        where: {
+          organizationId: orgId,
+          phone: { in: uniqueContacts.map(c => c.phone) }
+        },
+        select: { phone: true }
+      });
+
+      const existingCount = existingInDb.length;
+      const totalDuplicates = duplicatesInFile + existingCount;
+      const trulyNewCount = uniqueCount - existingCount;
       
-      this.logger.log(`Queueing ${uniqueCount} unique contacts for Org: ${resolvedOrgId} (Duplicates removed: ${duplicatesRemoved})`);
+      this.logger.log(`Queueing ${uniqueCount} contacts for Org: ${resolvedOrgId}. Stats: New: ${trulyNewCount}, Existing: ${existingCount}, File-Duplicates: ${duplicatesInFile}`);
 
       // Add to background queue with industrial reliability settings
       const job = await this.importQueue.add('import-contacts', {
         orgId,
         contacts: uniqueContacts,
         originalCount: contacts.length,
-        duplicatesRemoved
+        duplicatesRemoved: totalDuplicates, // Sum of file duplicates and existing DB records
+        newCount: trulyNewCount,
+        existingCount: existingCount
       }, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
@@ -127,7 +142,8 @@ export class ContactsService {
         jobId: job.id,
         totalContacts: uniqueCount, 
         originalCount: contacts.length,
-        duplicatesRemoved,
+        duplicatesRemoved: totalDuplicates,
+        newCount: trulyNewCount,
         status: 'QUEUED'
       };
     } catch (err: any) {

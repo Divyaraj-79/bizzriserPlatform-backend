@@ -11,5 +11,6 @@ export declare class ImportProcessor implements OnModuleInit {
         success: boolean;
         count: any;
         duplicatesRemoved: any;
+        newCount: any;
     }>;
 }

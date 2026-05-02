@@ -47,7 +47,12 @@ export class ImportProcessor implements OnModuleInit {
         await setProgress({ progress: 100, current: total, total });
   
         this.logger.log(`✅ Import completed successfully for Org: ${orgId}`);
-        return { success: true, count: total, duplicatesRemoved };
+        return { 
+          success: true, 
+          count: total, 
+          duplicatesRemoved, 
+          newCount: job.data.newCount || total 
+        };
     } catch (err: any) {
       this.logger.error(`❌ Import failed for Org: ${orgId}: ${err.message}`);
       
