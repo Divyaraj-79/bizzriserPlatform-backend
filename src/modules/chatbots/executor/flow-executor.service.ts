@@ -284,15 +284,13 @@ export class FlowExecutorService {
       routeHandle = listId ? `list_${listId}` : 'output';
     } else if (waitingType === 'askLocation') {
       const config = currentNode.data?.config || {};
-      const location = messageData.location; // Extract location object from WhatsApp payload
+      const location = messageData.location;
       const attemptLimit = config.attemptLimit || 3;
       const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
       const fieldName = config.saveToVar;
 
       if (location && location.latitude && location.longitude) {
-        const coords = { latitude: location.latitude, longitude: location.longitude };
-        const coordsStr = JSON.stringify(coords);
-
+        const coordsStr = JSON.stringify({ latitude: location.latitude, longitude: location.longitude });
         if (fieldName) {
           const currentFields = ((contact as any).customFields as Record<string, any>) || {};
           await this.prisma.contact.update({
@@ -300,14 +298,12 @@ export class FlowExecutorService {
             data: { customFields: { ...currentFields, [fieldName]: coordsStr } },
           });
           variables = { ...variables, [`custom.${fieldName}`]: coordsStr };
-          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
         }
         routeHandle = 'submitted';
       } else {
         if (currentAttempt < attemptLimit) {
           const errorMsg = config.validationErrorMessage || 'Please share your location pin to continue.';
           await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, errorMsg);
-          
           await this.prisma.chatbotSession.update({
             where: { id: session.id },
             data: { metadata: { ...(session.metadata as any), currentAttempt } },
@@ -331,7 +327,6 @@ export class FlowExecutorService {
             data: { customFields: { ...currentFields, [fieldName]: addressStr } },
           });
           variables = { ...variables, [`custom.${fieldName}`]: addressStr };
-          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
         }
         routeHandle = 'submitted';
       } else {
@@ -339,13 +334,12 @@ export class FlowExecutorService {
       }
     } else if (waitingType === 'askImage') {
       const config = currentNode.data?.config || {};
-      const image = messageData.image;
+      const mediaId = messageData.image?.id;
       const fieldName = config.saveToVar;
       const attemptLimit = config.attemptLimit || 3;
       const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
 
-      if (image && image.id) {
-        const mediaId = image.id;
+      if (mediaId) {
         if (fieldName) {
           const currentFields = ((contact as any).customFields as Record<string, any>) || {};
           await this.prisma.contact.update({
@@ -353,7 +347,6 @@ export class FlowExecutorService {
             data: { customFields: { ...currentFields, [fieldName]: mediaId } },
           });
           variables = { ...variables, [`custom.${fieldName}`]: mediaId };
-          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
         }
         routeHandle = 'submitted';
       } else {
@@ -371,13 +364,12 @@ export class FlowExecutorService {
       }
     } else if (waitingType === 'askVideo') {
       const config = currentNode.data?.config || {};
-      const video = messageData.video;
+      const mediaId = messageData.video?.id;
       const fieldName = config.saveToVar;
       const attemptLimit = config.attemptLimit || 3;
       const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
 
-      if (video && video.id) {
-        const mediaId = video.id;
+      if (mediaId) {
         if (fieldName) {
           const currentFields = ((contact as any).customFields as Record<string, any>) || {};
           await this.prisma.contact.update({
@@ -385,7 +377,6 @@ export class FlowExecutorService {
             data: { customFields: { ...currentFields, [fieldName]: mediaId } },
           });
           variables = { ...variables, [`custom.${fieldName}`]: mediaId };
-          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
         }
         routeHandle = 'submitted';
       } else {
@@ -403,13 +394,12 @@ export class FlowExecutorService {
       }
     } else if (waitingType === 'askAudio') {
       const config = currentNode.data?.config || {};
-      const audio = messageData.audio;
+      const mediaId = messageData.audio?.id;
       const fieldName = config.saveToVar;
       const attemptLimit = config.attemptLimit || 3;
       const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
 
-      if (audio && audio.id) {
-        const mediaId = audio.id;
+      if (mediaId) {
         if (fieldName) {
           const currentFields = ((contact as any).customFields as Record<string, any>) || {};
           await this.prisma.contact.update({
@@ -417,7 +407,6 @@ export class FlowExecutorService {
             data: { customFields: { ...currentFields, [fieldName]: mediaId } },
           });
           variables = { ...variables, [`custom.${fieldName}`]: mediaId };
-          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
         }
         routeHandle = 'submitted';
       } else {
@@ -435,13 +424,12 @@ export class FlowExecutorService {
       }
     } else if (waitingType === 'askFile') {
       const config = currentNode.data?.config || {};
-      const document = messageData.document;
+      const mediaId = messageData.document?.id;
       const fieldName = config.saveToVar;
       const attemptLimit = config.attemptLimit || 3;
       const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
 
-      if (document && document.id) {
-        const mediaId = document.id;
+      if (mediaId) {
         if (fieldName) {
           const currentFields = ((contact as any).customFields as Record<string, any>) || {};
           await this.prisma.contact.update({
@@ -449,7 +437,6 @@ export class FlowExecutorService {
             data: { customFields: { ...currentFields, [fieldName]: mediaId } },
           });
           variables = { ...variables, [`custom.${fieldName}`]: mediaId };
-          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
         }
         routeHandle = 'submitted';
       } else {
@@ -466,6 +453,7 @@ export class FlowExecutorService {
         }
       }
     }
+
 
     // Mark active again
     const updatedSession = await this.prisma.chatbotSession.update({
