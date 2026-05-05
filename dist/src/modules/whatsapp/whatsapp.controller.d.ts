@@ -47,6 +47,7 @@ export declare class WhatsappController {
     uploadTemplateMedia(req: any, id: string, file: any): Promise<{
         handle: any;
     } | undefined>;
+    uploadMedia(req: any, id: string, file: any): Promise<any>;
     updateTemplate(req: any, id: string, templateId: string, data: any): Promise<any>;
     deleteTemplate(req: any, id: string, templateName: string): Promise<any>;
     syncAccount(req: any, id: string): Promise<{

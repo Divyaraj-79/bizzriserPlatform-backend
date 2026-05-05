@@ -2,9 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ChatbotSession, ChatbotSessionStatus, Contact, Chatbot } from '@prisma/client';
+import { ChatbotSession, ChatbotSessionStatus, Contact, Chatbot, MessageType } from '@prisma/client';
 import { WhatsappService } from '../../whatsapp/whatsapp.service';
 import axios from 'axios';
+import { parsePhoneNumber, getCountryCallingCode } from 'libphonenumber-js';
+import { v4 as uuidv4 } from 'uuid';
 
 interface FlowNode {
   id: string;
@@ -95,6 +97,152 @@ export class FlowExecutorService {
         });
       }
       routeHandle = 'output';
+    } else if (waitingType === 'askText') {
+      const config = currentNode.data?.config || {};
+      const userInput = messageData.text?.body || '';
+      const attemptLimit = config.attemptLimit || 3;
+      const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
+      const fieldName = config.saveToVar;
+
+      // Basic Validation (for text, we just check if it's not empty)
+      const isValid = userInput.trim().length > 0;
+
+      if (isValid) {
+        if (fieldName) {
+          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+          await this.prisma.contact.update({
+            where: { id: contact.id },
+            data: { customFields: { ...currentFields, [fieldName]: userInput } },
+          });
+          variables = { ...variables, [`custom.${fieldName}`]: userInput };
+          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        }
+        routeHandle = 'submitted';
+      } else {
+        if (currentAttempt < attemptLimit) {
+          // Send error message and stay at this node
+          const errorMsg = config.validationErrorMessage || 'Invalid input. Please try again.';
+          await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, errorMsg);
+          
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: { 
+              metadata: { ...(session.metadata as any), currentAttempt } 
+            },
+          });
+          return; // Don't advance, wait for next reply
+        } else {
+          // Max attempts reached
+          routeHandle = 'notSubmitted';
+        }
+      }
+    } else if (waitingType === 'askNumber') {
+      const config = currentNode.data?.config || {};
+      const userInput = messageData.text?.body || '';
+      const attemptLimit = config.attemptLimit || 3;
+      const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
+      const fieldName = config.saveToVar;
+
+      // Numeric Validation
+      const isNumeric = !isNaN(parseFloat(userInput)) && isFinite(Number(userInput));
+
+      if (isNumeric) {
+        if (fieldName) {
+          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+          await this.prisma.contact.update({
+            where: { id: contact.id },
+            data: { customFields: { ...currentFields, [fieldName]: parseFloat(userInput) } },
+          });
+          variables = { ...variables, [`custom.${fieldName}`]: userInput };
+          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        }
+        routeHandle = 'submitted';
+      } else {
+        if (currentAttempt < attemptLimit) {
+          const errorMsg = config.validationErrorMessage || 'Invalid number. Please try again.';
+          await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, errorMsg);
+          
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: { metadata: { ...(session.metadata as any), currentAttempt } },
+          });
+          return;
+        } else {
+          routeHandle = 'notSubmitted';
+        }
+      }
+    } else if (waitingType === 'askDate') {
+      const config = currentNode.data?.config || {};
+      const userInput = messageData.text?.body || '';
+      const attemptLimit = config.attemptLimit || 3;
+      const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
+      const fieldName = config.saveToVar;
+
+      // Date Validation (Supports YYYY-MM-DD, DD/MM/YYYY, etc. via JS Date)
+      const date = new Date(userInput);
+      const isValidDate = !isNaN(date.getTime());
+
+      if (isValidDate) {
+        if (fieldName) {
+          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+          await this.prisma.contact.update({
+            where: { id: contact.id },
+            data: { customFields: { ...currentFields, [fieldName]: date.toISOString() } },
+          });
+          variables = { ...variables, [`custom.${fieldName}`]: date.toISOString().split('T')[0] };
+          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        }
+        routeHandle = 'submitted';
+      } else {
+        if (currentAttempt < attemptLimit) {
+          const errorMsg = config.validationErrorMessage || 'Invalid date format. Please try again.';
+          await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, errorMsg);
+          
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: { metadata: { ...(session.metadata as any), currentAttempt } },
+          });
+          return;
+        } else {
+          routeHandle = 'notSubmitted';
+        }
+      }
+    } else if (waitingType === 'askEmail') {
+      const config = currentNode.data?.config || {};
+      const userInput = messageData.text?.body || '';
+      const attemptLimit = config.attemptLimit || 3;
+      const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
+      const fieldName = config.saveToVar;
+
+      // Email Validation Regex
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const isValidEmail = emailRegex.test(userInput.trim());
+
+      if (isValidEmail) {
+        if (fieldName) {
+          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+          await this.prisma.contact.update({
+            where: { id: contact.id },
+            data: { customFields: { ...currentFields, [fieldName]: userInput.trim().toLowerCase() } },
+          });
+          variables = { ...variables, [`custom.${fieldName}`]: userInput.trim().toLowerCase() };
+          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        }
+        routeHandle = 'submitted';
+      } else {
+        if (currentAttempt < attemptLimit) {
+          const errorMsg = config.validationErrorMessage || 'Invalid email address. Please try again.';
+          await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, errorMsg);
+          
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: { metadata: { ...(session.metadata as any), currentAttempt } },
+          });
+          return;
+        } else {
+          routeHandle = 'notSubmitted';
+        }
+      }
     } else if (waitingType === 'button') {
       // Route by button ID — each button's ID maps to a sourceHandle like "btn_BUTTONID"
       const buttonId = messageData.interactive?.button_reply?.id ?? messageData.button?.payload ?? '';
@@ -134,6 +282,189 @@ export class FlowExecutorService {
         await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
       }
       routeHandle = listId ? `list_${listId}` : 'output';
+    } else if (waitingType === 'askLocation') {
+      const config = currentNode.data?.config || {};
+      const location = messageData.location; // Extract location object from WhatsApp payload
+      const attemptLimit = config.attemptLimit || 3;
+      const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
+      const fieldName = config.saveToVar;
+
+      if (location && location.latitude && location.longitude) {
+        const coords = { latitude: location.latitude, longitude: location.longitude };
+        const coordsStr = JSON.stringify(coords);
+
+        if (fieldName) {
+          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+          await this.prisma.contact.update({
+            where: { id: contact.id },
+            data: { customFields: { ...currentFields, [fieldName]: coordsStr } },
+          });
+          variables = { ...variables, [`custom.${fieldName}`]: coordsStr };
+          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        }
+        routeHandle = 'submitted';
+      } else {
+        if (currentAttempt < attemptLimit) {
+          const errorMsg = config.validationErrorMessage || 'Please share your location pin to continue.';
+          await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, errorMsg);
+          
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: { metadata: { ...(session.metadata as any), currentAttempt } },
+          });
+          return;
+        } else {
+          routeHandle = 'notSubmitted';
+        }
+      }
+    } else if (waitingType === 'askAddress') {
+      const config = currentNode.data?.config || {};
+      const addressData = messageData.interactive?.address_message?.address_data;
+      const fieldName = config.saveToVar;
+
+      if (addressData) {
+        const addressStr = JSON.stringify(addressData);
+        if (fieldName) {
+          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+          await this.prisma.contact.update({
+            where: { id: contact.id },
+            data: { customFields: { ...currentFields, [fieldName]: addressStr } },
+          });
+          variables = { ...variables, [`custom.${fieldName}`]: addressStr };
+          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        }
+        routeHandle = 'submitted';
+      } else {
+        routeHandle = 'notSubmitted';
+      }
+    } else if (waitingType === 'askImage') {
+      const config = currentNode.data?.config || {};
+      const image = messageData.image;
+      const fieldName = config.saveToVar;
+      const attemptLimit = config.attemptLimit || 3;
+      const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
+
+      if (image && image.id) {
+        const mediaId = image.id;
+        if (fieldName) {
+          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+          await this.prisma.contact.update({
+            where: { id: contact.id },
+            data: { customFields: { ...currentFields, [fieldName]: mediaId } },
+          });
+          variables = { ...variables, [`custom.${fieldName}`]: mediaId };
+          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        }
+        routeHandle = 'submitted';
+      } else {
+        if (currentAttempt < attemptLimit) {
+          const errorMsg = config.validationErrorMessage || 'Please upload an image to continue.';
+          await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, errorMsg);
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: { metadata: { ...(session.metadata as any), currentAttempt } },
+          });
+          return;
+        } else {
+          routeHandle = 'notSubmitted';
+        }
+      }
+    } else if (waitingType === 'askVideo') {
+      const config = currentNode.data?.config || {};
+      const video = messageData.video;
+      const fieldName = config.saveToVar;
+      const attemptLimit = config.attemptLimit || 3;
+      const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
+
+      if (video && video.id) {
+        const mediaId = video.id;
+        if (fieldName) {
+          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+          await this.prisma.contact.update({
+            where: { id: contact.id },
+            data: { customFields: { ...currentFields, [fieldName]: mediaId } },
+          });
+          variables = { ...variables, [`custom.${fieldName}`]: mediaId };
+          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        }
+        routeHandle = 'submitted';
+      } else {
+        if (currentAttempt < attemptLimit) {
+          const errorMsg = config.validationErrorMessage || 'Please upload a video to continue.';
+          await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, errorMsg);
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: { metadata: { ...(session.metadata as any), currentAttempt } },
+          });
+          return;
+        } else {
+          routeHandle = 'notSubmitted';
+        }
+      }
+    } else if (waitingType === 'askAudio') {
+      const config = currentNode.data?.config || {};
+      const audio = messageData.audio;
+      const fieldName = config.saveToVar;
+      const attemptLimit = config.attemptLimit || 3;
+      const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
+
+      if (audio && audio.id) {
+        const mediaId = audio.id;
+        if (fieldName) {
+          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+          await this.prisma.contact.update({
+            where: { id: contact.id },
+            data: { customFields: { ...currentFields, [fieldName]: mediaId } },
+          });
+          variables = { ...variables, [`custom.${fieldName}`]: mediaId };
+          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        }
+        routeHandle = 'submitted';
+      } else {
+        if (currentAttempt < attemptLimit) {
+          const errorMsg = config.validationErrorMessage || 'Please send your audio message to continue.';
+          await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, errorMsg);
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: { metadata: { ...(session.metadata as any), currentAttempt } },
+          });
+          return;
+        } else {
+          routeHandle = 'notSubmitted';
+        }
+      }
+    } else if (waitingType === 'askFile') {
+      const config = currentNode.data?.config || {};
+      const document = messageData.document;
+      const fieldName = config.saveToVar;
+      const attemptLimit = config.attemptLimit || 3;
+      const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
+
+      if (document && document.id) {
+        const mediaId = document.id;
+        if (fieldName) {
+          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+          await this.prisma.contact.update({
+            where: { id: contact.id },
+            data: { customFields: { ...currentFields, [fieldName]: mediaId } },
+          });
+          variables = { ...variables, [`custom.${fieldName}`]: mediaId };
+          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        }
+        routeHandle = 'submitted';
+      } else {
+        if (currentAttempt < attemptLimit) {
+          const errorMsg = config.validationErrorMessage || 'Please upload the requested file to continue.';
+          await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, errorMsg);
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: { metadata: { ...(session.metadata as any), currentAttempt } },
+          });
+          return;
+        } else {
+          routeHandle = 'notSubmitted';
+        }
+      }
     }
 
     // Mark active again
@@ -155,17 +486,36 @@ export class FlowExecutorService {
 
   // ─── Node Dispatcher ─────────────────────────────────────────────────────
 
-  private async executeNode(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+  public async executeNode(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
     this.logger.debug(`Executing node type=${node.type} id=${node.id}`);
     try {
       switch (node.type) {
         case 'sendText':       return await this.handleSendText(session, node, edges, allNodes, contact, messageData);
+        case 'sendContact':    return await this.handleSendContact(session, node, edges, allNodes, contact, messageData);
+        case 'sendLocation':   return await this.handleSendLocation(session, node, edges, allNodes, contact, messageData);
+        case 'sendCTAButton':  return await this.handleSendCTAButton(session, node, edges, allNodes, contact, messageData);
+        case 'sendFlow':       return await this.handleSendFlow(session, node, edges, allNodes, contact, messageData);
+        case 'sendCarousel':   return await this.handleSendCarousel(session, node, edges, allNodes, contact, messageData);
+        case 'sendCallRequest': return await this.handleSendCallRequest(session, node, edges, allNodes, contact, messageData);
         case 'sendButton':     return await this.handleSendButton(session, node, edges, allNodes, contact, messageData);
         case 'sendList':       return await this.handleSendList(session, node, edges, allNodes, contact, messageData);
+        case 'sendListAdvanced': return await this.handleSendListAdvanced(session, node, edges, allNodes, contact, messageData);
         case 'sendMedia':      return await this.handleSendMedia(session, node, edges, allNodes, contact, messageData);
         case 'sendTemplate':   return await this.handleSendTemplate(session, node, edges, allNodes, contact, messageData);
+        case 'sendPayment':    return await this.handleSendPayment(session, node, edges, allNodes, contact, messageData);
+        case 'productSearch':  return await this.handleProductSearch(session, node, edges, allNodes, contact, messageData);
+        case 'productCategorization': return await this.handleProductCategorization(session, node, edges, allNodes, contact, messageData);
+        case 'askText':        return await this.handleAskText(session, node, edges, allNodes, contact, messageData);
+        case 'askNumber':      return await this.handleAskNumber(session, node, edges, allNodes, contact, messageData);
+        case 'askDate':        return await this.handleAskDate(session, node, edges, allNodes, contact, messageData);
+        case 'askEmail':       return await this.handleAskEmail(session, node, edges, allNodes, contact, messageData);
+        case 'askLocation':    return await this.handleAskLocation(session, node, edges, allNodes, contact, messageData);
+        case 'askAddress':     return await this.handleAskAddress(session, node, edges, allNodes, contact, messageData);
+        case 'askImage':       return await this.handleAskImage(session, node, edges, allNodes, contact, messageData);
+        case 'askVideo':       return await this.handleAskVideo(session, node, edges, allNodes, contact, messageData);
+        case 'askAudio':       return await this.handleAskAudio(session, node, edges, allNodes, contact, messageData);
+        case 'askFile':        return await this.handleAskFile(session, node, edges, allNodes, contact, messageData);
         case 'askQuestion':
-        case 'askText':
         case 'askNumber':
         case 'askEmail':
         case 'askDate':        return await this.handleAskQuestion(session, node, edges, allNodes, contact, messageData);
@@ -174,9 +524,15 @@ export class FlowExecutorService {
         case 'jumpTo':         return await this.handleJumpTo(session, node, edges, allNodes, contact, messageData);
         case 'updateField':    return await this.handleUpdateField(session, node, edges, allNodes, contact, messageData);
         case 'updateLabel':    return await this.handleUpdateLabel(session, node, edges, allNodes, contact, messageData);
+        case 'updateSubscription': return await this.handleUpdateSubscription(session, node, edges, allNodes, contact, messageData);
         case 'assignTeam':     return await this.handleAssignTeam(session, node, edges, allNodes, contact, messageData);
+        case 'assignSequence': return await this.handleAssignSequence(session, node, edges, allNodes, contact, messageData);
+        case 'removeSequence': return await this.handleRemoveSequence(session, node, edges, allNodes, contact, messageData);
         case 'resolveConversation': return await this.handleResolveConversation(session, node);
         case 'httpApi':        return await this.handleHttpApi(session, node, edges, allNodes, contact, messageData);
+        case 'detectCountry':  return await this.handleDetectCountry(session, node, edges, allNodes, contact, messageData);
+        case 'aiResponse':     return await this.handleAiResponse(session, node, edges, allNodes, contact, messageData);
+        case 'workingHours':   return await this.handleWorkingHours(session, node, edges, allNodes, contact, messageData);
         case 'triggerNode':
         default:
           // Structural / unknown nodes — just advance
@@ -198,6 +554,437 @@ export class FlowExecutorService {
       await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, text);
     }
     await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+  }
+
+  private async handleSendContact(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    
+    const contactData = {
+      firstName: await this.resolveVariables(config.firstName || '', session, contact, messageData),
+      lastName: await this.resolveVariables(config.lastName || '', session, contact, messageData),
+      phone: await this.resolveVariables(config.phone || '', session, contact, messageData),
+      email: await this.resolveVariables(config.email || '', session, contact, messageData),
+      organization: await this.resolveVariables(config.organization || '', session, contact, messageData),
+      website: await this.resolveVariables(config.website || '', session, contact, messageData),
+    };
+
+    if (contactData.firstName && contactData.phone) {
+      try {
+        await this.whatsappService.sendContactMessage(
+          session.organizationId, 
+          session.accountId, 
+          contact.phone, 
+          [contactData]
+        );
+      } catch (err: any) {
+        this.logger.error(`SendContact error: ${err.message}`);
+      }
+    }
+
+    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+  }
+
+  private async handleSendLocation(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    
+    const locationData = {
+      latitude: parseFloat(await this.resolveVariables(config.latitude || '0', session, contact, messageData)),
+      longitude: parseFloat(await this.resolveVariables(config.longitude || '0', session, contact, messageData)),
+      name: config.name ? await this.resolveVariables(config.name, session, contact, messageData) : undefined,
+      address: config.address ? await this.resolveVariables(config.address, session, contact, messageData) : undefined,
+    };
+
+    if (locationData.latitude && locationData.longitude) {
+      try {
+        await this.whatsappService.sendLocationMessage(
+          session.organizationId, 
+          session.accountId, 
+          contact.phone, 
+          locationData
+        );
+      } catch (err: any) {
+        this.logger.error(`SendLocation error: ${err.message}`);
+      }
+    }
+
+    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'notSubmitted');
+  }
+
+  private async handleSendCarousel(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    
+    const body = await this.resolveVariables(config.body || 'Check out these options:', session, contact, messageData);
+    const cards: any[] = [];
+
+    if (config.cards?.length) {
+      for (const c of config.cards) {
+        const cardBody = c.body ? await this.resolveVariables(c.body, session, contact, messageData) : undefined;
+        const headerUrl = await this.resolveVariables(c.headerUrl || '', session, contact, messageData);
+        
+        const buttons = await Promise.all((c.buttons || []).map(async (b: any) => ({
+          ...b,
+          label: await this.resolveVariables(b.label || '', session, contact, messageData),
+          url: b.type === 'url' ? await this.resolveVariables(b.url || '', session, contact, messageData) : undefined
+        })));
+
+        cards.push({
+          headerType: c.headerType || 'image',
+          headerUrl,
+          body: cardBody,
+          buttons
+        });
+      }
+
+      try {
+        await this.whatsappService.sendCarouselMessage(
+          session.organizationId, 
+          session.accountId, 
+          contact.phone, 
+          { body, cards }
+        );
+
+        const hasQuickReply = config.cards.some((c: any) => (c.buttons || []).some((b: any) => b.type === 'reply'));
+        
+        if (hasQuickReply) {
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: {
+              status: ChatbotSessionStatus.WAITING_REPLY,
+              waitingForInput: true,
+              waitingNodeType: 'carousel',
+              currentNodeId: node.id,
+            },
+          });
+        } else {
+           await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+        }
+      } catch (err: any) {
+        this.logger.error(`SendCarousel error: ${err.message}`);
+        await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+      }
+    } else {
+       await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+    }
+  }
+
+  private async handleSendCTAButton(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    
+    const body = await this.resolveVariables(config.body || 'Click the button below:', session, contact, messageData);
+    const footer = config.footer ? await this.resolveVariables(config.footer, session, contact, messageData) : undefined;
+    const header = config.header ? await this.resolveVariables(config.header, session, contact, messageData) : undefined;
+    const buttonLabel = await this.resolveVariables(config.buttonLabel || 'Learn More', session, contact, messageData);
+    const url = await this.resolveVariables(config.url || '', session, contact, messageData);
+
+    if (url) {
+      try {
+        await this.whatsappService.sendCTAButtonMessage(
+          session.organizationId, 
+          session.accountId, 
+          contact.phone, 
+          { body, footer, header, buttonLabel, url }
+        );
+      } catch (err: any) {
+        this.logger.error(`SendCTAButton error: ${err.message}`);
+      }
+    }
+
+    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+  }
+
+  private async handleSendFlow(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    
+    const body = await this.resolveVariables(config.body || 'Please complete the form:', session, contact, messageData);
+    const footer = config.footer ? await this.resolveVariables(config.footer, session, contact, messageData) : undefined;
+    const flowCta = await this.resolveVariables(config.flowCta || 'Open Form', session, contact, messageData);
+    const flowToken = uuidv4(); // Unique token for this form session
+
+    if (config.flowId) {
+      try {
+        await this.whatsappService.sendFlowMessage(
+          session.organizationId, 
+          session.accountId, 
+          contact.phone, 
+          { 
+            body, 
+            footer, 
+            flowId: config.flowId, 
+            flowToken, 
+            flowCta, 
+            flowMode: config.flowMode,
+            screen: config.screen,
+            payload: config.payload
+          }
+        );
+
+        // Update session to wait for flow submission
+        await this.prisma.chatbotSession.update({
+          where: { id: session.id },
+          data: {
+            status: ChatbotSessionStatus.WAITING_REPLY,
+            waitingForInput: true,
+            waitingNodeType: 'flow',
+            currentNodeId: node.id,
+            metadata: { 
+                ...(session.metadata as any) || {}, 
+                lastFlowToken: flowToken,
+                flowId: config.flowId
+            }
+          },
+        });
+      } catch (err: any) {
+        this.logger.error(`SendFlow error: ${err.message}`);
+        return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'notSubmitted');
+      }
+    } else {
+      return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'notSubmitted');
+    }
+  }
+
+  private async handleSendCallRequest(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    
+    const body = await this.resolveVariables(config.body || 'We would like to call you to help with your query.', session, contact, messageData);
+    const footer = config.footer ? await this.resolveVariables(config.footer, session, contact, messageData) : undefined;
+
+    try {
+      await this.whatsappService.sendCallRequestMessage(
+        session.organizationId, 
+        session.accountId, 
+        contact.phone, 
+        { body, footer }
+      );
+
+      await this.prisma.chatbotSession.update({
+        where: { id: session.id },
+        data: {
+          status: ChatbotSessionStatus.WAITING_REPLY,
+          waitingForInput: true,
+          waitingNodeType: 'callRequest',
+          currentNodeId: node.id,
+        },
+      });
+    } catch (err: any) {
+      this.logger.error(`SendCallRequest error: ${err.message}`);
+      await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+    }
+  }
+
+  private async handleAskText(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const question = await this.resolveVariables(config.question || 'Please enter your text:', session, contact, messageData);
+    
+    if (question) {
+      await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    }
+    
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        status: ChatbotSessionStatus.WAITING_REPLY,
+        waitingForInput: true,
+        waitingNodeType: 'askText',
+        currentNodeId: node.id,
+        metadata: {
+          ...(session.metadata as any) || {},
+          currentAttempt: 0
+        }
+      },
+    });
+  }
+
+  private async handleAskNumber(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const question = await this.resolveVariables(config.question || 'Please enter a number:', session, contact, messageData);
+    
+    if (question) {
+      await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    }
+    
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        status: ChatbotSessionStatus.WAITING_REPLY,
+        waitingForInput: true,
+        waitingNodeType: 'askNumber',
+        currentNodeId: node.id,
+        metadata: {
+          ...(session.metadata as any) || {},
+          currentAttempt: 0
+        }
+      },
+    });
+  }
+
+  private async handleAskDate(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const question = await this.resolveVariables(config.question || 'Please enter a date:', session, contact, messageData);
+    
+    if (question) {
+      await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    }
+    
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        status: ChatbotSessionStatus.WAITING_REPLY,
+        waitingForInput: true,
+        waitingNodeType: 'askDate',
+        currentNodeId: node.id,
+        metadata: {
+          ...(session.metadata as any) || {},
+          currentAttempt: 0
+        }
+      },
+    });
+  }
+
+  private async handleAskEmail(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const question = await this.resolveVariables(config.question || 'Please enter your email address:', session, contact, messageData);
+    
+    if (question) {
+      await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    }
+    
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        status: ChatbotSessionStatus.WAITING_REPLY,
+        waitingForInput: true,
+        waitingNodeType: 'askEmail',
+        currentNodeId: node.id,
+        metadata: {
+          ...(session.metadata as any) || {},
+          currentAttempt: 0
+        }
+      },
+    });
+  }
+
+  private async handleAskLocation(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const question = await this.resolveVariables(config.question || 'Please share your location:', session, contact, messageData);
+    
+    if (question) {
+      await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    }
+    
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        status: ChatbotSessionStatus.WAITING_REPLY,
+        waitingForInput: true,
+        waitingNodeType: 'askLocation',
+        currentNodeId: node.id,
+        metadata: {
+          ...(session.metadata as any) || {},
+          currentAttempt: 0
+        }
+      },
+    });
+  }
+
+  private async handleAskAddress(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const bodyText = await this.resolveVariables(config.question || config.text || 'Please provide your address:', session, contact, messageData);
+    
+    await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, bodyText);
+    
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        status: ChatbotSessionStatus.WAITING_REPLY,
+        waitingForInput: true,
+        waitingNodeType: 'askAddress',
+        currentNodeId: node.id,
+      },
+    });
+  }
+
+  private async handleAskImage(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const question = await this.resolveVariables(config.question || config.text || 'Please upload an image:', session, contact, messageData);
+    
+    await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        status: ChatbotSessionStatus.WAITING_REPLY,
+        waitingForInput: true,
+        waitingNodeType: 'askImage',
+        currentNodeId: node.id,
+        metadata: {
+          ...(session.metadata as any) || {},
+          currentAttempt: 0
+        }
+      },
+    });
+  }
+
+  private async handleAskVideo(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const question = await this.resolveVariables(config.question || config.text || 'Please upload a video:', session, contact, messageData);
+    
+    await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        status: ChatbotSessionStatus.WAITING_REPLY,
+        waitingForInput: true,
+        waitingNodeType: 'askVideo',
+        currentNodeId: node.id,
+        metadata: {
+          ...(session.metadata as any) || {},
+          currentAttempt: 0
+        }
+      },
+    });
+  }
+
+  private async handleAskAudio(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const question = await this.resolveVariables(config.question || config.text || 'Please send your voice message:', session, contact, messageData);
+    
+    await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        status: ChatbotSessionStatus.WAITING_REPLY,
+        waitingForInput: true,
+        waitingNodeType: 'askAudio',
+        currentNodeId: node.id,
+        metadata: {
+          ...(session.metadata as any) || {},
+          currentAttempt: 0
+        }
+      },
+    });
+  }
+
+  private async handleAskFile(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const question = await this.resolveVariables(config.question || config.text || 'Please upload the requested file:', session, contact, messageData);
+    
+    await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        status: ChatbotSessionStatus.WAITING_REPLY,
+        waitingForInput: true,
+        waitingNodeType: 'askFile',
+        currentNodeId: node.id,
+        metadata: {
+          ...(session.metadata as any) || {},
+          currentAttempt: 0
+        }
+      },
+    });
   }
 
   private async handleAskQuestion(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
@@ -279,6 +1066,77 @@ export class FlowExecutorService {
     });
   }
 
+  private async handleSendListAdvanced(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const bodyText = await this.resolveVariables(config.body || 'Please select an option:', session, contact, messageData);
+    const buttonText = config.buttonText || 'View Options';
+    const sectionTitle = config.sectionTitle || 'Options';
+
+    try {
+      // 1. Resolve and Execute API Request
+      const url = await this.resolveVariables(config.apiUrl || '', session, contact, messageData);
+      const method = config.method || 'GET';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      (config.headers || []).forEach((h: any) => { headers[h.key] = h.value; });
+
+      const response = await axios({
+        method,
+        url,
+        headers,
+        data: method !== 'GET' ? config.bodyData : undefined,
+        params: config.params
+      });
+
+      const data = response.data;
+      
+      // 2. Map Items from Response
+      const itemsPath = config.itemsPath || '';
+      const items = itemsPath ? this.getValueByPath(data, itemsPath) : data;
+
+      if (!Array.isArray(items)) {
+         this.logger.warn(`SendListAdvanced: Items at path "${itemsPath}" is not an array.`);
+         return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+      }
+
+      const rows = items.slice(0, 10).map((item: any) => ({
+        id: String(this.getValueByPath(item, config.optionIdPath || 'id') || uuidv4()),
+        title: String(this.getValueByPath(item, config.optionTitlePath || 'name') || 'Option').substring(0, 24),
+        description: config.optionDescPath ? String(this.getValueByPath(item, config.optionDescPath) || '').substring(0, 72) : undefined
+      }));
+
+      // 3. Send List
+      if (rows.length > 0) {
+        await this.whatsappService.sendInteractiveList(
+          session.organizationId, session.accountId, contact.phone,
+          bodyText, buttonText, [{ title: sectionTitle, rows }], 
+          config.header, config.footer
+        );
+      }
+
+      // 4. Update Session to wait for reply
+      await this.prisma.chatbotSession.update({
+        where: { id: session.id },
+        data: {
+          status: ChatbotSessionStatus.WAITING_REPLY,
+          waitingForInput: true,
+          waitingNodeType: 'listAdvanced',
+          currentNodeId: node.id,
+          // Store the original API response in metadata for mapping later if needed
+          metadata: { ...(session.metadata as any) || {}, lastAdvancedListItems: items }
+        },
+      });
+
+    } catch (err: any) {
+      this.logger.error(`SendListAdvanced API error: ${err.message}`);
+      return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+    }
+  }
+
+  private getValueByPath(obj: any, path: string) {
+    if (!path) return obj;
+    return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+  }
+
   private async handleSendMedia(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
     const config = node.data?.config || {};
     const mediaType: 'image' | 'video' | 'document' | 'audio' = config.mediaType || 'image';
@@ -306,8 +1164,33 @@ export class FlowExecutorService {
       return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData);
     }
 
-    // Resolve variable components
     const components: any[] = [];
+
+    // 1. Resolve Header Params
+    if (config.headerParams?.length) {
+      const params = await Promise.all(
+        config.headerParams.map(async (p: any) => {
+          const type = p.type || 'text';
+          if (type === 'text') {
+            return { type: 'text', text: await this.resolveVariables(p.text || '', session, contact, messageData) };
+          } else if (['image', 'video', 'document'].includes(type)) {
+            return {
+              type: type,
+              [type]: {
+                link: await this.resolveVariables(p.link || '', session, contact, messageData),
+              },
+            };
+          }
+          return null;
+        }),
+      );
+      const filtered = params.filter(Boolean);
+      if (filtered.length) {
+        components.push({ type: 'header', parameters: filtered });
+      }
+    }
+
+    // 2. Resolve Body Params
     if (config.bodyParams?.length) {
       const params = await Promise.all(
         config.bodyParams.map(async (p: string) => ({
@@ -318,18 +1201,275 @@ export class FlowExecutorService {
       components.push({ type: 'body', parameters: params });
     }
 
+    // 3. Resolve Button Params (URL Buttons)
+    if (config.buttons?.length) {
+      config.buttons.forEach(async (btn: any, index: number) => {
+        if (btn.type === 'url' && btn.dynamic) {
+          components.push({
+            type: 'button',
+            sub_type: 'url',
+            index: String(index),
+            parameters: [
+              {
+                type: 'text',
+                text: await this.resolveVariables(btn.suffix || '', session, contact, messageData),
+              },
+            ],
+          });
+        }
+      });
+    }
+
     await this.whatsappService.sendTemplateMessage(
-      session.organizationId, session.accountId, contact.phone,
-      config.templateName, config.language || 'en_US', components,
+      session.organizationId,
+      session.accountId,
+      contact.phone,
+      config.templateName,
+      config.language || 'en_US',
+      components,
     );
 
     await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
   }
 
+  private async handleSendPayment(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    
+    // 1. Resolve Amount and Currency
+    const rawAmount = config.amountType === 'field' 
+      ? await this.resolveVariables(config.amountField || '', session, contact, messageData)
+      : config.amountValue;
+    const amount = parseFloat(rawAmount || '0');
+
+    // 2. Resolve Reference ID
+    let referenceId = '';
+    if (config.referenceType === 'field') {
+      referenceId = await this.resolveVariables(config.referenceField || '', session, contact, messageData);
+    } else {
+      referenceId = `TX_${Date.now()}_${uuidv4().substring(0, 6)}`;
+    }
+
+    // 3. Resolve Body and Footer
+    const body = await this.resolveVariables(config.body || 'Please complete your payment to proceed.', session, contact, messageData);
+    const footer = config.footer ? await this.resolveVariables(config.footer, session, contact, messageData) : undefined;
+
+    // 4. Razorpay Specifics
+    const razorpayReceipt = config.razorpayReceipt ? await this.resolveVariables(config.razorpayReceipt, session, contact, messageData) : undefined;
+    let razorpayNotes = {};
+    if (config.razorpayNotes) {
+      try {
+        const resolvedNotes = await this.resolveVariables(config.razorpayNotes, session, contact, messageData);
+        razorpayNotes = JSON.parse(resolvedNotes);
+      } catch (e) {
+        this.logger.warn(`Failed to parse Razorpay notes for node ${node.id}`);
+      }
+    }
+
+    try {
+      await this.whatsappService.sendPaymentMessage(
+        session.organizationId,
+        session.accountId,
+        contact.phone,
+        {
+          body,
+          footer,
+          referenceId,
+          amount,
+          currency: config.currency || 'INR',
+          gateway: config.gateway || 'razorpay',
+          configId: config.configId,
+          razorpayReceipt,
+          razorpayNotes
+        }
+      );
+
+      // 5. Update session to wait for payment status (via webhook) or expiry
+      await this.prisma.chatbotSession.update({
+        where: { id: session.id },
+        data: {
+          status: ChatbotSessionStatus.WAITING_REPLY,
+          waitingForInput: true,
+          waitingNodeType: 'payment',
+          currentNodeId: node.id,
+          metadata: {
+            ...(session.metadata as any) || {},
+            lastPaymentReference: referenceId,
+            paymentAmount: amount
+          }
+        },
+      });
+
+      // 6. Handle Expiry (Native UPI needs at least 5 mins)
+      const expiryMinutes = parseInt(config.expiryValue || '30', 10);
+      const delayMs = expiryMinutes * 60 * 1000;
+      
+      await this.delayQueue.add(
+        'payment-expiry',
+        { sessionId: session.id, nextNodeId: node.id, type: 'payment_expiry' },
+        { delay: delayMs }
+      );
+
+    } catch (err: any) {
+      this.logger.error(`SendPayment error: ${err.message}`);
+      await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'expired');
+    }
+  }
+
+  private async handleProductSearch(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    
+    // 1. Resolve Search Query
+    const query = config.searchTextVar 
+      ? await this.resolveVariables(config.searchTextVar, session, contact, messageData)
+      : '';
+
+    if (!query || !config.catalogId) {
+      this.logger.warn(`ProductSearch node ${node.id} missing query or catalogId`);
+      return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'noResults');
+    }
+
+    try {
+      // 2. Search Products in Meta Catalog
+      const products = await this.whatsappService.searchCatalogProducts(
+        session.organizationId,
+        session.accountId,
+        config.catalogId,
+        query,
+        config.searchFields || ['name']
+      );
+
+      if (!products || products.length === 0) {
+        return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'noResults');
+      }
+
+      // 3. Group by Categorization Method
+      // WhatsApp allows up to 30 products total, and up to 10 sections.
+      const sections: any[] = [];
+      const MAX_TOTAL_PRODUCTS = 30;
+      
+      // Basic grouping logic by category
+      const grouped: Record<string, string[]> = {};
+      let totalCount = 0;
+
+      for (const p of products) {
+        if (totalCount >= MAX_TOTAL_PRODUCTS) break;
+        
+        const category = p.category || 'Results';
+        if (!grouped[category]) grouped[category] = [];
+        
+        grouped[category].push(p.retailer_id);
+        totalCount++;
+      }
+
+      for (const [title, pids] of Object.entries(grouped)) {
+        sections.push({ title, products: pids });
+      }
+
+      // 4. Send Message
+      await this.whatsappService.sendProductListMessage(
+        session.organizationId,
+        session.accountId,
+        contact.phone,
+        {
+          catalogId: config.catalogId,
+          body: await this.resolveVariables(config.body || `I found some products matching "${query}":`, session, contact, messageData),
+          header: config.header ? await this.resolveVariables(config.header, session, contact, messageData) : undefined,
+          footer: config.footer ? await this.resolveVariables(config.footer, session, contact, messageData) : undefined,
+          sections: sections.slice(0, 10)
+        }
+      );
+
+      await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+    } catch (err: any) {
+      this.logger.error(`ProductSearch error: ${err.message}`);
+      await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'noResults');
+    }
+  }
+
+  private async handleProductCategorization(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    
+    if (!config.catalogId) {
+      this.logger.warn(`ProductCategorization node ${node.id} missing catalogId`);
+      return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData);
+    }
+
+    try {
+      // 1. Fetch products (top 100 for categorization)
+      const products = await this.whatsappService.searchCatalogProducts(
+        session.organizationId,
+        session.accountId,
+        config.catalogId,
+        '', 
+        ['name']
+      );
+
+      // 2. Aggregate by Categorization Method
+      const method = config.categorizationMethod || 'product_category';
+      const aggregation: Record<string, number> = {};
+      
+      products.forEach((p: any) => {
+        let value = 'Others';
+        if (method === 'brand') value = p.brand || 'No Brand';
+        else if (method === 'product_category') value = p.category || 'Uncategorized';
+        else if (method === 'material') value = p.material || 'Standard';
+        else if (method === 'pattern') value = p.pattern || 'Plain';
+        
+        aggregation[value] = (aggregation[value] || 0) + 1;
+      });
+
+      // 3. Construct List Sections
+      const rows = Object.entries(aggregation).map(([label, count]) => ({
+        id: `cat_${label}`,
+        title: `${label} (${count})`,
+        description: `View items in ${label}`
+      })).slice(0, 10);
+
+      const sections = [{
+        title: 'Categories',
+        rows
+      }];
+
+      // 4. Send Message
+      const body = await this.resolveVariables(config.body || 'Select a category to browse:', session, contact, messageData);
+      const footer = config.footer || 'Tap to view Categories details view items';
+      
+      await this.whatsappService.sendInteractiveList(
+        session.organizationId,
+        session.accountId,
+        contact.phone,
+        body,
+        'View Categories',
+        sections,
+        config.header,
+        footer
+      );
+
+      // 5. Transition to WAITING_REPLY
+      await this.prisma.chatbotSession.update({
+        where: { id: session.id },
+        data: {
+          status: ChatbotSessionStatus.WAITING_REPLY,
+          waitingForInput: true,
+          waitingNodeType: 'product_categorization',
+          currentNodeId: node.id,
+        },
+      });
+
+    } catch (err: any) {
+      this.logger.error(`ProductCategorization error: ${err.message}`);
+      await this.advanceFromNode(session, node, edges, allNodes, contact, messageData);
+    }
+  }
+
   private async handleDelay(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
     const config = node.data?.config || {};
-    const amount = parseInt(config.delayAmount || config.amount || '5', 10);
-    const unit: string = config.delayUnit || config.unit || 'seconds';
+    
+    // Support 'value' (from frontend) and fallback to 'amount' or 'delayAmount'
+    const amount = parseInt(config.value || config.delayAmount || config.amount || '5', 10);
+    
+    // Support 'unit' (from frontend) and fallback to 'delayUnit'
+    const unitStr = (config.unit || config.delayUnit || 'seconds').toLowerCase();
 
     const unitMs: Record<string, number> = {
       seconds: 1000,
@@ -337,9 +1477,10 @@ export class FlowExecutorService {
       hours: 60 * 60 * 1000,
       days: 24 * 60 * 60 * 1000,
     };
-    const delayMs = amount * (unitMs[unit] || 1000);
+    
+    const delayMs = amount * (unitMs[unitStr] || 1000);
 
-    // Save next node info so the processor knows where to resume
+    // Find the next node to advance to AFTER the delay
     const outEdge = edges.find(e => e.source === node.id);
     const nextNodeId = outEdge?.target;
 
@@ -347,12 +1488,13 @@ export class FlowExecutorService {
       return await this.markCompleted(session.id);
     }
 
+    // Keep currentNodeId as the DELAY node itself during the wait
     await this.prisma.chatbotSession.update({
       where: { id: session.id },
       data: {
         status: ChatbotSessionStatus.WAITING_REPLY,
         waitingForInput: false,
-        currentNodeId: nextNodeId,
+        currentNodeId: node.id,
         expiresAt: new Date(Date.now() + delayMs),
       },
     });
@@ -448,15 +1590,29 @@ export class FlowExecutorService {
 
   private async handleUpdateField(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
     const config = node.data?.config || {};
-    const fieldName = config.fieldName;
-    const fieldValue = await this.resolveVariables(config.fieldValue || '', session, contact, messageData);
+    const fieldToUpdate = config.fieldName;
+    const valueSource = config.valueSource || 'free_text';
+    let valueToSet = '';
 
-    if (fieldName) {
+    if (valueSource === 'free_text') {
+      valueToSet = await this.resolveVariables(config.fieldValue || '', session, contact, messageData);
+    } else if (valueSource === 'last_message') {
+      valueToSet = messageData?.body || '';
+    } else if (valueSource === 'custom_field') {
+      const sourceField = config.sourceField;
+      if (sourceField) {
+        const customFields = ((contact as any).customFields as Record<string, any>) || {};
+        valueToSet = customFields[sourceField] || '';
+      }
+    }
+
+    if (fieldToUpdate) {
       const currentFields = ((contact as any).customFields as Record<string, any>) || {};
       await this.prisma.contact.update({
         where: { id: contact.id },
-        data: { customFields: { ...currentFields, [fieldName]: fieldValue } },
+        data: { customFields: { ...currentFields, [fieldToUpdate]: valueToSet } },
       });
+      this.logger.log(`Updated contact ${contact.phone} field ${fieldToUpdate} to "${valueToSet}" via ${valueSource}.`);
     }
 
     await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
@@ -478,18 +1634,88 @@ export class FlowExecutorService {
     await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
   }
 
+  private async handleUpdateSubscription(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const status = config.status || 'ACTIVE'; // 'ACTIVE' or 'UNSUBSCRIBED'
+    
+    const updateData: any = { status };
+    if (status === 'ACTIVE') {
+      updateData.optedInAt = new Date();
+    } else if (status === 'UNSUBSCRIBED') {
+      updateData.optedOutAt = new Date();
+    }
+
+    await this.prisma.contact.update({
+      where: { id: contact.id },
+      data: updateData
+    });
+
+    this.logger.log(`Updated contact ${contact.phone} subscription status to ${status}.`);
+
+    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+  }
+
   private async handleAssignTeam(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
     const config = node.data?.config || {};
-    const agentId = config.agentId;
+    const mode = config.assignmentMode || 'direct'; // 'direct' or 'round-robin'
+    let agentId = config.agentId;
+
+    if (mode === 'round-robin') {
+      // Fetch all users in the organization
+      const users = await this.prisma.user.findMany({
+        where: { organizationId: session.organizationId },
+        orderBy: { id: 'asc' }
+      });
+
+      if (users.length > 0) {
+        // Simple Round Robin: Find the last assigned contact for this organization and pick the next user
+        const lastContact = await this.prisma.contact.findFirst({
+          where: { organizationId: session.organizationId, agentId: { not: null } },
+          orderBy: { updatedAt: 'desc' }
+        });
+
+        if (lastContact && lastContact.agentId) {
+          const lastIndex = users.findIndex(u => u.id === lastContact.agentId);
+          const nextIndex = (lastIndex + 1) % users.length;
+          agentId = users[nextIndex].id;
+        } else {
+          agentId = users[0].id;
+        }
+      }
+    }
 
     if (agentId) {
-      await this.prisma.contact.update({ where: { id: contact.id }, data: { agentId } });
+      await this.prisma.contact.update({ 
+        where: { id: contact.id }, 
+        data: { agentId } 
+      });
+      this.logger.log(`Assigned contact ${contact.phone} to agent ${agentId} via ${mode} mode.`);
     }
 
     await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
   }
 
-  private async handleResolveConversation(session: ChatbotSession, node: FlowNode) {
+  private async handleAssignSequence(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    this.logger.log(`Assigning contact ${contact.phone} to sequence ${config.sequenceId} (Org: ${session.organizationId})`);
+    
+    // Enrollment logic will be implemented here later when the sequence component is ready.
+    // For now, we just advance the flow.
+    
+    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+  }
+
+  private async handleRemoveSequence(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    this.logger.log(`Removing contact ${contact.phone} from sequence ${config.sequenceId} (Org: ${session.organizationId})`);
+    
+    // Removal logic will be implemented here later when the sequence component is ready.
+    // For now, we just advance the flow.
+    
+    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+  }
+
+  public async handleResolveConversation(session: ChatbotSession, node: FlowNode) {
     await this.markCompleted(session.id);
   }
 
@@ -554,6 +1780,228 @@ export class FlowExecutorService {
 
     await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
     await this.advanceFromNode({ ...session, variables } as any, node, edges, allNodes, contact, messageData, 'output');
+  }
+
+  private async handleWorkingHours(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const timezone = config.timezone || 'UTC';
+    const schedule = config.schedule || {};
+    const holidays = config.holidays || [];
+    // fallback is reserved for future use if we want to handle missing days differently
+    
+    try {
+      const now = new Date();
+      // Get time in the specified timezone using native Intl API
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        weekday: 'long',
+      });
+
+      const parts = formatter.formatToParts(now);
+      const getPart = (type: string) => parts.find(p => p.type === type)?.value;
+
+      const weekday = getPart('weekday')?.toLowerCase(); 
+      const dateStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`; 
+      const timeStr = `${getPart('hour')}:${getPart('minute')}`;
+
+      // 1. Check Holidays
+      if (holidays.includes(dateStr)) {
+        return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
+      }
+
+      // 2. Check Weekly Schedule
+      if (!weekday) return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
+      const dayConfig = (schedule as any)[weekday];
+      if (!dayConfig || !dayConfig.enabled) {
+        return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
+      }
+
+      const { open, close, breakStart, breakEnd } = dayConfig;
+
+      // Check Open/Close (String comparison works for HH:mm)
+      const isWithinHours = timeStr >= (open || '00:00') && timeStr <= (close || '23:59');
+      if (!isWithinHours) {
+        return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
+      }
+
+      // Check Break (Optional)
+      if (breakStart && breakEnd) {
+        const isWithinBreak = timeStr >= breakStart && timeStr <= breakEnd;
+        if (isWithinBreak) {
+          return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
+        }
+      }
+
+      return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'open');
+    } catch (err) {
+      this.logger.error(`WorkingHours node error: ${err.message}`);
+      // Default to closed or fallback on error
+      return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, config.fallback || 'closed');
+    }
+  }
+
+  private async handleDetectCountry(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const source = config.phoneSource || 'contact.phone';
+    const saveCodeTo = config.saveCountryCodeTo;
+    const saveNameTo = config.saveCountryNameTo;
+    const alsoSaveName = config.alsoSaveCountryName;
+
+    let phoneNumberStr = '';
+    if (source === 'contact.phone') {
+      phoneNumberStr = contact.phone;
+    } else if (source.startsWith('custom.')) {
+      const field = source.replace('custom.', '');
+      phoneNumberStr = (contact.customFields as any)?.[field] || '';
+    } else if (source.startsWith('var.')) {
+      const name = source.replace('var.', '');
+      phoneNumberStr = (session.variables as any)?.[name] || '';
+    }
+
+    try {
+      if (!phoneNumberStr.startsWith('+')) {
+        phoneNumberStr = '+' + phoneNumberStr;
+      }
+
+      const phoneNumber = parsePhoneNumber(phoneNumberStr);
+      if (phoneNumber && phoneNumber.country) {
+        const countryCode = phoneNumber.country; // e.g. "IN"
+        const countryName = new Intl.DisplayNames(['en'], { type: 'region' }).of(countryCode) || countryCode;
+
+        const updates: any = {};
+        const variables = { ...(session.variables as any) || {} };
+
+        // Save Country Code
+        if (saveCodeTo) {
+          if (saveCodeTo.startsWith('custom.')) {
+            const field = saveCodeTo.replace('custom.', '');
+            updates.customFields = { ...(contact.customFields as any) || {}, [field]: countryCode };
+          } else {
+            const name = saveCodeTo.startsWith('var.') ? saveCodeTo.replace('var.', '') : saveCodeTo;
+            variables[name] = countryCode;
+          }
+        }
+
+        // Save Country Name
+        if (alsoSaveName && saveNameTo) {
+          if (saveNameTo.startsWith('custom.')) {
+            const field = saveNameTo.replace('custom.', '');
+            updates.customFields = { ...(updates.customFields || contact.customFields || {}), [field]: countryName };
+          } else {
+            const name = saveNameTo.startsWith('var.') ? saveNameTo.replace('var.', '') : saveNameTo;
+            variables[name] = countryName;
+          }
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await this.prisma.contact.update({ where: { id: contact.id }, data: updates });
+        }
+
+        await this.prisma.chatbotSession.update({
+          where: { id: session.id },
+          data: { variables }
+        });
+        
+        session.variables = variables;
+      }
+    } catch (err) {
+      this.logger.error(`DetectCountry error: ${err.message}`);
+    }
+
+    return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+  }
+
+  private async handleAiResponse(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const systemPrompt = await this.resolveVariables(config.systemPrompt || 'You are a helpful assistant.', session, contact, messageData);
+    const includeHistory = config.includeHistory !== false;
+    const saveTo = config.saveToField || 'ai_response';
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      this.logger.error('OPENAI_API_KEY is not configured in .env');
+      return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+    }
+
+    try {
+      const messages: any[] = [{ role: 'system', content: systemPrompt }];
+
+      if (includeHistory) {
+        const conversation = await this.prisma.conversation.findFirst({
+          where: { contactId: contact.id, whatsappAccountId: session.accountId }
+        });
+        
+        if (conversation) {
+          const history = await this.prisma.message.findMany({
+            where: { conversationId: conversation.id },
+            orderBy: { createdAt: 'desc' },
+            take: 10
+          });
+
+          // Reverse to chronological order
+          history.reverse().forEach(msg => {
+            if (msg.type === 'TEXT' && (msg.content as any)?.body) {
+              messages.push({
+                role: msg.direction === 'INBOUND' ? 'user' : 'assistant',
+                content: (msg.content as any).body
+              });
+            }
+          });
+        }
+      }
+
+      // Add the current incoming message if it's not already in history (or if history was skipped)
+      const currentText = messageData.text?.body || '';
+      if (currentText) {
+         // Avoid duplicating if it was the last message in history
+         if (messages[messages.length - 1]?.content !== currentText) {
+            messages.push({ role: 'user', content: currentText });
+         }
+      }
+
+      const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+        model: 'gpt-4o-mini',
+        messages,
+        max_tokens: 1000
+      }, {
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+      });
+
+      const aiText = response.data.choices[0].message.content;
+      
+      const variables = { ...(session.variables as any) || {} };
+      const updates: any = {};
+
+      if (saveTo.startsWith('custom.')) {
+        const field = saveTo.replace('custom.', '');
+        updates.customFields = { ...(contact.customFields as any) || {}, [field]: aiText };
+      } else {
+        const name = saveTo.startsWith('var.') ? saveTo.replace('var.', '') : saveTo;
+        variables[name] = aiText;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await this.prisma.contact.update({ where: { id: contact.id }, data: updates });
+      }
+
+      await this.prisma.chatbotSession.update({
+        where: { id: session.id },
+        data: { variables }
+      });
+
+      session.variables = variables;
+
+    } catch (err: any) {
+      this.logger.error(`AI Response error: ${err.response?.data?.error?.message || err.message}`);
+    }
+
+    return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
   }
 
   // ─── Variable Resolution ─────────────────────────────────────────────────

@@ -53,6 +53,16 @@ export class WhatsappController {
     return this.whatsappService.uploadTemplateMedia(req.user.orgId, id, file);
   }
 
+  @Post('accounts/:id/media/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadMedia(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file: any
+  ) {
+    return this.whatsappService.uploadMedia(req.user.orgId, id, file);
+  }
+
   @Patch('accounts/:id/templates/:templateId')
   async updateTemplate(@Req() req: any, @Param('id') id: string, @Param('templateId') templateId: string, @Body() data: any) {
     return this.whatsappService.updateTemplate(req.user.orgId, id, templateId, data);

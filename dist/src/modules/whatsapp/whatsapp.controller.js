@@ -43,6 +43,9 @@ let WhatsappController = class WhatsappController {
     async uploadTemplateMedia(req, id, file) {
         return this.whatsappService.uploadTemplateMedia(req.user.orgId, id, file);
     }
+    async uploadMedia(req, id, file) {
+        return this.whatsappService.uploadMedia(req.user.orgId, id, file);
+    }
     async updateTemplate(req, id, templateId, data) {
         return this.whatsappService.updateTemplate(req.user.orgId, id, templateId, data);
     }
@@ -108,6 +111,16 @@ __decorate([
     __metadata("design:paramtypes", [Object, String, Object]),
     __metadata("design:returntype", Promise)
 ], WhatsappController.prototype, "uploadTemplateMedia", null);
+__decorate([
+    (0, common_1.Post)('accounts/:id/media/upload'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], WhatsappController.prototype, "uploadMedia", null);
 __decorate([
     (0, common_1.Patch)('accounts/:id/templates/:templateId'),
     __param(0, (0, common_1.Req)()),

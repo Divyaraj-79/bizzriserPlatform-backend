@@ -55,7 +55,7 @@ let FlowDelayProcessor = FlowDelayProcessor_1 = class FlowDelayProcessor {
                 where: { id: sessionId },
                 data: { status: client_1.ChatbotSessionStatus.ACTIVE, waitingForInput: false, currentNodeId: nextNodeId },
             });
-            await this.flowExecutor['executeNode'](activeSession, nextNode, allEdges, allNodes, contact, {});
+            await this.flowExecutor.executeNode(activeSession, nextNode, allEdges, allNodes, contact, {});
         }
         catch (err) {
             this.logger.error(`Error resuming delayed session ${sessionId}: ${err.message}`);

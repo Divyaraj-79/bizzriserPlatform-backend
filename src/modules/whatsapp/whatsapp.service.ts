@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SecurityService } from '../../common/services/security.service';
 import { WebhookEventType, MessageType } from '@prisma/client';
 import axios, { AxiosInstance } from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class WhatsappService {
@@ -82,8 +83,8 @@ export class WhatsappService {
         });
         const debugData = debugRes.data.data;
         wabaId = debugData.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_management')?.target_ids?.[0] ||
-                 debugData.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_messaging')?.target_ids?.[0] ||
-                 debugData.target_ids?.[0] || debugData.profile_id;
+          debugData.granular_scopes?.find((s: any) => s.scope === 'whatsapp_business_messaging')?.target_ids?.[0] ||
+          debugData.target_ids?.[0] || debugData.profile_id;
         if (wabaId) this.logger.log(`Discovered WABA ID via debug_token: ${wabaId}`);
       } catch (debugErr: any) {
         this.logger.warn(`Debug token discovery skipped: ${debugErr.message}`);
@@ -92,49 +93,49 @@ export class WhatsappService {
 
     // 3. Final Discovery Fallback: Safe Webhook Lookup (No-Migration needed)
     if (!wabaId) {
-       this.logger.log(`Performing Safe Webhook discovery for App ${appId} (Retrying for 5s)...`);
-       for (let i = 0; i < 5; i++) {
-         if (i > 0) await new Promise(resolve => setTimeout(resolve, 1000));
-         try {
-           const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-           const recentEvents = await this.prisma.webhookEvent.findMany({
-             where: {
-               // We use the safe, existing type to avoid DB errors
-               eventType: WebhookEventType.MESSAGE_RECEIVED,
-               createdAt: { gte: fiveMinutesAgo }
-             },
-             orderBy: { createdAt: 'desc' }
-           });
+      this.logger.log(`Performing Safe Webhook discovery for App ${appId} (Retrying for 5s)...`);
+      for (let i = 0; i < 5; i++) {
+        if (i > 0) await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+          const recentEvents = await this.prisma.webhookEvent.findMany({
+            where: {
+              // We use the safe, existing type to avoid DB errors
+              eventType: WebhookEventType.MESSAGE_RECEIVED,
+              createdAt: { gte: fiveMinutesAgo }
+            },
+            orderBy: { createdAt: 'desc' }
+          });
 
-           for (const event of recentEvents) {
-             const payload = event.payload as any;
-             if (payload.isSignupEvent && payload.waba_info?.partner_app_id === String(appId)) {
-               wabaId = payload.waba_info?.waba_id;
-               this.logger.log(`SUCCESS: Intercepted WABA ID via safe webhook on attempt ${i + 1}: ${wabaId}`);
-               break;
-             }
-           }
-           if (wabaId) break;
-         } catch (err: any) {
-           this.logger.warn(`Safe Discovery attempt ${i + 1} failed: ${err.message}`);
-         }
-       }
+          for (const event of recentEvents) {
+            const payload = event.payload as any;
+            if (payload.isSignupEvent && payload.waba_info?.partner_app_id === String(appId)) {
+              wabaId = payload.waba_info?.waba_id;
+              this.logger.log(`SUCCESS: Intercepted WABA ID via safe webhook on attempt ${i + 1}: ${wabaId}`);
+              break;
+            }
+          }
+          if (wabaId) break;
+        } catch (err: any) {
+          this.logger.warn(`Safe Discovery attempt ${i + 1} failed: ${err.message}`);
+        }
+      }
     }
 
     if (!wabaId) {
-       this.logger.log(`Wait... scanning client WABAs manually as absolute final fallback...`);
-       try {
-         const clientWabasRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/client_whatsapp_business_accounts`, {
-           headers: { Authorization: `Bearer ${systemAccessToken}` }
-         });
-         const clientWabas = clientWabasRes.data.data;
-         if (clientWabas && clientWabas.length > 0) {
-            wabaId = clientWabas[0].id;
-            this.logger.log(`Found WABA ID via direct app scan: ${wabaId}`);
-         }
-       } catch (err: any) {
-         this.logger.warn(`Final direct scan failed: ${err.message}`);
-       }
+      this.logger.log(`Wait... scanning client WABAs manually as absolute final fallback...`);
+      try {
+        const clientWabasRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/client_whatsapp_business_accounts`, {
+          headers: { Authorization: `Bearer ${systemAccessToken}` }
+        });
+        const clientWabas = clientWabasRes.data.data;
+        if (clientWabas && clientWabas.length > 0) {
+          wabaId = clientWabas[0].id;
+          this.logger.log(`Found WABA ID via direct app scan: ${wabaId}`);
+        }
+      } catch (err: any) {
+        this.logger.warn(`Final direct scan failed: ${err.message}`);
+      }
     }
 
     if (!wabaId) {
@@ -153,10 +154,10 @@ export class WhatsappService {
         headers: { Authorization: `Bearer ${systemAccessToken}` },
       });
       const allPhones = phoneRes.data.data || [];
-      
+
       // Prioritize the phoneNumberId passed from frontend/onboarding
-      phoneData = phoneNumberId 
-        ? allPhones.find((p: any) => p.id === phoneNumberId) 
+      phoneData = phoneNumberId
+        ? allPhones.find((p: any) => p.id === phoneNumberId)
         : allPhones[0];
 
       if (!phoneData && allPhones.length > 0) {
@@ -168,11 +169,11 @@ export class WhatsappService {
     } catch (phoneErr: any) {
       const errorMsg = phoneErr.response?.data?.error?.message || phoneErr.message;
       this.logger.error(`CRITICAL FAILURE: System Token Fetch failed. Message: ${errorMsg}`);
-      
+
       if (errorMsg.toLowerCase().includes('expired') || errorMsg.toLowerCase().includes('session')) {
         this.logger.error('ACTION REQUIRED: Your WHATSAPP_ACCESS_TOKEN has EXPIRED. Please generate a new one in Meta Business Suite.');
       }
-      
+
       throw new HttpException(`WhatsApp connection failed: ${errorMsg}`, HttpStatus.BAD_REQUEST);
     }
 
@@ -196,7 +197,7 @@ export class WhatsappService {
 
     try {
       this.logger.log(`Linking WhatsApp Account: ${phoneNumber} (${phoneNumberId}) to Org: ${orgId}`);
-      
+
       const account = await this.prisma.whatsAppAccount.upsert({
         where: { phoneNumberId },
         update: {
@@ -281,7 +282,7 @@ export class WhatsappService {
           'Content-Type': 'application/json',
         },
       });
-      
+
       return response.data;
     } catch (error) {
       this.handleError(error, `Failed to send message via account ${accountId}`);
@@ -326,7 +327,7 @@ export class WhatsappService {
           'Content-Type': 'application/json',
         },
       });
-      
+
       return response.data;
     } catch (error) {
       this.handleError(error, `Failed to send template message via account ${accountId}`);
@@ -354,7 +355,7 @@ export class WhatsappService {
 
     try {
       this.logger.log(`[RESUMABLE UPLOAD] STEP 1: Creating Session for ${file.originalname} (${file.size} bytes)`);
-      
+
       // 1. Create Upload Session
       const sessionRes = await axios.post(`${this.graphBaseUrl}/${this.apiVersion}/${appId}/uploads`, null, {
         params: {
@@ -379,12 +380,12 @@ export class WhatsappService {
 
       const handle = uploadRes.data.h;
       if (!handle) {
-         this.logger.error(`[RESUMABLE UPLOAD] FAILURE: No handle returned. Response: ${JSON.stringify(uploadRes.data)}`);
-         throw new Error('Meta did not return a header handle after successful upload.');
+        this.logger.error(`[RESUMABLE UPLOAD] FAILURE: No handle returned. Response: ${JSON.stringify(uploadRes.data)}`);
+        throw new Error('Meta did not return a header handle after successful upload.');
       }
 
       this.logger.log(`[RESUMABLE UPLOAD] SUCCESS: Received header_handle: ${handle}`);
-      
+
       return { handle };
     } catch (error) {
       this.handleError(error, `Resumable upload failed for template media`);
@@ -707,45 +708,45 @@ export class WhatsappService {
           Authorization: `Bearer ${validatedToken}`,
         },
       });
-      
+
       const metaTemplates = response.data.data || [];
       this.logger.log(`[Templates] Received ${metaTemplates.length} templates from Meta API.`);
 
       // 3. Sync meta templates into local DB
       for (const mt of metaTemplates) {
-         await this.prisma.whatsAppTemplate.upsert({
-            where: {
-               accountId_name_language: {
-                  accountId,
-                  name: mt.name,
-                  language: mt.language
-               }
-            },
-            create: {
-               organizationId: orgId,
-               accountId,
-               name: mt.name,
-               language: mt.language,
-               category: mt.category,
-               status: mt.status || 'APPROVED',
-               components: mt.components,
-               variableMapping: {},
-            },
-            update: {
-               category: mt.category,
-               status: mt.status || 'APPROVED',
-               components: mt.components,
-               isActive: true
+        await this.prisma.whatsAppTemplate.upsert({
+          where: {
+            accountId_name_language: {
+              accountId,
+              name: mt.name,
+              language: mt.language
             }
-         });
+          },
+          create: {
+            organizationId: orgId,
+            accountId,
+            name: mt.name,
+            language: mt.language,
+            category: mt.category,
+            status: mt.status || 'APPROVED',
+            components: mt.components,
+            variableMapping: {},
+          },
+          update: {
+            category: mt.category,
+            status: mt.status || 'APPROVED',
+            components: mt.components,
+            isActive: true
+          }
+        });
       }
 
       this.logger.log(`[Templates] Cache update complete for account ${accountId}.`);
 
       // 4. Return the refreshed local list
       return this.prisma.whatsAppTemplate.findMany({
-         where: { accountId, organizationId: orgId, isActive: true },
-         orderBy: { updatedAt: 'desc' }
+        where: { accountId, organizationId: orgId, isActive: true },
+        orderBy: { updatedAt: 'desc' }
       });
     } catch (error) {
       this.handleError(error, `Failed to fetch and sync templates via account ${accountId}`);
@@ -920,7 +921,7 @@ export class WhatsappService {
     const account = await this.prisma.whatsAppAccount.findUnique({
       where: { id: accountId, organizationId: orgId },
     });
-    
+
     if (!account) {
       throw new HttpException('WhatsApp Account not found or access denied.', HttpStatus.NOT_FOUND);
     }
@@ -940,9 +941,9 @@ export class WhatsappService {
 
       const phoneData = phoneRes.data?.data || [];
       const phoneInfo = phoneData.find((p: any) => p.id === account.phoneNumberId);
-      
+
       if (!phoneInfo) {
-        this.logger.error(`[SYNC FAILURE] Phone number ${account.phoneNumberId} missing in WABA ${account.wabaId}. Avail IDs: ${phoneData.map((p:any)=>p.id).join(', ')}`);
+        this.logger.error(`[SYNC FAILURE] Phone number ${account.phoneNumberId} missing in WABA ${account.wabaId}. Avail IDs: ${phoneData.map((p: any) => p.id).join(', ')}`);
         throw new HttpException('Your Phone Number ID is no longer associated with this Meta WABA.', HttpStatus.UNAUTHORIZED);
       }
 
@@ -970,7 +971,7 @@ export class WhatsappService {
         businessProfile = { lastSyncAt: new Date().toISOString() };
       }
 
-      this.logger.log(`[SYNC] Attempting database update for account ${accountId} with: ${JSON.stringify({ 
+      this.logger.log(`[SYNC] Attempting database update for account ${accountId} with: ${JSON.stringify({
         name: phoneInfo.verified_name,
         tier,
         status: phoneInfo.code_verification_status
@@ -1015,7 +1016,7 @@ export class WhatsappService {
     if (!account) {
       throw new ConflictException('WhatsApp account not found or access denied');
     }
-    
+
     return this.prisma.whatsAppAccount.delete({
       where: { id: accountId },
     });
@@ -1048,19 +1049,19 @@ export class WhatsappService {
             params: { input_token: globalToken },
             headers: { Authorization: `Bearer ${globalToken}` },
           });
-          
+
           await this.prisma.whatsAppAccount.update({
             where: { id: account.id },
             data: { accessToken: this.securityService.encrypt(globalToken) },
           });
-          
+
           return { token: globalToken, wasUpdated: true };
         } catch (globalErr) {
           this.logger.error(`CRITICAL: Global system token is also invalid.`);
           throw error;
         }
       }
-      
+
       // If no fallback available, throw clear error
       throw new HttpException(`WhatsApp authentication failed: ${errorMsg}. Your token may have expired.`, HttpStatus.UNAUTHORIZED);
     }
@@ -1078,7 +1079,7 @@ export class WhatsappService {
 
     try {
       this.logger.log(`[Registration] Starting smart registration check for ${account.phoneNumberId}...`);
-      
+
       // Use the system token for registration as it's more reliable
       const systemToken = this.configService.get<string>('whatsapp.accessToken');
       const { token: validatedToken } = await this.getValidToken(account);
@@ -1090,7 +1091,7 @@ export class WhatsappService {
         headers: { Authorization: `Bearer ${registrationToken}` },
       });
       const phoneInfo = phoneRes.data?.data?.find((p: any) => p.id === account.phoneNumberId);
-      
+
       this.logger.log(`[Registration] Meta status for ${account.phoneNumberId} (${phoneInfo?.display_phone_number}): ${phoneInfo?.code_verification_status}`);
 
       // We only skip if it's VERIFIED AND we have a record of a recent successful registration
@@ -1139,9 +1140,9 @@ export class WhatsappService {
       const errorMsg = errorData?.message || error.message;
       const errorCode = errorData?.code;
       const errorSubcode = errorData?.error_subcode;
-      
+
       this.logger.error(`[Registration] FAILED for ${account.phoneNumberId}: ${errorMsg} (Code: ${errorCode}, Subcode: ${errorSubcode})`);
-      
+
       // Update attempt timestamp even on failure to respect cooldown
       const profile = typeof account.businessProfile === 'object' ? (account.businessProfile as any) : {};
       await this.prisma.whatsAppAccount.update({
@@ -1159,6 +1160,409 @@ export class WhatsappService {
     }
   }
 
+  async sendLocationMessage(orgId: string, accountId: string, to: string, data: { latitude: number; longitude: number; name?: string; address?: string }) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: to.replace(/\+/g, ''),
+      type: 'location',
+      location: {
+        latitude: data.latitude,
+        longitude: data.longitude,
+        name: data.name,
+        address: data.address,
+      },
+    };
+
+    try {
+      const response = await axios.post(url, payload, {
+        headers: { Authorization: `Bearer ${validatedToken}` },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to send location message via account ${accountId}`);
+    }
+  }
+
+  async sendContactMessage(orgId: string, accountId: string, to: string, contacts: any[]) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: to.replace(/\+/g, ''),
+      type: 'contacts',
+      contacts: contacts.map(c => ({
+        name: { formatted_name: c.name, first_name: c.firstName, last_name: c.lastName },
+        phones: [{ phone: c.phone, type: 'CELL' }],
+        emails: c.email ? [{ email: c.email, type: 'WORK' }] : undefined,
+        org: c.company ? { company: c.company } : undefined
+      })),
+    };
+
+    try {
+      const response = await axios.post(url, payload, {
+        headers: { Authorization: `Bearer ${validatedToken}` },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to send contacts via account ${accountId}`);
+    }
+  }
+
+  async sendCTAButtonMessage(orgId: string, accountId: string, to: string, data: { body: string; footer?: string; header?: string; buttonLabel: string; url: string }) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('WhatsApp account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: to.replace(/\+/g, ''),
+      type: 'interactive',
+      interactive: {
+        type: 'cta_url',
+        header: data.header ? { type: 'text', text: data.header } : undefined,
+        body: { text: data.body },
+        footer: data.footer ? { text: data.footer } : undefined,
+        action: {
+          name: 'cta_url',
+          parameters: {
+            display_text: data.buttonLabel,
+            url: data.url,
+          },
+        },
+      },
+    };
+
+    try {
+      const response = await axios.post(url, payload, {
+        headers: { Authorization: `Bearer ${validatedToken}` },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to send CTA button message`);
+    }
+  }
+
+  async sendFlowMessage(orgId: string, accountId: string, to: string, data: { body: string; footer?: string; flowId: string; flowToken: string; flowCta: string; flowMode?: 'draft' | 'published'; screen?: string; payload?: any }) {
+     const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: to.replace(/\+/g, ''),
+      type: 'interactive',
+      interactive: {
+        type: 'flow',
+        body: { text: data.body },
+        footer: data.footer ? { text: data.footer } : undefined,
+        action: {
+          name: 'flow',
+          parameters: {
+            flow_message_version: '3',
+            flow_id: data.flowId,
+            flow_token: data.flowToken,
+            flow_mode: data.flowMode || 'published',
+            flow_cta: data.flowCta,
+            flow_action: 'navigate',
+            flow_action_payload: {
+              screen: data.screen || 'START',
+              data: data.payload || {},
+            },
+          },
+        },
+      },
+    };
+
+    try {
+      const response = await axios.post(url, payload, {
+        headers: { Authorization: `Bearer ${validatedToken}` },
+      });
+      return response.data;
+    } catch (error) {
+        this.handleError(error, `Failed to send flow message`);
+    }
+  }
+
+  async sendCarouselMessage(orgId: string, accountId: string, to: string, data: { body: string; cards: any[] }) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: to.replace(/\+/g, ''),
+      type: 'interactive',
+      interactive: {
+        type: 'carousel',
+        body: { text: data.body },
+        action: {
+          cards: data.cards.map((card: any) => ({
+            header: {
+              type: card.headerType || 'image',
+              [card.headerType || 'image']: { link: card.headerUrl },
+            },
+            body: card.body ? { text: card.body } : undefined,
+            buttons: (card.buttons || []).map((btn: any) => {
+              if (btn.type === 'reply') {
+                return {
+                  type: 'reply',
+                  reply: { id: btn.id || uuidv4(), title: btn.label },
+                };
+              } else if (btn.type === 'url') {
+                return {
+                  type: 'cta_url',
+                  cta_url: { display_text: btn.label, url: btn.url },
+                };
+              }
+              return null;
+            }).filter(Boolean),
+          })),
+        },
+      },
+    };
+
+    try {
+      const response = await axios.post(url, payload, {
+        headers: { Authorization: `Bearer ${validatedToken}` },
+      });
+      return response.data;
+    } catch (error) {
+        this.handleError(error, `Failed to send carousel message`);
+    }
+  }
+
+  async sendCallRequestMessage(orgId: string, accountId: string, to: string, data: { body: string; footer?: string }) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: to.replace(/\+/g, ''),
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: data.body },
+        footer: data.footer ? { text: data.footer } : undefined,
+        action: {
+          buttons: [
+            { type: 'reply', reply: { id: 'call_approve', title: 'Approve' } },
+            { type: 'reply', reply: { id: 'call_decline', title: 'Decline' } },
+          ],
+        },
+      },
+    };
+
+    try {
+      const response = await axios.post(url, payload, {
+        headers: { Authorization: `Bearer ${validatedToken}` },
+      });
+      return response.data;
+    } catch (error) {
+        this.handleError(error, `Failed to send call request`);
+    }
+  }
+
+  async sendPaymentMessage(orgId: string, accountId: string, to: string, data: { 
+    body: string; 
+    footer?: string; 
+    referenceId: string; 
+    amount: number; 
+    currency: string; 
+    gateway: string; 
+    configId: string;
+    razorpayReceipt?: string;
+    razorpayNotes?: any;
+  }) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: to.replace(/\+/g, ''),
+      type: 'interactive',
+      interactive: {
+        type: 'order_details',
+        body: { text: data.body },
+        footer: data.footer ? { text: data.footer } : undefined,
+        action: {
+          name: 'review_and_pay',
+          parameters: {
+            reference_id: data.referenceId,
+            type: 'checkout-payment',
+            payment_settings: [
+              {
+                type: 'payment_gateway',
+                payment_gateway: {
+                  type: data.gateway,
+                  configuration_id: data.configId,
+                  [data.gateway]: data.gateway === 'razorpay' ? {
+                    receipt: data.razorpayReceipt,
+                    notes: data.razorpayNotes || {}
+                  } : {}
+                }
+              }
+            ],
+            currency: data.currency || 'INR',
+            total_amount: {
+              value: Math.round(data.amount * 100),
+              offset: 100
+            },
+            order: {
+              items: [
+                {
+                  name: 'Order Payment',
+                  amount: { value: Math.round(data.amount * 100), offset: 100 },
+                  quantity: 1
+                }
+              ]
+            }
+          }
+        }
+      }
+    };
+
+    try {
+      this.logger.log(`Sending WhatsApp payment message for org ${orgId} to ${to}`);
+      const response = await axios.post(url, payload, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to send payment message via account ${accountId}`);
+    }
+  }
+
+  /**
+   * Searches for products in a Meta Catalog.
+   */
+  async searchCatalogProducts(orgId: string, accountId: string, catalogId: string, query: string, searchFields: string[] = ['name']) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new Error('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${catalogId}/products`;
+
+    // Construct filter based on search fields
+    // Meta supports basic filters. If multiple fields, we might need multiple calls or a more complex query.
+    // For now, we search primarily in 'name' as it's the most common use case.
+    const filter: any = {};
+    if (query) {
+       filter.name = { contains: query };
+    }
+
+    try {
+      const response = await axios.get(url, {
+        params: {
+          filter: JSON.stringify(filter),
+          fields: 'id,name,description,image_url,retailer_id,price,currency,category',
+          limit: 100
+        },
+        headers: { Authorization: `Bearer ${validatedToken}` },
+      });
+      return response.data.data || [];
+    } catch (error) {
+      this.logger.warn(`Catalog search failed: ${error.message}`);
+      return []; // Return empty instead of crashing the flow
+    }
+  }
+
+  /**
+   * Sends a Product List message (Interactive).
+   */
+  async sendProductListMessage(orgId: string, accountId: string, to: string, data: {
+    catalogId: string,
+    body: string,
+    header?: string,
+    footer?: string,
+    sections: Array<{ title: string, products: string[] }>
+  }) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new Error('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'product_list',
+        header: data.header ? { type: 'text', text: data.header } : undefined,
+        body: { text: data.body || 'Please select a product:' },
+        footer: data.footer ? { text: data.footer } : undefined,
+        action: {
+          catalog_id: data.catalogId,
+          sections: data.sections.map(s => ({
+            title: s.title,
+            product_items: s.products.map(pid => ({ product_retailer_id: pid }))
+          }))
+        }
+      }
+    };
+
+    try {
+      const response = await axios.post(url, payload, {
+        headers: { Authorization: `Bearer ${validatedToken}` },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, `Failed to send product list message`);
+    }
+  }
+
   private handleError(error: any, context: string) {
     const errorData = error.response?.data;
     const errorMsg = errorData?.error?.message || errorData?.message || error.message;
@@ -1166,7 +1570,7 @@ export class WhatsappService {
     const errorSubcode = errorData?.error?.error_subcode;
 
     this.logger.error(`${context}: ${errorMsg} (Code: ${errorCode}, Subcode: ${errorSubcode})`);
-    
+
     // Log unexpected error structures for debugging
     if (errorData && !errorData.error) {
       this.logger.error(`${context} Full Response: ${JSON.stringify(errorData)}`);

@@ -136,6 +136,14 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
             messageType = client_1.MessageType.TEXT;
             content = { body: messageData.button.text, payload: messageData.button.payload };
         }
+        else if (messageData.type === 'location') {
+            messageType = client_1.MessageType.TEXT;
+            content = {
+                latitude: messageData.location.latitude,
+                longitude: messageData.location.longitude,
+                body: `[Location: ${messageData.location.latitude}, ${messageData.location.longitude}]`
+            };
+        }
         else if (messageData.type === 'audio') {
             messageType = client_1.MessageType.AUDIO;
             content = { audio: messageData.audio, body: '[Audio]' };

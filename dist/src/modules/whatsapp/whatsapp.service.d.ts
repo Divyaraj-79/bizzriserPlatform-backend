@@ -119,5 +119,59 @@ export declare class WhatsappService {
     }>;
     private getValidToken;
     registerPhoneNumber(orgId: string, accountId: string, force?: boolean): Promise<void>;
+    sendLocationMessage(orgId: string, accountId: string, to: string, data: {
+        latitude: number;
+        longitude: number;
+        name?: string;
+        address?: string;
+    }): Promise<any>;
+    sendContactMessage(orgId: string, accountId: string, to: string, contacts: any[]): Promise<any>;
+    sendCTAButtonMessage(orgId: string, accountId: string, to: string, data: {
+        body: string;
+        footer?: string;
+        header?: string;
+        buttonLabel: string;
+        url: string;
+    }): Promise<any>;
+    sendFlowMessage(orgId: string, accountId: string, to: string, data: {
+        body: string;
+        footer?: string;
+        flowId: string;
+        flowToken: string;
+        flowCta: string;
+        flowMode?: 'draft' | 'published';
+        screen?: string;
+        payload?: any;
+    }): Promise<any>;
+    sendCarouselMessage(orgId: string, accountId: string, to: string, data: {
+        body: string;
+        cards: any[];
+    }): Promise<any>;
+    sendCallRequestMessage(orgId: string, accountId: string, to: string, data: {
+        body: string;
+        footer?: string;
+    }): Promise<any>;
+    sendPaymentMessage(orgId: string, accountId: string, to: string, data: {
+        body: string;
+        footer?: string;
+        referenceId: string;
+        amount: number;
+        currency: string;
+        gateway: string;
+        configId: string;
+        razorpayReceipt?: string;
+        razorpayNotes?: any;
+    }): Promise<any>;
+    searchCatalogProducts(orgId: string, accountId: string, catalogId: string, query: string, searchFields?: string[]): Promise<any>;
+    sendProductListMessage(orgId: string, accountId: string, to: string, data: {
+        catalogId: string;
+        body: string;
+        header?: string;
+        footer?: string;
+        sections: Array<{
+            title: string;
+            products: string[];
+        }>;
+    }): Promise<any>;
     private handleError;
 }

@@ -2,6 +2,18 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatbotSession, Contact, Chatbot } from '@prisma/client';
 import { WhatsappService } from '../../whatsapp/whatsapp.service';
+interface FlowNode {
+    id: string;
+    type: string;
+    data: any;
+}
+interface FlowEdge {
+    id: string;
+    source: string;
+    target: string;
+    sourceHandle?: string;
+    targetHandle?: string;
+}
 export declare class FlowExecutorService {
     private prisma;
     private whatsappService;
@@ -10,24 +22,52 @@ export declare class FlowExecutorService {
     constructor(prisma: PrismaService, whatsappService: WhatsappService, delayQueue: Queue);
     startSession(orgId: string, accountId: string, chatbot: Chatbot, contact: Contact, messageData: any): Promise<void>;
     resumeSession(session: ChatbotSession, contact: Contact, messageData: any): Promise<void>;
-    private executeNode;
+    executeNode(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any): Promise<void>;
     private handleSendText;
+    private handleSendContact;
+    private handleSendLocation;
+    private handleSendCarousel;
+    private handleSendCTAButton;
+    private handleSendFlow;
+    private handleSendCallRequest;
+    private handleAskText;
+    private handleAskNumber;
+    private handleAskDate;
+    private handleAskEmail;
+    private handleAskLocation;
+    private handleAskAddress;
+    private handleAskImage;
+    private handleAskVideo;
+    private handleAskAudio;
+    private handleAskFile;
     private handleAskQuestion;
     private handleSendButton;
     private handleSendList;
+    private handleSendListAdvanced;
+    private getValueByPath;
     private handleSendMedia;
     private handleSendTemplate;
+    private handleSendPayment;
+    private handleProductSearch;
+    private handleProductCategorization;
     private handleDelay;
     private handleCondition;
     private evaluateCondition;
     private handleJumpTo;
     private handleUpdateField;
     private handleUpdateLabel;
+    private handleUpdateSubscription;
     private handleAssignTeam;
-    private handleResolveConversation;
+    private handleAssignSequence;
+    private handleRemoveSequence;
+    handleResolveConversation(session: ChatbotSession, node: FlowNode): Promise<void>;
     private handleHttpApi;
+    private handleWorkingHours;
+    private handleDetectCountry;
+    private handleAiResponse;
     resolveVariables(template: string, session: ChatbotSession, contact: Contact, messageData: any): Promise<string>;
     private advanceFromNode;
     private markCompleted;
     private extractJsonPath;
 }
+export {};
