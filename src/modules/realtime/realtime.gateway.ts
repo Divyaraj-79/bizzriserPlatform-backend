@@ -66,7 +66,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Helper method to emit a 'message:new' event to a specific organization.
    */
   emitNewMessage(orgId: string, message: any) {
-    this.server.to(`org_${orgId}`).emit('message:new', message);
+    if (this.server) {
+      this.server.to(`org_${orgId}`).emit('message:new', message);
+    }
     this.logger.debug(`Emitted 'message:new' to org_${orgId}`);
   }
 
@@ -74,7 +76,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Helper method to emit a 'message:status' event to a specific organization.
    */
   emitMessageStatusUpdate(orgId: string, message: any) {
-    this.server.to(`org_${orgId}`).emit('message:status', message);
+    if (this.server) {
+      this.server.to(`org_${orgId}`).emit('message:status', message);
+    }
     this.logger.debug(`Emitted 'message:status' to org_${orgId}`);
   }
 
@@ -82,14 +86,18 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Helper method to emit 'conversation:updated' event.
    */
   emitConversationUpdate(orgId: string, conversation: any) {
-    this.server.to(`org_${orgId}`).emit('conversation:update', conversation);
+    if (this.server) {
+      this.server.to(`org_${orgId}`).emit('conversation:update', conversation);
+    }
   }
 
   /**
    * Emits real-time progress for bulk contact imports.
    */
   emitImportProgress(orgId: string, jobId: string, stats: any) {
-    this.server.to(`org_${orgId}`).emit('import:progress', { jobId, ...stats });
+    if (this.server) {
+      this.server.to(`org_${orgId}`).emit('import:progress', { jobId, ...stats });
+    }
   }
 
 
