@@ -515,10 +515,7 @@ export class FlowExecutorService {
         case 'askVideo':       return await this.handleAskVideo(session, node, edges, allNodes, contact, messageData);
         case 'askAudio':       return await this.handleAskAudio(session, node, edges, allNodes, contact, messageData);
         case 'askFile':        return await this.handleAskFile(session, node, edges, allNodes, contact, messageData);
-        case 'askQuestion':
-        case 'askNumber':
-        case 'askEmail':
-        case 'askDate':        return await this.handleAskQuestion(session, node, edges, allNodes, contact, messageData);
+        case 'askQuestion':    return await this.handleAskQuestion(session, node, edges, allNodes, contact, messageData);
         case 'delay':          return await this.handleDelay(session, node, edges, allNodes, contact, messageData);
         case 'condition':      return await this.handleCondition(session, node, edges, allNodes, contact, messageData);
         case 'jumpTo':         return await this.handleJumpTo(session, node, edges, allNodes, contact, messageData);
