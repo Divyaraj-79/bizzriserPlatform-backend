@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 @Injectable()
 export class ContactsService {
@@ -11,6 +12,7 @@ export class ContactsService {
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue('contact-import') private readonly importQueue: any,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   private sanitizePhone(phone: any): string {
@@ -49,6 +51,7 @@ export class ContactsService {
     });
 
     console.log('[ContactsService] update success:', result.id);
+    this.realtimeGateway.emitContactUpdate(orgId, 'contact:updated', result);
     return result;
   }
 
@@ -64,7 +67,7 @@ export class ContactsService {
       phone: cleanPhone,
     };
 
-    return this.prisma.contact.upsert({
+    const result = await this.prisma.contact.upsert({
       where: {
         organizationId_phone: { organizationId: orgId, phone: cleanPhone },
       },
@@ -77,6 +80,9 @@ export class ContactsService {
         tags: tags || [],
       },
     });
+    
+    this.realtimeGateway.emitContactUpdate(orgId, 'contact:updated', result);
+    return result;
   }
 
   async bulkCreateOrUpdate(orgId: string, contacts: any[]) {
@@ -404,6 +410,7 @@ export class ContactsService {
         });
         this.logger.log(`Successfully deleted ${contactResult.count} contacts`);
 
+        this.realtimeGateway.emitContactUpdate(orgId, 'contact:updated', { deleted: true });
         return contactResult;
       });
     } catch (err: any) {

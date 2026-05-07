@@ -100,6 +100,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
   }
 
+  /**
+   * Emits contact updates to instantly refresh CRM tables.
+   */
+  emitContactUpdate(orgId: string, eventName: 'contact:created' | 'contact:updated', contact: any) {
+    if (this.server) {
+      this.server.to(`org_${orgId}`).emit(eventName, contact);
+    }
+  }
+
 
   @SubscribeMessage('subscribe:conversation')
   handleJoinConversation(socket: Socket, conversationId: string) {
