@@ -14,6 +14,8 @@ const contacts_controller_1 = require("./contacts.controller");
 const custom_fields_controller_1 = require("./custom-fields.controller");
 const custom_fields_service_1 = require("./custom-fields.service");
 const import_processor_1 = require("./import.processor");
+const contact_notes_controller_1 = require("./contact-notes.controller");
+const contact_notes_service_1 = require("./contact-notes.service");
 const prisma_module_1 = require("../../prisma/prisma.module");
 const realtime_module_1 = require("../realtime/realtime.module");
 let ContactsModule = class ContactsModule {
@@ -28,8 +30,8 @@ exports.ContactsModule = ContactsModule = __decorate([
             prisma_module_1.PrismaModule,
             realtime_module_1.RealtimeModule,
         ],
-        controllers: [contacts_controller_1.ContactsController, custom_fields_controller_1.CustomFieldsController],
-        providers: [contacts_service_1.ContactsService, import_processor_1.ImportProcessor, custom_fields_service_1.CustomFieldsService],
+        controllers: [contacts_controller_1.ContactsController, custom_fields_controller_1.CustomFieldsController, contact_notes_controller_1.ContactNotesController],
+        providers: [contacts_service_1.ContactsService, import_processor_1.ImportProcessor, custom_fields_service_1.CustomFieldsService, contact_notes_service_1.ContactNotesService],
         exports: [contacts_service_1.ContactsService],
     })
 ], ContactsModule);

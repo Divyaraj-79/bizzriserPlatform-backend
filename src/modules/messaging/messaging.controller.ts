@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Req, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Req, UseInterceptors, UploadedFile, Query, Delete } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MessagingService } from './messaging.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -81,9 +81,13 @@ export class MessagingController {
   async getMessages(
     @Param('id') conversationId: string,
     @Req() req: any,
+    @Query('search') search?: string,
   ) {
-    // Basic validation that conversation belongs to organization could be added here
-    // For now, simple retrieval
-    return this.messagingService.getConversationMessages(conversationId);
+    return this.messagingService.getConversationMessages(conversationId, search);
+  }
+
+  @Delete('conversations/:id/messages')
+  async clearMessages(@Param('id') id: string, @Req() req: any) {
+    return this.messagingService.clearConversationMessages(req.user.orgId, id);
   }
 }

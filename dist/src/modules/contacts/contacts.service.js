@@ -18,13 +18,16 @@ const common_1 = require("@nestjs/common");
 const bull_1 = require("@nestjs/bull");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const uuid_1 = require("uuid");
+const realtime_gateway_1 = require("../realtime/realtime.gateway");
 let ContactsService = ContactsService_1 = class ContactsService {
     prisma;
     importQueue;
+    realtimeGateway;
     logger = new common_1.Logger(ContactsService_1.name);
-    constructor(prisma, importQueue) {
+    constructor(prisma, importQueue, realtimeGateway) {
         this.prisma = prisma;
         this.importQueue = importQueue;
+        this.realtimeGateway = realtimeGateway;
     }
     sanitizePhone(phone) {
         if (!phone)
@@ -34,6 +37,60 @@ let ContactsService = ContactsService_1 = class ContactsService {
             clean = Number(clean).toLocaleString('fullwide', { useGrouping: false });
         }
         return clean.replace(/\D/g, '');
+    }
+    async findOne(orgId, contactId) {
+        const contact = await this.prisma.contact.findFirst({
+            where: { id: contactId, organizationId: orgId },
+            include: {
+                notes: {
+                    include: {
+                        author: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                avatarUrl: true,
+                            },
+                        },
+                    },
+                    orderBy: { createdAt: 'desc' },
+                },
+                sessions: {
+                    include: { chatbot: { select: { id: true, name: true } } },
+                    orderBy: { createdAt: 'desc' },
+                    take: 20,
+                },
+                enrollments: {
+                    include: { sequence: { select: { id: true, name: true } } },
+                    orderBy: { createdAt: 'desc' },
+                    take: 20,
+                },
+            },
+        });
+        if (!contact)
+            throw new common_1.NotFoundException('Contact not found');
+        const lastInbound = await this.prisma.message.findFirst({
+            where: { contactId, direction: 'INBOUND' },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+        });
+        const windowExpiresAt = lastInbound
+            ? new Date(lastInbound.createdAt.getTime() + 24 * 60 * 60 * 1000)
+            : null;
+        const isInWindow = windowExpiresAt ? windowExpiresAt > new Date() : false;
+        return {
+            ...contact,
+            windowExpiresAt,
+            isInWindow,
+        };
+    }
+    async uploadAvatar(orgId, contactId, file) {
+        const base64 = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+        const updated = await this.prisma.contact.update({
+            where: { id: contactId },
+            data: { avatarUrl: base64 },
+        });
+        return { avatarUrl: updated.avatarUrl };
     }
     async updateContact(orgId, contactId, data) {
         console.log('[ContactsService] updateContact request:', { orgId, contactId, data });
@@ -54,34 +111,45 @@ let ContactsService = ContactsService_1 = class ContactsService {
                 ...(cleanPhone !== undefined && { phone: cleanPhone }),
                 ...(status !== undefined && { status }),
                 ...(tags !== undefined && { tags }),
+                ...(data.customFields !== undefined && { customFields: data.customFields }),
+                ...(data.metadata !== undefined && { metadata: data.metadata }),
             }
         });
         console.log('[ContactsService] update success:', result.id);
+        this.realtimeGateway.emitContactUpdate(orgId, 'contact:updated', result);
         return result;
     }
     async createOrUpdate(orgId, phone, data) {
         this.logger.log(`[ENTRY] createOrUpdate called for Org: ${orgId}, Phone: ${phone}`);
         const cleanPhone = this.sanitizePhone(phone);
-        const { name, tags, ...otherData } = data;
         const baseData = {
             ...otherData,
-            firstName: name || otherData.firstName || '',
             organizationId: orgId,
             phone: cleanPhone,
         };
-        return this.prisma.contact.upsert({
+        if (name)
+            baseData.firstName = name;
+        if (otherData.firstName)
+            baseData.firstName = otherData.firstName;
+        if (otherData.lastName)
+            baseData.lastName = otherData.lastName;
+        const result = await this.prisma.contact.upsert({
             where: {
                 organizationId_phone: { organizationId: orgId, phone: cleanPhone },
             },
             update: {
                 ...baseData,
-                tags: tags ? { set: tags } : undefined,
+                ...(tags ? { tags: { set: tags } } : {}),
             },
             create: {
                 ...baseData,
                 tags: tags || [],
+                firstName: baseData.firstName || '',
+                lastName: baseData.lastName || '',
             },
         });
+        this.realtimeGateway.emitContactUpdate(orgId, 'contact:updated', result);
+        return result;
     }
     async bulkCreateOrUpdate(orgId, contacts) {
         const resolvedOrgId = orgId || 'GLOBAL';
@@ -337,6 +405,7 @@ let ContactsService = ContactsService_1 = class ContactsService {
                     where: { id: { in: contactIds }, organizationId: orgId }
                 });
                 this.logger.log(`Successfully deleted ${contactResult.count} contacts`);
+                this.realtimeGateway.emitContactUpdate(orgId, 'contact:updated', { deleted: true });
                 return contactResult;
             });
         }
@@ -350,6 +419,6 @@ exports.ContactsService = ContactsService;
 exports.ContactsService = ContactsService = ContactsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(1, (0, bull_1.InjectQueue)('contact-import')),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService, Object])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService, Object, realtime_gateway_1.RealtimeGateway])
 ], ContactsService);
 //# sourceMappingURL=contacts.service.js.map

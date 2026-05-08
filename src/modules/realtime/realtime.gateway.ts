@@ -11,9 +11,10 @@ import { JwtService } from '@nestjs/jwt';
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // In production, replace with actual frontend URL
+    origin: '*',
+    methods: ['GET', 'POST'],
+    credentials: true,
   },
-  namespace: 'realtime',
 })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -29,8 +30,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   async handleConnection(socket: Socket) {
     try {
       const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      this.logger.debug(`[Socket] New connection attempt: ${socket.id}`);
+
       if (!token) {
-        this.logger.warn(`Client connection rejected: No token provided (Socket ID: ${socket.id})`);
+        this.logger.warn(`[Socket] Connection rejected: No token (ID: ${socket.id})`);
         socket.disconnect();
         return;
       }
@@ -39,21 +42,21 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       const orgId = payload.orgId;
 
       if (!orgId) {
-        this.logger.warn(`Client connection rejected: Missing orgId in payload`);
+        this.logger.warn(`[Socket] Connection rejected: Missing orgId in token (User: ${payload.sub})`);
         socket.disconnect();
         return;
       }
 
-      // Store orgId in socket data for later use
+      // Store data in socket
       socket.data.orgId = orgId;
       socket.data.userId = payload.sub;
 
       // Join organization room
       await socket.join(`org_${orgId}`);
       
-      this.logger.log(`Client authenticated: User ${payload.sub} (Org: ${orgId})`);
+      this.logger.log(`[Socket] Client Authenticated & Joined Room: org_${orgId} (User: ${payload.sub}, Socket: ${socket.id})`);
     } catch (error) {
-      this.logger.error(`Connection authentication failed: ${error.message}`);
+      this.logger.error(`[Socket] Auth Failed for socket ${socket.id}: ${error.message}`);
       socket.disconnect();
     }
   }
@@ -68,8 +71,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   emitNewMessage(orgId: string, message: any) {
     if (this.server) {
       this.server.to(`org_${orgId}`).emit('message:new', message);
+      this.logger.log(`[RT] Emitted message:new to org_${orgId} - MsgID: ${message.id}`);
+    } else {
+      this.logger.error(`[RT] FAILED to emit message:new - Server not initialized!`);
     }
-    this.logger.debug(`Emitted 'message:new' to org_${orgId}`);
   }
 
   /**
@@ -78,8 +83,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   emitMessageStatusUpdate(orgId: string, message: any) {
     if (this.server) {
       this.server.to(`org_${orgId}`).emit('message:status', message);
+      this.logger.log(`[RT] Emitted message:status to org_${orgId} - Status: ${message.status}`);
     }
-    this.logger.debug(`Emitted 'message:status' to org_${orgId}`);
   }
 
   /**
@@ -88,6 +93,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   emitConversationUpdate(orgId: string, conversation: any) {
     if (this.server) {
       this.server.to(`org_${orgId}`).emit('conversation:update', conversation);
+      this.logger.log(`[RT] Emitted conversation:update to org_${orgId} - ConvID: ${conversation.id}`);
     }
   }
 

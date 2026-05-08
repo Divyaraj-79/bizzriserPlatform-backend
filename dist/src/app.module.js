@@ -25,6 +25,7 @@ const analytics_module_1 = require("./modules/analytics/analytics.module");
 const activity_logs_module_1 = require("./modules/activity-logs/activity-logs.module");
 const chatbots_module_1 = require("./modules/chatbots/chatbots.module");
 const sequences_module_1 = require("./modules/sequences/sequences.module");
+const canned_responses_module_1 = require("./modules/canned-responses/canned-responses.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -86,6 +87,7 @@ exports.AppModule = AppModule = __decorate([
             activity_logs_module_1.ActivityLogsModule,
             chatbots_module_1.ChatbotsModule,
             sequences_module_1.SequencesModule,
+            canned_responses_module_1.CannedResponsesModule,
         ],
     })
 ], AppModule);

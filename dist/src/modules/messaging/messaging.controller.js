@@ -40,8 +40,11 @@ let MessagingController = class MessagingController {
     async createConversation(req, body) {
         return this.messagingService.startNewConversation(req.user.orgId, body.whatsappAccountId, body.phoneNumber, { firstName: body.firstName, lastName: body.lastName });
     }
-    async getMessages(conversationId, req) {
-        return this.messagingService.getConversationMessages(conversationId);
+    async getMessages(conversationId, req, search) {
+        return this.messagingService.getConversationMessages(conversationId, search);
+    }
+    async clearMessages(id, req) {
+        return this.messagingService.clearConversationMessages(req.user.orgId, id);
     }
 };
 exports.MessagingController = MessagingController;
@@ -90,10 +93,19 @@ __decorate([
     (0, common_1.Get)('conversations/:id/messages'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Query)('search')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, String]),
+    __metadata("design:returntype", Promise)
+], MessagingController.prototype, "getMessages", null);
+__decorate([
+    (0, common_1.Delete)('conversations/:id/messages'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
-], MessagingController.prototype, "getMessages", null);
+], MessagingController.prototype, "clearMessages", null);
 exports.MessagingController = MessagingController = __decorate([
     (0, common_1.Controller)({
         path: 'messaging',

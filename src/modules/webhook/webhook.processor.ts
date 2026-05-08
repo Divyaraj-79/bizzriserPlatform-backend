@@ -33,7 +33,7 @@ export class WebhookProcessor {
 
       // 2. Handle Incoming Messages
       if (data.messages && data.messages.length > 0) {
-        await this.handleIncomingMessage(accountId, organizationId, data.contacts?.[0], data.messages[0]);
+        await this.handleIncomingMessage(accountId, organizationId, data);
       }
 
       // 3. Mark event as processed
@@ -74,10 +74,16 @@ export class WebhookProcessor {
     await this.messagingService.updateMessageStatus(waMessageId, status);
   }
 
-  private async handleIncomingMessage(accountId: string, organizationId: string, contactData: any, messageData: any) {
+  private async handleIncomingMessage(accountId: string, organizationId: string, data: any) {
+    const messageData = data.messages[0];
     const waMessageId = messageData.id;
     const from = messageData.from; // sender phone
-    const incomingName = contactData?.profile?.name;
+    
+    // Find contact profile in the payload (Meta sends a separate contacts array)
+    const contactProfile = data.contacts?.find((c: any) => c.wa_id === from || c.wa_id === from.replace(/\+/g, ''));
+    const incomingName = contactProfile?.profile?.name;
+    
+    this.logger.debug(`[WEBHOOK] Incoming Name from Meta: "${incomingName}" for phone: ${from}`);
 
     // 1. Create or update contact
     const existingContact = await this.prisma.contact.findUnique({
@@ -85,14 +91,18 @@ export class WebhookProcessor {
     });
 
     const updateData: any = {
-      whatsappId: contactData?.wa_id || existingContact?.whatsappId,
+      whatsappId: contactProfile?.wa_id || existingContact?.whatsappId,
     };
 
-    if (incomingName && (!existingContact?.firstName || existingContact.firstName === 'WhatsApp User' || existingContact.firstName === from)) {
+    // If Meta provides a name, always use it as the source of truth
+    if (incomingName && incomingName.trim().length > 0) {
+      this.logger.log(`[WEBHOOK] Capturing Meta profile name: ${incomingName}`);
       updateData.firstName = incomingName;
+      updateData.lastName = ''; // Profile name usually contains full name
     }
 
     const contact = await this.contactsService.createOrUpdate(organizationId, from, updateData);
+    this.logger.debug(`[WEBHOOK] Contact Sync Complete: ${contact.id} (Display Name: ${contact.firstName})`);
 
     // 2. Map message type
     let messageType: MessageType = MessageType.TEXT;

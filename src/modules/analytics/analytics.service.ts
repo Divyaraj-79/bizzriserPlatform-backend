@@ -21,7 +21,6 @@ export class AnalyticsService {
       const messageWhere: any = { organizationId: orgId };
       const campaignWhere: any = { organizationId: orgId };
       
-      // Filter by account(s) if specifically provided
       if (accountContext) {
         if (Array.isArray(accountContext)) {
           messageWhere.whatsappAccountId = { in: accountContext };
@@ -39,23 +38,16 @@ export class AnalyticsService {
         campaignWhere.createdAt = dateFilter;
       }
 
-      // Messages Analytics
+      // ── SAFE SEQUENTIAL QUERIES (To respect Neon connection limits) ──
+      
       const messageStats = await this.prisma.message.groupBy({
         by: ['status'],
-        where: {
-          ...messageWhere,
-          direction: 'OUTBOUND',
-        },
-        _count: {
-          id: true,
-        },
+        where: { ...messageWhere, direction: 'OUTBOUND' },
+        _count: { id: true },
       });
 
       const inboundCount = await this.prisma.message.count({
-        where: {
-          ...messageWhere,
-          direction: 'INBOUND',
-        },
+        where: { ...messageWhere, direction: 'INBOUND' },
       });
 
       let totalOutbound = 0;
@@ -76,8 +68,7 @@ export class AnalyticsService {
       const replyRate = totalOutbound > 0 ? (inboundCount / totalOutbound) * 100 : 0;
       const failureRate = totalOutbound > 0 ? (failed / totalOutbound) * 100 : 0;
 
-      // Calculate Average Response Time (Simplistic approach)
-      // Find outbound messages that are replies to inbound messages
+      // Response Time
       const recentPairs = await this.prisma.message.findMany({
         where: messageWhere,
         orderBy: { createdAt: 'desc' },
@@ -87,14 +78,12 @@ export class AnalyticsService {
 
       let totalResponseTime = 0;
       let responseCount = 0;
-      
       for (let i = 0; i < recentPairs.length - 1; i++) {
-        const current = recentPairs[i]; // Newer
-        const next = recentPairs[i+1];  // Older
-        
+        const current = recentPairs[i];
+        const next = recentPairs[i+1];
         if (current.direction === 'OUTBOUND' && next.direction === 'INBOUND' && current.contactId === next.contactId) {
           const diff = current.createdAt.getTime() - next.createdAt.getTime();
-          if (diff > 0 && diff < 1000 * 60 * 60 * 2) { // Only count if within 2 hours
+          if (diff > 0 && diff < 1000 * 60 * 60 * 2) {
             totalResponseTime += diff;
             responseCount++;
           }
@@ -105,12 +94,9 @@ export class AnalyticsService {
       const avgResponseMin = Math.round(avgResponseMs / (1000 * 60) * 10) / 10;
       const avgResponseLabel = avgResponseMin > 0 ? `${avgResponseMin}m` : (responseCount > 0 ? '< 1m' : 'N/A');
 
-      // Campaigns Summary
+      // Campaigns
       const activeCampaigns = await this.prisma.campaign.count({
-        where: {
-          ...campaignWhere,
-          status: { in: ['RUNNING', 'SCHEDULED'] },
-        },
+        where: { ...campaignWhere, status: { in: ['RUNNING', 'SCHEDULED'] } },
       });
 
       const totalCampaigns = await this.prisma.campaign.count({
@@ -121,7 +107,7 @@ export class AnalyticsService {
         where: { organizationId: orgId },
       });
 
-      // Automations Stats
+      // Automations
       const totalChatbots = await this.prisma.chatbot.count({ where: { organizationId: orgId } });
       const chatbotExecutions = await this.prisma.chatbot.aggregate({
         where: { organizationId: orgId },
@@ -134,7 +120,7 @@ export class AnalyticsService {
         _sum: { executions: true }
       });
 
-      // Time series for Charts
+      // Chart Data
       const recentMessages = await this.prisma.message.findMany({
         where: messageWhere,
         select: { createdAt: true, direction: true, status: true }
@@ -149,10 +135,7 @@ export class AnalyticsService {
       const chartDataMap: Record<string, { inbound: number, outbound: number, failed: number }> = {};
       recentMessages.forEach(msg => {
         let key = msg.createdAt.toISOString().split('T')[0];
-        if (resolution === 'hour') {
-          key = msg.createdAt.toISOString().substring(0, 13) + ':00';
-        }
-        
+        if (resolution === 'hour') key = msg.createdAt.toISOString().substring(0, 13) + ':00';
         if (!chartDataMap[key]) chartDataMap[key] = { inbound: 0, outbound: 0, failed: 0 };
         if (msg.direction === 'INBOUND') chartDataMap[key].inbound++;
         else {
@@ -207,28 +190,22 @@ export class AnalyticsService {
     }
   }
 
-
   async getCampaignsAnalytics(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string) {
-    // Sanitize
     if (typeof accountContext === 'string' && (accountContext === 'null' || accountContext === 'undefined' || accountContext === 'all' || !accountContext.trim())) {
       accountContext = undefined;
     }
-
     const where: any = { organizationId: orgId };
-
     if (startDate || endDate) {
       where.createdAt = {
         ...(startDate && { gte: new Date(startDate) }),
         ...(endDate && { lte: new Date(endDate) }),
       };
     }
-    
     const campaigns = await this.prisma.campaign.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-
     return campaigns.map(c => {
       const total = c.totalRecipients || 0;
       return {
@@ -241,48 +218,35 @@ export class AnalyticsService {
   }
 
   async getAutomationsAnalytics(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string) {
-    const chatbots = await this.prisma.chatbot.findMany({
-      where: { organizationId: orgId },
-      select: { id: true, name: true, executions: true, status: true, updatedAt: true }
-    });
-
-    const sequences = await this.prisma.sequence.findMany({
-      where: { organizationId: orgId },
-      select: { id: true, name: true, executions: true, status: true, updatedAt: true }
-    });
-
-    return {
-      chatbots,
-      sequences
-    };
+    const [chatbots, sequences] = await Promise.all([
+      this.prisma.chatbot.findMany({
+        where: { organizationId: orgId },
+        select: { id: true, name: true, executions: true, status: true, updatedAt: true }
+      }),
+      this.prisma.sequence.findMany({
+        where: { organizationId: orgId },
+        select: { id: true, name: true, executions: true, status: true, updatedAt: true }
+      })
+    ]);
+    return { chatbots, sequences };
   }
 
-
   async getExportData(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string) {
-    // Sanitize
     if (typeof accountContext === 'string' && (accountContext === 'null' || accountContext === 'undefined' || accountContext === 'all' || !accountContext.trim())) {
       accountContext = undefined;
     }
-
     const where: any = { organizationId: orgId };
-
     if (startDate || endDate) {
       where.createdAt = {
         ...(startDate && { gte: new Date(startDate) }),
         ...(endDate && { lte: new Date(endDate) }),
       };
     }
-
     const campaigns = await this.prisma.campaign.findMany({
       where,
-      include: {
-        _count: {
-          select: { recipients: true }
-        }
-      },
+      include: { _count: { select: { recipients: true } } },
       orderBy: { createdAt: 'desc' }
     });
-
     return campaigns.map(c => ({
       id: c.id,
       name: c.name,

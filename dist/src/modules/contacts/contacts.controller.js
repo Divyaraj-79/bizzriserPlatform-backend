@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ContactsController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const contacts_service_1 = require("./contacts.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../../common/guards/roles.guard");
@@ -64,6 +65,12 @@ let ContactsController = class ContactsController {
         }
         return result;
     }
+    async findOne(req, id) {
+        return this.contactsService.findOne(req.user.orgId, id);
+    }
+    async uploadAvatar(req, id, file) {
+        return this.contactsService.uploadAvatar(req.user.orgId, id, file);
+    }
     async update(req, id, data) {
         return this.contactsService.updateContact(req.user.orgId, id, data);
     }
@@ -112,6 +119,24 @@ __decorate([
     __metadata("design:paramtypes", [Object, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], ContactsController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], ContactsController.prototype, "findOne", null);
+__decorate([
+    (0, common_1.Post)(':id/avatar'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], ContactsController.prototype, "uploadAvatar", null);
 __decorate([
     (0, common_1.Patch)(':id'),
     __param(0, (0, common_1.Req)()),

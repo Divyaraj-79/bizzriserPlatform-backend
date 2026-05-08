@@ -9,7 +9,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RealtimeModule = void 0;
 const common_1 = require("@nestjs/common");
 const realtime_gateway_1 = require("./realtime.gateway");
-const auth_module_1 = require("../auth/auth.module");
 const jwt_1 = require("@nestjs/jwt");
 const config_1 = require("@nestjs/config");
 let RealtimeModule = class RealtimeModule {
@@ -18,7 +17,6 @@ exports.RealtimeModule = RealtimeModule;
 exports.RealtimeModule = RealtimeModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            auth_module_1.AuthModule,
             jwt_1.JwtModule.registerAsync({
                 imports: [config_1.ConfigModule],
                 useFactory: async (configService) => ({

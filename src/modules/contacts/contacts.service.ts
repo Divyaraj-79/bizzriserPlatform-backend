@@ -24,6 +24,66 @@ export class ContactsService {
     return clean.replace(/\D/g, '');
   }
 
+  async findOne(orgId: string, contactId: string) {
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: contactId, organizationId: orgId },
+      include: {
+        notes: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        sessions: {
+          include: { chatbot: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        },
+        enrollments: {
+          include: { sequence: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        },
+      },
+    });
+
+    if (!contact) throw new NotFoundException('Contact not found');
+
+    // 24-Hour Window Calculation
+    const lastInbound = await this.prisma.message.findFirst({
+      where: { contactId, direction: 'INBOUND' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+
+    const windowExpiresAt = lastInbound
+      ? new Date(lastInbound.createdAt.getTime() + 24 * 60 * 60 * 1000)
+      : null;
+    const isInWindow = windowExpiresAt ? windowExpiresAt > new Date() : false;
+
+    return {
+      ...contact,
+      windowExpiresAt,
+      isInWindow,
+    };
+  }
+
+  async uploadAvatar(orgId: string, contactId: string, file: any): Promise<{ avatarUrl: string }> {
+    const base64 = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+    const updated = await this.prisma.contact.update({
+      where: { id: contactId },
+      data: { avatarUrl: base64 },
+    });
+    return { avatarUrl: updated.avatarUrl! };
+  }
+
   async updateContact(orgId: string, contactId: string, data: any) {
     console.log('[ContactsService] updateContact request:', { orgId, contactId, data });
     const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
@@ -47,6 +107,8 @@ export class ContactsService {
         ...(cleanPhone !== undefined && { phone: cleanPhone }),
         ...(status !== undefined && { status }),
         ...(tags !== undefined && { tags }),
+        ...(data.customFields !== undefined && { customFields: data.customFields }),
+        ...(data.metadata !== undefined && { metadata: data.metadata }),
       }
     });
 
@@ -58,14 +120,15 @@ export class ContactsService {
   async createOrUpdate(orgId: string, phone: string, data: any) {
     this.logger.log(`[ENTRY] createOrUpdate called for Org: ${orgId}, Phone: ${phone}`);
     const cleanPhone = this.sanitizePhone(phone);
-    const { name, tags, ...otherData } = data;
-    
-    const baseData = {
+    const baseData: any = {
       ...otherData,
-      firstName: name || otherData.firstName || '',
       organizationId: orgId,
       phone: cleanPhone,
     };
+
+    if (name) baseData.firstName = name;
+    if (otherData.firstName) baseData.firstName = otherData.firstName;
+    if (otherData.lastName) baseData.lastName = otherData.lastName;
 
     const result = await this.prisma.contact.upsert({
       where: {
@@ -73,11 +136,14 @@ export class ContactsService {
       },
       update: {
         ...baseData,
-        tags: tags ? { set: tags } : undefined,
+        // Only update tags if provided
+        ...(tags ? { tags: { set: tags } } : {}),
       },
       create: {
         ...baseData,
         tags: tags || [],
+        firstName: baseData.firstName || '',
+        lastName: baseData.lastName || '',
       },
     });
     

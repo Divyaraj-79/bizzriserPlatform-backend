@@ -46,19 +46,11 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
             }
             const messageStats = await this.prisma.message.groupBy({
                 by: ['status'],
-                where: {
-                    ...messageWhere,
-                    direction: 'OUTBOUND',
-                },
-                _count: {
-                    id: true,
-                },
+                where: { ...messageWhere, direction: 'OUTBOUND' },
+                _count: { id: true },
             });
             const inboundCount = await this.prisma.message.count({
-                where: {
-                    ...messageWhere,
-                    direction: 'INBOUND',
-                },
+                where: { ...messageWhere, direction: 'INBOUND' },
             });
             let totalOutbound = 0;
             let delivered = 0;
@@ -101,10 +93,7 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
             const avgResponseMin = Math.round(avgResponseMs / (1000 * 60) * 10) / 10;
             const avgResponseLabel = avgResponseMin > 0 ? `${avgResponseMin}m` : (responseCount > 0 ? '< 1m' : 'N/A');
             const activeCampaigns = await this.prisma.campaign.count({
-                where: {
-                    ...campaignWhere,
-                    status: { in: ['RUNNING', 'SCHEDULED'] },
-                },
+                where: { ...campaignWhere, status: { in: ['RUNNING', 'SCHEDULED'] } },
             });
             const totalCampaigns = await this.prisma.campaign.count({
                 where: campaignWhere,
@@ -134,9 +123,8 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
             const chartDataMap = {};
             recentMessages.forEach(msg => {
                 let key = msg.createdAt.toISOString().split('T')[0];
-                if (resolution === 'hour') {
+                if (resolution === 'hour')
                     key = msg.createdAt.toISOString().substring(0, 13) + ':00';
-                }
                 if (!chartDataMap[key])
                     chartDataMap[key] = { inbound: 0, outbound: 0, failed: 0 };
                 if (msg.direction === 'INBOUND')
@@ -219,18 +207,17 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
         });
     }
     async getAutomationsAnalytics(orgId, accountContext, startDate, endDate) {
-        const chatbots = await this.prisma.chatbot.findMany({
-            where: { organizationId: orgId },
-            select: { id: true, name: true, executions: true, status: true, updatedAt: true }
-        });
-        const sequences = await this.prisma.sequence.findMany({
-            where: { organizationId: orgId },
-            select: { id: true, name: true, executions: true, status: true, updatedAt: true }
-        });
-        return {
-            chatbots,
-            sequences
-        };
+        const [chatbots, sequences] = await Promise.all([
+            this.prisma.chatbot.findMany({
+                where: { organizationId: orgId },
+                select: { id: true, name: true, executions: true, status: true, updatedAt: true }
+            }),
+            this.prisma.sequence.findMany({
+                where: { organizationId: orgId },
+                select: { id: true, name: true, executions: true, status: true, updatedAt: true }
+            })
+        ]);
+        return { chatbots, sequences };
     }
     async getExportData(orgId, accountContext, startDate, endDate) {
         if (typeof accountContext === 'string' && (accountContext === 'null' || accountContext === 'undefined' || accountContext === 'all' || !accountContext.trim())) {
@@ -245,11 +232,7 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
         }
         const campaigns = await this.prisma.campaign.findMany({
             where,
-            include: {
-                _count: {
-                    select: { recipients: true }
-                }
-            },
+            include: { _count: { select: { recipients: true } } },
             orderBy: { createdAt: 'desc' }
         });
         return campaigns.map(c => ({

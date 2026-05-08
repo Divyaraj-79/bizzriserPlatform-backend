@@ -178,6 +178,8 @@ model Organization {
   enrollments     SequenceEnrollment[]
   googleCredentials GoogleCredential[]
   customRoles     CustomRole[]
+  contactNotes    ContactNote[]
+  cannedResponses CannedResponse[]
 
   @@map("organizations")
 }
@@ -204,6 +206,7 @@ model User {
   accountAccess  WhatsAppAccountAccess[]
   activityLogs   ActivityLog[]
   googleCredentials GoogleCredential[]
+  contactNotes   ContactNote[]
 
   @@index([organizationId])
   @@index([email])
@@ -295,6 +298,7 @@ model Contact {
   whatsappAccounts WhatsAppAccount[] @relation("WhatsAppContacts")
   sessions        ChatbotSession[]
   enrollments     SequenceEnrollment[]
+  notes           ContactNote[]
 
   @@unique([organizationId, phone])
   @@index([organizationId])
@@ -626,4 +630,36 @@ model GoogleCredential {
   @@unique([organizationId, userId])
   @@index([organizationId])
   @@map("google_credentials")
+}
+
+model ContactNote {
+  id             String   @id @default(uuid())
+  organizationId String
+  contactId      String
+  userId         String   // Author
+  body           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  author         User         @relation(fields: [userId], references: [id])
+
+  @@index([contactId])
+  @@map("contact_notes")
+}
+
+model CannedResponse {
+  id             String   @id @default(uuid())
+  organizationId String
+  shortcut       String   // e.g. "greet"
+  body           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, shortcut])
+  @@index([organizationId])
+  @@map("canned_responses")
 }

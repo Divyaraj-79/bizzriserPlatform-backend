@@ -5,6 +5,8 @@ import { ContactsController } from './contacts.controller';
 import { CustomFieldsController } from './custom-fields.controller';
 import { CustomFieldsService } from './custom-fields.service';
 import { ImportProcessor } from './import.processor';
+import { ContactNotesController } from './contact-notes.controller';
+import { ContactNotesService } from './contact-notes.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 
@@ -18,8 +20,8 @@ import { RealtimeModule } from '../realtime/realtime.module';
     RealtimeModule,
   ],
 
-  controllers: [ContactsController, CustomFieldsController],
-  providers: [ContactsService, ImportProcessor, CustomFieldsService],
+  controllers: [ContactsController, CustomFieldsController, ContactNotesController],
+  providers: [ContactsService, ImportProcessor, CustomFieldsService, ContactNotesService],
   exports: [ContactsService],
 })
 export class ContactsModule {}

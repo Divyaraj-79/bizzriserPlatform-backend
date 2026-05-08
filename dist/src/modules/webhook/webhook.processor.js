@@ -42,7 +42,7 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
                 await this.handleStatusUpdate(data.statuses[0]);
             }
             if (data.messages && data.messages.length > 0) {
-                await this.handleIncomingMessage(accountId, organizationId, data.contacts?.[0], data.messages[0]);
+                await this.handleIncomingMessage(accountId, organizationId, data);
             }
             await this.prisma.webhookEvent.update({
                 where: { id: eventId },
@@ -78,20 +78,26 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
         this.logger.debug(`Updating status for message ${waMessageId} to ${status}`);
         await this.messagingService.updateMessageStatus(waMessageId, status);
     }
-    async handleIncomingMessage(accountId, organizationId, contactData, messageData) {
+    async handleIncomingMessage(accountId, organizationId, data) {
+        const messageData = data.messages[0];
         const waMessageId = messageData.id;
         const from = messageData.from;
-        const incomingName = contactData?.profile?.name;
+        const contactProfile = data.contacts?.find((c) => c.wa_id === from || c.wa_id === from.replace(/\+/g, ''));
+        const incomingName = contactProfile?.profile?.name;
+        this.logger.debug(`[WEBHOOK] Incoming Name from Meta: "${incomingName}" for phone: ${from}`);
         const existingContact = await this.prisma.contact.findUnique({
             where: { organizationId_phone: { organizationId, phone: from } }
         });
         const updateData = {
-            whatsappId: contactData?.wa_id || existingContact?.whatsappId,
+            whatsappId: contactProfile?.wa_id || existingContact?.whatsappId,
         };
-        if (incomingName && (!existingContact?.firstName || existingContact.firstName === 'WhatsApp User' || existingContact.firstName === from)) {
+        if (incomingName && incomingName.trim().length > 0) {
+            this.logger.log(`[WEBHOOK] Capturing Meta profile name: ${incomingName}`);
             updateData.firstName = incomingName;
+            updateData.lastName = '';
         }
         const contact = await this.contactsService.createOrUpdate(organizationId, from, updateData);
+        this.logger.debug(`[WEBHOOK] Contact Sync Complete: ${contact.id} (Display Name: ${contact.firstName})`);
         let messageType = client_1.MessageType.TEXT;
         let content = {};
         if (messageData.type === 'text') {

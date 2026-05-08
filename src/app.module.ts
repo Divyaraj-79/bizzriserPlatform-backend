@@ -18,6 +18,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ActivityLogsModule } from './modules/activity-logs/activity-logs.module';
 import { ChatbotsModule } from './modules/chatbots/chatbots.module';
 import { SequencesModule } from './modules/sequences/sequences.module';
+import { CannedResponsesModule } from './modules/canned-responses/canned-responses.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { SequencesModule } from './modules/sequences/sequences.module';
     ActivityLogsModule,
     ChatbotsModule,
     SequencesModule,
+    CannedResponsesModule,
   ],
 })
 export class AppModule {}

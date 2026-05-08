@@ -65,8 +65,15 @@ let MessagingService = MessagingService_1 = class MessagingService {
                 lastMessageBody: body,
                 lastMessageAt: message.sentAt || message.createdAt,
             },
+            include: {
+                contact: {
+                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true }
+                },
+                whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
+            }
         });
-        this.realtimeGateway.emitNewMessage(data.organizationId, message);
+        this.logger.debug(`[RT] Emitting message:new and conversation:update to org_${data.organizationId}`);
+        this.realtimeGateway.emitNewMessage(data.organizationId, { ...message, conversationId: conversation.id });
         this.realtimeGateway.emitConversationUpdate(data.organizationId, updatedConversation);
         return message;
     }
@@ -240,16 +247,38 @@ let MessagingService = MessagingService_1 = class MessagingService {
         this.realtimeGateway.emitMessageStatusUpdate(updatedMessage.organizationId, updatedMessage);
         return updatedMessage;
     }
-    async getConversationMessages(conversationId) {
+    async getConversationMessages(conversationId, search) {
         return this.prisma.message.findMany({
-            where: { conversationId },
+            where: {
+                conversationId,
+                ...(search ? {
+                    content: {
+                        path: ['body'],
+                        string_contains: search
+                    }
+                } : {})
+            },
             orderBy: { createdAt: 'asc' },
             take: 100,
         });
     }
+    async clearConversationMessages(orgId, conversationId) {
+        const conversation = await this.prisma.conversation.findUnique({
+            where: { id: conversationId }
+        });
+        if (!conversation || conversation.organizationId !== orgId) {
+            throw new common_1.NotFoundException('Conversation not found');
+        }
+        await this.prisma.message.deleteMany({ where: { conversationId } });
+        await this.prisma.conversation.update({
+            where: { id: conversationId },
+            data: { lastMessageBody: null }
+        });
+        return { success: true };
+    }
     async getConversations(orgId, user) {
         const isAdmin = !user || user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN';
-        return this.prisma.conversation.findMany({
+        const conversations = await this.prisma.conversation.findMany({
             where: {
                 organizationId: orgId,
                 ...(isAdmin ? {} : {
@@ -261,11 +290,41 @@ let MessagingService = MessagingService_1 = class MessagingService {
                 })
             },
             include: {
-                contact: { select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true } },
+                contact: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        phone: true,
+                        avatarUrl: true,
+                        createdAt: true
+                    }
+                },
                 whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
             },
             orderBy: { lastMessageAt: 'desc' },
         });
+        const enhanced = await Promise.all(conversations.map(async (conv) => {
+            const lastInbound = await this.prisma.message.findFirst({
+                where: { contactId: conv.contactId, direction: client_1.MessageDirection.INBOUND },
+                orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }],
+                select: { sentAt: true, createdAt: true }
+            });
+            const lastInboundTime = lastInbound?.sentAt || lastInbound?.createdAt;
+            const windowExpiresAt = lastInboundTime
+                ? new Date(lastInboundTime.getTime() + 24 * 60 * 60 * 1000)
+                : null;
+            const isInWindow = windowExpiresAt ? windowExpiresAt > new Date() : false;
+            return {
+                ...conv,
+                contact: {
+                    ...conv.contact,
+                    isInWindow,
+                    windowExpiresAt
+                }
+            };
+        }));
+        return enhanced;
     }
 };
 exports.MessagingService = MessagingService;

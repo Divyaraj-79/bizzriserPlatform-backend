@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, NotFoundException, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, NotFoundException, Query, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ContactsService } from './contacts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -69,6 +70,21 @@ export class ContactsController {
     }
 
     return result;
+  }
+
+  @Get(':id')
+  async findOne(@Req() req: any, @Param('id') id: string) {
+    return this.contactsService.findOne(req.user.orgId, id);
+  }
+
+  @Post(':id/avatar')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadAvatar(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file: any
+  ) {
+    return this.contactsService.uploadAvatar(req.user.orgId, id, file);
   }
 
   @Patch(':id')

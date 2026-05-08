@@ -25,25 +25,26 @@ let RealtimeGateway = RealtimeGateway_1 = class RealtimeGateway {
     async handleConnection(socket) {
         try {
             const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+            this.logger.debug(`[Socket] New connection attempt: ${socket.id}`);
             if (!token) {
-                this.logger.warn(`Client connection rejected: No token provided (Socket ID: ${socket.id})`);
+                this.logger.warn(`[Socket] Connection rejected: No token (ID: ${socket.id})`);
                 socket.disconnect();
                 return;
             }
             const payload = await this.jwtService.verifyAsync(token);
             const orgId = payload.orgId;
             if (!orgId) {
-                this.logger.warn(`Client connection rejected: Missing orgId in payload`);
+                this.logger.warn(`[Socket] Connection rejected: Missing orgId in token (User: ${payload.sub})`);
                 socket.disconnect();
                 return;
             }
             socket.data.orgId = orgId;
             socket.data.userId = payload.sub;
             await socket.join(`org_${orgId}`);
-            this.logger.log(`Client authenticated: User ${payload.sub} (Org: ${orgId})`);
+            this.logger.log(`[Socket] Client Authenticated & Joined Room: org_${orgId} (User: ${payload.sub}, Socket: ${socket.id})`);
         }
         catch (error) {
-            this.logger.error(`Connection authentication failed: ${error.message}`);
+            this.logger.error(`[Socket] Auth Failed for socket ${socket.id}: ${error.message}`);
             socket.disconnect();
         }
     }
@@ -51,18 +52,35 @@ let RealtimeGateway = RealtimeGateway_1 = class RealtimeGateway {
         this.logger.log(`Client disconnected: ${socket.id}`);
     }
     emitNewMessage(orgId, message) {
-        this.server.to(`org_${orgId}`).emit('message:new', message);
-        this.logger.debug(`Emitted 'message:new' to org_${orgId}`);
+        if (this.server) {
+            this.server.to(`org_${orgId}`).emit('message:new', message);
+            this.logger.log(`[RT] Emitted message:new to org_${orgId} - MsgID: ${message.id}`);
+        }
+        else {
+            this.logger.error(`[RT] FAILED to emit message:new - Server not initialized!`);
+        }
     }
     emitMessageStatusUpdate(orgId, message) {
-        this.server.to(`org_${orgId}`).emit('message:status', message);
-        this.logger.debug(`Emitted 'message:status' to org_${orgId}`);
+        if (this.server) {
+            this.server.to(`org_${orgId}`).emit('message:status', message);
+            this.logger.log(`[RT] Emitted message:status to org_${orgId} - Status: ${message.status}`);
+        }
     }
     emitConversationUpdate(orgId, conversation) {
-        this.server.to(`org_${orgId}`).emit('conversation:update', conversation);
+        if (this.server) {
+            this.server.to(`org_${orgId}`).emit('conversation:update', conversation);
+            this.logger.log(`[RT] Emitted conversation:update to org_${orgId} - ConvID: ${conversation.id}`);
+        }
     }
     emitImportProgress(orgId, jobId, stats) {
-        this.server.to(`org_${orgId}`).emit('import:progress', { jobId, ...stats });
+        if (this.server) {
+            this.server.to(`org_${orgId}`).emit('import:progress', { jobId, ...stats });
+        }
+    }
+    emitContactUpdate(orgId, eventName, contact) {
+        if (this.server) {
+            this.server.to(`org_${orgId}`).emit(eventName, contact);
+        }
     }
     handleJoinConversation(socket, conversationId) {
         socket.join(`conversation_${conversationId}`);
@@ -84,8 +102,9 @@ exports.RealtimeGateway = RealtimeGateway = RealtimeGateway_1 = __decorate([
     (0, websockets_1.WebSocketGateway)({
         cors: {
             origin: '*',
+            methods: ['GET', 'POST'],
+            credentials: true,
         },
-        namespace: 'realtime',
     }),
     __metadata("design:paramtypes", [jwt_1.JwtService])
 ], RealtimeGateway);

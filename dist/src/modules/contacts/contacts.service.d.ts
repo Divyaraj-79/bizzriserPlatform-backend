@@ -1,47 +1,129 @@
 import { PrismaService } from '../../prisma/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 export declare class ContactsService {
     private readonly prisma;
     private readonly importQueue;
+    private readonly realtimeGateway;
     private readonly logger;
-    constructor(prisma: PrismaService, importQueue: any);
+    constructor(prisma: PrismaService, importQueue: any, realtimeGateway: RealtimeGateway);
     private sanitizePhone;
-    updateContact(orgId: string, contactId: string, data: any): Promise<{
+    findOne(orgId: string, contactId: string): Promise<{
+        windowExpiresAt: Date | null;
+        isInWindow: boolean;
+        sessions: ({
+            chatbot: {
+                id: string;
+                name: string;
+            };
+        } & {
+            id: string;
+            organizationId: string;
+            status: import(".prisma/client").$Enums.ChatbotSessionStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            contactId: string;
+            metadata: import("@prisma/client/runtime/library").JsonValue;
+            chatbotId: string;
+            accountId: string;
+            currentNodeId: string;
+            variables: import("@prisma/client/runtime/library").JsonValue;
+            waitingForInput: boolean;
+            waitingNodeType: string | null;
+            expiresAt: Date | null;
+        })[];
+        enrollments: ({
+            sequence: {
+                id: string;
+                name: string;
+            };
+        } & {
+            id: string;
+            organizationId: string;
+            status: import(".prisma/client").$Enums.SequenceEnrollmentStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            contactId: string;
+            accountId: string;
+            sequenceId: string;
+            currentStepIndex: number;
+            nextExecuteAt: Date | null;
+            startedAt: Date;
+            completedAt: Date | null;
+        })[];
+        notes: ({
+            author: {
+                id: string;
+                firstName: string;
+                lastName: string;
+                avatarUrl: string | null;
+            };
+        } & {
+            id: string;
+            organizationId: string;
+            createdAt: Date;
+            updatedAt: Date;
+            contactId: string;
+            userId: string;
+            body: string;
+        })[];
         id: string;
         organizationId: string;
-        email: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        status: import(".prisma/client").$Enums.ContactStatus;
-        avatarUrl: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        customFields: import("@prisma/client/runtime/library").JsonValue;
         whatsappId: string | null;
         phone: string;
+        firstName: string | null;
+        lastName: string | null;
+        email: string | null;
+        avatarUrl: string | null;
+        status: import(".prisma/client").$Enums.ContactStatus;
         tags: string[];
+        customFields: import("@prisma/client/runtime/library").JsonValue;
         agentId: string | null;
         optedInAt: Date | null;
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
+        createdAt: Date;
+        updatedAt: Date;
+    }>;
+    uploadAvatar(orgId: string, contactId: string, file: any): Promise<{
+        avatarUrl: string;
+    }>;
+    updateContact(orgId: string, contactId: string, data: any): Promise<{
+        id: string;
+        organizationId: string;
+        whatsappId: string | null;
+        phone: string;
+        firstName: string | null;
+        lastName: string | null;
+        email: string | null;
+        avatarUrl: string | null;
+        status: import(".prisma/client").$Enums.ContactStatus;
+        tags: string[];
+        customFields: import("@prisma/client/runtime/library").JsonValue;
+        agentId: string | null;
+        optedInAt: Date | null;
+        optedOutAt: Date | null;
+        lastContactedAt: Date | null;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     createOrUpdate(orgId: string, phone: string, data: any): Promise<{
         id: string;
         organizationId: string;
-        email: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        status: import(".prisma/client").$Enums.ContactStatus;
-        avatarUrl: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        customFields: import("@prisma/client/runtime/library").JsonValue;
         whatsappId: string | null;
         phone: string;
+        firstName: string | null;
+        lastName: string | null;
+        email: string | null;
+        avatarUrl: string | null;
+        status: import(".prisma/client").$Enums.ContactStatus;
         tags: string[];
+        customFields: import("@prisma/client/runtime/library").JsonValue;
         agentId: string | null;
         optedInAt: Date | null;
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     bulkCreateOrUpdate(orgId: string, contacts: any[]): Promise<{
         jobId: any;
@@ -78,21 +160,21 @@ export declare class ContactsService {
         data: {
             id: string;
             organizationId: string;
-            email: string | null;
-            firstName: string | null;
-            lastName: string | null;
-            status: import(".prisma/client").$Enums.ContactStatus;
-            avatarUrl: string | null;
-            createdAt: Date;
-            updatedAt: Date;
-            customFields: import("@prisma/client/runtime/library").JsonValue;
             whatsappId: string | null;
             phone: string;
+            firstName: string | null;
+            lastName: string | null;
+            email: string | null;
+            avatarUrl: string | null;
+            status: import(".prisma/client").$Enums.ContactStatus;
             tags: string[];
+            customFields: import("@prisma/client/runtime/library").JsonValue;
             agentId: string | null;
             optedInAt: Date | null;
             optedOutAt: Date | null;
             lastContactedAt: Date | null;
+            createdAt: Date;
+            updatedAt: Date;
         }[];
         total: number;
         activeCount: number;
@@ -109,40 +191,40 @@ export declare class ContactsService {
     bulkAddTags(orgId: string, contactIds: string[], tags: string[]): Promise<({
         id: string;
         organizationId: string;
-        email: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        status: import(".prisma/client").$Enums.ContactStatus;
-        avatarUrl: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        customFields: import("@prisma/client/runtime/library").JsonValue;
         whatsappId: string | null;
         phone: string;
+        firstName: string | null;
+        lastName: string | null;
+        email: string | null;
+        avatarUrl: string | null;
+        status: import(".prisma/client").$Enums.ContactStatus;
         tags: string[];
+        customFields: import("@prisma/client/runtime/library").JsonValue;
         agentId: string | null;
         optedInAt: Date | null;
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
+        createdAt: Date;
+        updatedAt: Date;
     } | undefined)[]>;
     bulkRemoveTags(orgId: string, contactIds: string[], tags: string[]): Promise<({
         id: string;
         organizationId: string;
-        email: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        status: import(".prisma/client").$Enums.ContactStatus;
-        avatarUrl: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        customFields: import("@prisma/client/runtime/library").JsonValue;
         whatsappId: string | null;
         phone: string;
+        firstName: string | null;
+        lastName: string | null;
+        email: string | null;
+        avatarUrl: string | null;
+        status: import(".prisma/client").$Enums.ContactStatus;
         tags: string[];
+        customFields: import("@prisma/client/runtime/library").JsonValue;
         agentId: string | null;
         optedInAt: Date | null;
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
+        createdAt: Date;
+        updatedAt: Date;
     } | undefined)[]>;
     deleteContacts(orgId: string, contactIds: string[]): Promise<import(".prisma/client").Prisma.BatchPayload>;
 }
