@@ -69,7 +69,7 @@ let MessagingService = MessagingService_1 = class MessagingService {
             },
             include: {
                 contact: {
-                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true, metadata: true }
+                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true }
                 },
                 whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
             }
@@ -345,7 +345,7 @@ let MessagingService = MessagingService_1 = class MessagingService {
             data: { unreadCount: 0 },
             include: {
                 contact: {
-                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true, metadata: true }
+                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true }
                 },
                 whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
             }

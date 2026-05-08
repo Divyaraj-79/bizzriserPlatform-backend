@@ -71,7 +71,7 @@ export class MessagingService {
 
     const window = await this.calculateWindow(data.contactId);
 
-    const updatedConversation = await this.prisma.conversation.update({
+    const updatedConversation: any = await this.prisma.conversation.update({
       where: { id: conversation.id },
       data: {
         lastMessageBody: body,
@@ -80,7 +80,7 @@ export class MessagingService {
       },
       include: {
         contact: {
-          select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true, metadata: true }
+          select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true }
         },
         whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
       }
@@ -398,12 +398,12 @@ export class MessagingService {
   }
 
   async markAsRead(orgId: string, conversationId: string) {
-    const updatedConversation = await this.prisma.conversation.update({
+    const updatedConversation: any = await this.prisma.conversation.update({
       where: { id: conversationId, organizationId: orgId },
       data: { unreadCount: 0 },
       include: {
         contact: {
-          select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true, metadata: true }
+          select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true }
         },
         whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
       }

@@ -188,18 +188,6 @@ export declare class MessagingService {
         createdAt: Date;
         updatedAt: Date;
     }[]>;
-    markAsRead(orgId: string, conversationId: string): Promise<{
-        contact: any;
-        id: string;
-        organizationId: string;
-        whatsappAccountId: string;
-        contactId: string;
-        lastMessageBody: string | null;
-        lastMessageAt: Date;
-        unreadCount: number;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
-    }>;
+    markAsRead(orgId: string, conversationId: string): Promise<any>;
     private calculateWindow;
 }

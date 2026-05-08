@@ -143,17 +143,5 @@ export declare class MessagingController {
     clearMessages(id: string, req: any): Promise<{
         success: boolean;
     }>;
-    markAsRead(id: string, req: any): Promise<{
-        contact: any;
-        id: string;
-        organizationId: string;
-        whatsappAccountId: string;
-        contactId: string;
-        lastMessageBody: string | null;
-        lastMessageAt: Date;
-        unreadCount: number;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
-    }>;
+    markAsRead(id: string, req: any): Promise<any>;
 }
