@@ -29,6 +29,7 @@ export class FlowExecutorService {
   constructor(
     private prisma: PrismaService,
     private whatsappService: WhatsappService,
+    private messagingService: MessagingService,
     @InjectQueue('flow-delays') private delayQueue: Queue,
   ) {}
 
@@ -536,6 +537,19 @@ export class FlowExecutorService {
     const config = node.data?.config || {};
     let text = await this.resolveVariables(config.text || '', session, contact, messageData);
     if (text) {
+      // 1. Log and Emit to UI
+      await this.messagingService.createMessage({
+        organizationId: session.organizationId,
+        whatsappAccountId: session.accountId,
+        contactId: contact.id,
+        direction: 'OUTBOUND' as any,
+        type: 'TEXT' as any,
+        content: { body: text },
+        metadata: { isChatbot: true },
+        sentAt: new Date(),
+      });
+
+      // 2. Send to WhatsApp
       await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, text);
     }
     await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');

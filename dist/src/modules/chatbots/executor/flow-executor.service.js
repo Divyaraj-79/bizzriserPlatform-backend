@@ -15,6 +15,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 var FlowExecutorService_1;
+var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FlowExecutorService = void 0;
 const common_1 = require("@nestjs/common");
@@ -29,11 +30,13 @@ const uuid_1 = require("uuid");
 let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
     prisma;
     whatsappService;
+    messagingService;
     delayQueue;
     logger = new common_1.Logger(FlowExecutorService_1.name);
-    constructor(prisma, whatsappService, delayQueue) {
+    constructor(prisma, whatsappService, messagingService, delayQueue) {
         this.prisma = prisma;
         this.whatsappService = whatsappService;
+        this.messagingService = messagingService;
         this.delayQueue = delayQueue;
     }
     async startSession(orgId, accountId, chatbot, contact, messageData) {
@@ -523,6 +526,16 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
         const config = node.data?.config || {};
         let text = await this.resolveVariables(config.text || '', session, contact, messageData);
         if (text) {
+            await this.messagingService.createMessage({
+                organizationId: session.organizationId,
+                whatsappAccountId: session.accountId,
+                contactId: contact.id,
+                direction: 'OUTBOUND',
+                type: 'TEXT',
+                content: { body: text },
+                metadata: { isChatbot: true },
+                sentAt: new Date(),
+            });
             await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, text);
         }
         await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
@@ -1736,9 +1749,8 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
 exports.FlowExecutorService = FlowExecutorService;
 exports.FlowExecutorService = FlowExecutorService = FlowExecutorService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(2, (0, bull_1.InjectQueue)('flow-delays')),
+    __param(3, (0, bull_1.InjectQueue)('flow-delays')),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        whatsapp_service_1.WhatsappService,
-        bullmq_1.Queue])
+        whatsapp_service_1.WhatsappService, typeof (_a = typeof MessagingService !== "undefined" && MessagingService) === "function" ? _a : Object, bullmq_1.Queue])
 ], FlowExecutorService);
 //# sourceMappingURL=flow-executor.service.js.map
