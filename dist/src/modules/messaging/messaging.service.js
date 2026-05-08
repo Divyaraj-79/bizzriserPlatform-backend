@@ -59,6 +59,7 @@ let MessagingService = MessagingService_1 = class MessagingService {
             body = data.content.body;
         else if (data.type === client_1.MessageType.TEMPLATE)
             body = `Template: ${data.content.templateName}`;
+        const window = await this.calculateWindow(data.contactId);
         const updatedConversation = await this.prisma.conversation.update({
             where: { id: conversation.id },
             data: {
@@ -68,20 +69,31 @@ let MessagingService = MessagingService_1 = class MessagingService {
             },
             include: {
                 contact: {
-                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true }
+                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true, metadata: true }
                 },
                 whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
             }
         });
+        const enrichedConv = {
+            ...updatedConversation,
+            contact: {
+                ...updatedConversation.contact,
+                ...window
+            }
+        };
         this.logger.debug(`[RT] Emitting message:new and conversation:update to org_${data.organizationId}`);
         this.realtimeGateway.emitNewMessage(data.organizationId, { ...message, conversationId: conversation.id });
-        this.realtimeGateway.emitConversationUpdate(data.organizationId, updatedConversation);
+        this.realtimeGateway.emitConversationUpdate(data.organizationId, enrichedConv);
         return message;
     }
     async sendTextMessage(orgId, accountId, contactId, text) {
         const contact = await this.prisma.contact.findUnique({ where: { id: contactId, organizationId: orgId } });
         if (!contact)
             throw new common_1.NotFoundException('Contact not found');
+        const window = await this.calculateWindow(contactId);
+        if (!window.isInWindow && !text.startsWith('TEMPLATE:')) {
+            this.logger.warn(`Attempting to send free-text to contact ${contact.phone} outside 24h window.`);
+        }
         const message = await this.createMessage({
             organizationId: orgId,
             whatsappAccountId: accountId,
@@ -333,13 +345,34 @@ let MessagingService = MessagingService_1 = class MessagingService {
             data: { unreadCount: 0 },
             include: {
                 contact: {
-                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true }
+                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true, metadata: true }
                 },
                 whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
             }
         });
-        this.realtimeGateway.emitConversationUpdate(orgId, updatedConversation);
-        return updatedConversation;
+        const window = await this.calculateWindow(updatedConversation.contactId);
+        const enriched = {
+            ...updatedConversation,
+            contact: {
+                ...updatedConversation.contact,
+                ...window
+            }
+        };
+        this.realtimeGateway.emitConversationUpdate(orgId, enriched);
+        return enriched;
+    }
+    async calculateWindow(contactId) {
+        const lastInbound = await this.prisma.message.findFirst({
+            where: { contactId, direction: client_1.MessageDirection.INBOUND },
+            orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }],
+            select: { sentAt: true, createdAt: true }
+        });
+        const lastInboundTime = lastInbound?.sentAt || lastInbound?.createdAt;
+        const windowExpiresAt = lastInboundTime
+            ? new Date(lastInboundTime.getTime() + 24 * 60 * 60 * 1000)
+            : null;
+        const isInWindow = windowExpiresAt ? windowExpiresAt > new Date() : false;
+        return { isInWindow, windowExpiresAt };
     }
 };
 exports.MessagingService = MessagingService;

@@ -189,20 +189,7 @@ export declare class MessagingService {
         updatedAt: Date;
     }[]>;
     markAsRead(orgId: string, conversationId: string): Promise<{
-        whatsappAccount: {
-            id: string;
-            phoneNumber: string;
-            displayName: string;
-        };
-        contact: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            firstName: string | null;
-            lastName: string | null;
-            avatarUrl: string | null;
-        };
-    } & {
+        contact: any;
         id: string;
         organizationId: string;
         whatsappAccountId: string;
@@ -214,4 +201,5 @@ export declare class MessagingService {
         createdAt: Date;
         updatedAt: Date;
     }>;
+    private calculateWindow;
 }

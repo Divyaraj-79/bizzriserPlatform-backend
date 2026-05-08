@@ -8,23 +8,23 @@ export declare class MessagingController {
         text: string;
     }): Promise<{
         id: string;
-        waMessageId: string | null;
         organizationId: string;
         whatsappAccountId: string;
         contactId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+        waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
         status: import(".prisma/client").$Enums.MessageStatus;
         content: import("@prisma/client/runtime/library").JsonValue;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        conversationId: string | null;
         sentAt: Date | null;
         deliveredAt: Date | null;
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
-        createdAt: Date;
-        updatedAt: Date;
+        conversationId: string | null;
     }>;
     sendMedia(req: any, body: {
         accountId: string;
@@ -32,23 +32,23 @@ export declare class MessagingController {
         caption?: string;
     }, file: any): Promise<{
         id: string;
-        waMessageId: string | null;
         organizationId: string;
         whatsappAccountId: string;
         contactId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+        waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
         status: import(".prisma/client").$Enums.MessageStatus;
         content: import("@prisma/client/runtime/library").JsonValue;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        conversationId: string | null;
         sentAt: Date | null;
         deliveredAt: Date | null;
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
-        createdAt: Date;
-        updatedAt: Date;
+        conversationId: string | null;
     }>;
     sendTemplate(req: any, body: {
         accountId: string;
@@ -58,23 +58,23 @@ export declare class MessagingController {
         components?: any[];
     }): Promise<{
         id: string;
-        waMessageId: string | null;
         organizationId: string;
         whatsappAccountId: string;
         contactId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+        waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
         status: import(".prisma/client").$Enums.MessageStatus;
         content: import("@prisma/client/runtime/library").JsonValue;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        conversationId: string | null;
         sentAt: Date | null;
         deliveredAt: Date | null;
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
-        createdAt: Date;
-        updatedAt: Date;
+        conversationId: string | null;
     }>;
     getConversations(req: any): Promise<{
         contact: {
@@ -96,12 +96,12 @@ export declare class MessagingController {
         organizationId: string;
         whatsappAccountId: string;
         contactId: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
         lastMessageBody: string | null;
         lastMessageAt: Date;
         unreadCount: number;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
     }[]>;
     createConversation(req: any, body: {
         whatsappAccountId: string;
@@ -113,60 +113,47 @@ export declare class MessagingController {
         organizationId: string;
         whatsappAccountId: string;
         contactId: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
         lastMessageBody: string | null;
         lastMessageAt: Date;
         unreadCount: number;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     getMessages(conversationId: string, req: any, search?: string): Promise<{
         id: string;
-        waMessageId: string | null;
         organizationId: string;
         whatsappAccountId: string;
         contactId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
+        waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
         status: import(".prisma/client").$Enums.MessageStatus;
         content: import("@prisma/client/runtime/library").JsonValue;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        conversationId: string | null;
         sentAt: Date | null;
         deliveredAt: Date | null;
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
-        createdAt: Date;
-        updatedAt: Date;
+        conversationId: string | null;
     }[]>;
     clearMessages(id: string, req: any): Promise<{
         success: boolean;
     }>;
     markAsRead(id: string, req: any): Promise<{
-        whatsappAccount: {
-            id: string;
-            phoneNumber: string;
-            displayName: string;
-        };
-        contact: {
-            id: string;
-            createdAt: Date;
-            phone: string;
-            firstName: string | null;
-            lastName: string | null;
-            avatarUrl: string | null;
-        };
-    } & {
+        contact: any;
         id: string;
         organizationId: string;
         whatsappAccountId: string;
         contactId: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
         lastMessageBody: string | null;
         lastMessageAt: Date;
         unreadCount: number;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        createdAt: Date;
+        updatedAt: Date;
     }>;
 }
