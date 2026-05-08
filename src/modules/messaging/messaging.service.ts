@@ -305,6 +305,13 @@ export class MessagingService {
   }
 
   /**
+   * Manual emission for cases where message is updated outside this service
+   */
+  emitMessageStatus(orgId: string, message: any) {
+    this.realtimeGateway.emitMessageStatusUpdate(orgId, message);
+  }
+
+  /**
    * REST API: Fetch live chat history.
    */
   async getConversationMessages(conversationId: string, search?: string) {

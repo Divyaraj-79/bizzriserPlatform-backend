@@ -948,14 +948,15 @@ export class WhatsappService {
       }
 
       const tierMapping: any = {
-        'TIER_1000': 1000,
-        'TIER_10000': 10000,
-        'TIER_100000': 100000,
-        'TIER_UNLIMITED': 1000000
+        'TIER_250': '250',
+        'TIER_1000': '1K',
+        'TIER_10000': '10K',
+        'TIER_100000': '100K',
+        'TIER_UNLIMITED': 'Unlimited'
       };
 
       const tier = phoneInfo.messaging_limit_tier || 'TIER_1000';
-      const count = tierMapping[tier] || 1000;
+      const limitLabel = tierMapping[tier] || tier;
 
       let businessProfile: any = {};
       try {
@@ -963,19 +964,20 @@ export class WhatsappService {
           ...(typeof account.businessProfile === 'object' ? (account.businessProfile as any) : {}),
           qualityRating: (phoneInfo.quality_rating || 'UNKNOWN').toUpperCase(),
           nameStatus: phoneInfo.name_status || 'UNKNOWN',
+          messagingLimit: limitLabel,
           lastSyncAt: new Date().toISOString(),
         };
       } catch (profileErr) {
         this.logger.error(`[SYNC] Failed to merge business profile JSON for account ${accountId}: ${profileErr.message}`);
-        // Fallback to minimal profile if merge fails
-        businessProfile = { lastSyncAt: new Date().toISOString() };
+        businessProfile = { 
+          qualityRating: (phoneInfo.quality_rating || 'UNKNOWN').toUpperCase(),
+          nameStatus: phoneInfo.name_status || 'UNKNOWN',
+          messagingLimit: limitLabel,
+          lastSyncAt: new Date().toISOString() 
+        };
       }
 
-      this.logger.log(`[SYNC] Attempting database update for account ${accountId} with: ${JSON.stringify({
-        name: phoneInfo.verified_name,
-        tier,
-        status: phoneInfo.code_verification_status
-      })}`);
+      this.logger.log(`[SYNC] Updating account ${accountId} with tier: ${tier} (${limitLabel})`);
 
       const updatedAccount = await this.prisma.whatsAppAccount.update({
         where: { id: accountId },
@@ -983,7 +985,7 @@ export class WhatsappService {
           displayName: phoneInfo.verified_name || account.displayName,
           status: phoneInfo.code_verification_status === 'VERIFIED' ? 'ACTIVE' : 'INACTIVE',
           messagingLimitTier: tier,
-          messagingLimitCount: count,
+          messagingLimitCount: parseInt(limitLabel.replace(/\D/g, '')) * (limitLabel.includes('K') ? 1000 : 1) || 1000,
           businessProfile,
         },
       });

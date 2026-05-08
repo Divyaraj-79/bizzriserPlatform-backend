@@ -75,8 +75,18 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
             status = client_1.MessageStatus.READ;
         else if (metaStatus === 'failed')
             status = client_1.MessageStatus.FAILED;
-        this.logger.debug(`Updating status for message ${waMessageId} to ${status}`);
-        await this.messagingService.updateMessageStatus(waMessageId, status);
+        this.logger.debug(`[WEBHOOK] Status update for ${waMessageId}: ${metaStatus} -> ${status}`);
+        let updated = null;
+        for (let i = 0; i < 3; i++) {
+            updated = await this.messagingService.updateMessageStatus(waMessageId, status);
+            if (updated)
+                break;
+            this.logger.warn(`[WEBHOOK] Message ${waMessageId} not found for status update. Retrying in 500ms... (Attempt ${i + 1}/3)`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        if (!updated) {
+            this.logger.error(`[WEBHOOK] Failed to update status for message ${waMessageId}: Message not found in database after 3 attempts.`);
+        }
     }
     async handleIncomingMessage(accountId, organizationId, data) {
         const messageData = data.messages[0];

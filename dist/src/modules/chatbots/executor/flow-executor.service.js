@@ -522,11 +522,39 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
             await this.advanceFromNode(session, node, edges, allNodes, contact, messageData);
         }
     }
+    async sendBotMessageAndTrack(session, contact, type, content, sendFn) {
+        const message = await this.messagingService.createMessage({
+            organizationId: session.organizationId,
+            whatsappAccountId: session.accountId,
+            contactId: contact.id,
+            direction: 'OUTBOUND',
+            type: type,
+            content,
+            metadata: { isChatbot: true },
+            sentAt: new Date(),
+        });
+        try {
+            const response = await sendFn();
+            const waMessageId = response?.messages?.[0]?.id;
+            if (waMessageId && message?.id) {
+                const updatedMsg = await this.prisma.message.update({
+                    where: { id: message.id },
+                    data: { waMessageId }
+                });
+                this.messagingService.emitMessageStatus(session.organizationId, updatedMsg);
+            }
+            return response;
+        }
+        catch (err) {
+            this.logger.error(`Failed to send bot message: ${err.message}`);
+            throw err;
+        }
+    }
     async handleSendText(session, node, edges, allNodes, contact, messageData) {
         const config = node.data?.config || {};
         let text = await this.resolveVariables(config.text || '', session, contact, messageData);
         if (text) {
-            await this.messagingService.createMessage({
+            const message = await this.messagingService.createMessage({
                 organizationId: session.organizationId,
                 whatsappAccountId: session.accountId,
                 contactId: contact.id,
@@ -536,7 +564,14 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
                 metadata: { isChatbot: true },
                 sentAt: new Date(),
             });
-            await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, text);
+            const response = await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, text);
+            const waMessageId = response?.messages?.[0]?.id;
+            if (waMessageId && message?.id) {
+                await this.prisma.message.update({
+                    where: { id: message.id },
+                    data: { waMessageId }
+                });
+            }
         }
         await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
     }
@@ -729,7 +764,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
         const config = node.data?.config || {};
         const question = await this.resolveVariables(config.question || 'Please enter a number:', session, contact, messageData);
         if (question) {
-            await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+            await this.sendBotMessageAndTrack(session, contact, 'TEXT', { body: question }, () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question));
         }
         await this.prisma.chatbotSession.update({
             where: { id: session.id },
@@ -749,7 +784,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
         const config = node.data?.config || {};
         const question = await this.resolveVariables(config.question || 'Please enter a date:', session, contact, messageData);
         if (question) {
-            await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+            await this.sendBotMessageAndTrack(session, contact, 'TEXT', { body: question }, () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question));
         }
         await this.prisma.chatbotSession.update({
             where: { id: session.id },
@@ -769,7 +804,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
         const config = node.data?.config || {};
         const question = await this.resolveVariables(config.question || 'Please enter your email address:', session, contact, messageData);
         if (question) {
-            await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+            await this.sendBotMessageAndTrack(session, contact, 'TEXT', { body: question }, () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question));
         }
         await this.prisma.chatbotSession.update({
             where: { id: session.id },
@@ -917,7 +952,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
             title: b.title || b.label,
         }));
         if (buttons.length > 0) {
-            await this.whatsappService.sendInteractiveButtons(session.organizationId, session.accountId, contact.phone, bodyText, buttons, headerText, footerText);
+            await this.sendBotMessageAndTrack(session, contact, 'INTERACTIVE', { body: bodyText, buttons }, () => this.whatsappService.sendInteractiveButtons(session.organizationId, session.accountId, contact.phone, bodyText, buttons, headerText, footerText));
         }
         await this.prisma.chatbotSession.update({
             where: { id: session.id },
@@ -944,7 +979,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
             })),
         }));
         if (sections.length > 0) {
-            await this.whatsappService.sendInteractiveList(session.organizationId, session.accountId, contact.phone, bodyText, buttonText, sections, headerText, footerText);
+            await this.sendBotMessageAndTrack(session, contact, 'INTERACTIVE', { body: bodyText, sections }, () => this.whatsappService.sendInteractiveList(session.organizationId, session.accountId, contact.phone, bodyText, buttonText, sections, headerText, footerText));
         }
         await this.prisma.chatbotSession.update({
             where: { id: session.id },
@@ -1073,7 +1108,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
                 }
             });
         }
-        await this.whatsappService.sendTemplateMessage(session.organizationId, session.accountId, contact.phone, config.templateName, config.language || 'en_US', components);
+        await this.sendBotMessageAndTrack(session, contact, 'TEMPLATE', { name: config.templateName, language: config.language || 'en_US' }, () => this.whatsappService.sendTemplateMessage(session.organizationId, session.accountId, contact.phone, config.templateName, config.language || 'en_US', components));
         await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
     }
     async handleSendPayment(session, node, edges, allNodes, contact, messageData) {

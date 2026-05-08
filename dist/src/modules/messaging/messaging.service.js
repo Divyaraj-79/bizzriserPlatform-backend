@@ -260,6 +260,9 @@ let MessagingService = MessagingService_1 = class MessagingService {
         this.realtimeGateway.emitMessageStatusUpdate(updatedMessage.organizationId, updatedMessage);
         return updatedMessage;
     }
+    emitMessageStatus(orgId, message) {
+        this.realtimeGateway.emitMessageStatusUpdate(orgId, message);
+    }
     async getConversationMessages(conversationId, search) {
         return this.prisma.message.findMany({
             where: {

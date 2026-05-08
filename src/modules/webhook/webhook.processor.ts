@@ -68,10 +68,22 @@ export class WebhookProcessor {
     else if (metaStatus === 'read') status = MessageStatus.READ;
     else if (metaStatus === 'failed') status = MessageStatus.FAILED;
 
-    this.logger.debug(`Updating status for message ${waMessageId} to ${status}`);
+    this.logger.debug(`[WEBHOOK] Status update for ${waMessageId}: ${metaStatus} -> ${status}`);
     
-    // Use MessagingService to handle both message and campaign analytics update
-    await this.messagingService.updateMessageStatus(waMessageId, status);
+    // RETRY LOGIC: If the message isn't found, it might be a race condition where 
+    // the outbound API call hasn't finished saving the ID yet.
+    let updated = null;
+    for (let i = 0; i < 3; i++) {
+      updated = await this.messagingService.updateMessageStatus(waMessageId, status);
+      if (updated) break;
+      
+      this.logger.warn(`[WEBHOOK] Message ${waMessageId} not found for status update. Retrying in 500ms... (Attempt ${i+1}/3)`);
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    if (!updated) {
+      this.logger.error(`[WEBHOOK] Failed to update status for message ${waMessageId}: Message not found in database after 3 attempts.`);
+    }
   }
 
   private async handleIncomingMessage(accountId: string, organizationId: string, data: any) {
