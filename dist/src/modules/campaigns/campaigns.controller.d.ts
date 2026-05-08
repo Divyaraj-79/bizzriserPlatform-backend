@@ -7,13 +7,13 @@ export declare class CampaignsController {
             recipients: number;
         };
     } & {
-        description: string | null;
         id: string;
         organizationId: string;
         status: import(".prisma/client").$Enums.CampaignStatus;
         createdAt: Date;
         updatedAt: Date;
         name: string;
+        description: string | null;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         startedAt: Date | null;
         completedAt: Date | null;
@@ -86,13 +86,13 @@ export declare class CampaignsController {
             level: import(".prisma/client").$Enums.CampaignLogLevel;
         }[];
     } & {
-        description: string | null;
         id: string;
         organizationId: string;
         status: import(".prisma/client").$Enums.CampaignStatus;
         createdAt: Date;
         updatedAt: Date;
         name: string;
+        description: string | null;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         startedAt: Date | null;
         completedAt: Date | null;
@@ -106,13 +106,13 @@ export declare class CampaignsController {
         failedCount: number;
     }) | null>;
     deleteCampaign(req: any, id: string): Promise<{
-        description: string | null;
         id: string;
         organizationId: string;
         status: import(".prisma/client").$Enums.CampaignStatus;
         createdAt: Date;
         updatedAt: Date;
         name: string;
+        description: string | null;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         startedAt: Date | null;
         completedAt: Date | null;

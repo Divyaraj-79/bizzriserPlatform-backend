@@ -120,15 +120,15 @@ export class ContactsService {
   async createOrUpdate(orgId: string, phone: string, data: any) {
     this.logger.log(`[ENTRY] createOrUpdate called for Org: ${orgId}, Phone: ${phone}`);
     const cleanPhone = this.sanitizePhone(phone);
+    
+    // Destructure tags and other data from the input
+    const { tags, ...otherData } = data || {};
+
     const baseData: any = {
       ...otherData,
       organizationId: orgId,
       phone: cleanPhone,
     };
-
-    if (name) baseData.firstName = name;
-    if (otherData.firstName) baseData.firstName = otherData.firstName;
-    if (otherData.lastName) baseData.lastName = otherData.lastName;
 
     const result = await this.prisma.contact.upsert({
       where: {
@@ -136,8 +136,8 @@ export class ContactsService {
       },
       update: {
         ...baseData,
-        // Only update tags if provided
-        ...(tags ? { tags: { set: tags } } : {}),
+        // Only update tags if they were explicitly provided in the data object
+        ...(tags !== undefined ? { tags: { set: tags } } : {}),
       },
       create: {
         ...baseData,
