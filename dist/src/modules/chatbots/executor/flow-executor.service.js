@@ -15,7 +15,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 var FlowExecutorService_1;
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FlowExecutorService = void 0;
 const common_1 = require("@nestjs/common");
@@ -24,6 +23,7 @@ const bullmq_1 = require("bullmq");
 const prisma_service_1 = require("../../../prisma/prisma.service");
 const client_1 = require("@prisma/client");
 const whatsapp_service_1 = require("../../whatsapp/whatsapp.service");
+const messaging_service_1 = require("../../messaging/messaging.service");
 const axios_1 = __importDefault(require("axios"));
 const libphonenumber_js_1 = require("libphonenumber-js");
 const uuid_1 = require("uuid");
@@ -1751,6 +1751,8 @@ exports.FlowExecutorService = FlowExecutorService = FlowExecutorService_1 = __de
     (0, common_1.Injectable)(),
     __param(3, (0, bull_1.InjectQueue)('flow-delays')),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        whatsapp_service_1.WhatsappService, typeof (_a = typeof MessagingService !== "undefined" && MessagingService) === "function" ? _a : Object, bullmq_1.Queue])
+        whatsapp_service_1.WhatsappService,
+        messaging_service_1.MessagingService,
+        bullmq_1.Queue])
 ], FlowExecutorService);
 //# sourceMappingURL=flow-executor.service.js.map

@@ -2,6 +2,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatbotSession, Contact, Chatbot } from '@prisma/client';
 import { WhatsappService } from '../../whatsapp/whatsapp.service';
+import { MessagingService } from '../../messaging/messaging.service';
 interface FlowNode {
     id: string;
     type: string;

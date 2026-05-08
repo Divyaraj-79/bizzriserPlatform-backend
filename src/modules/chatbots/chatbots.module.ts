@@ -6,11 +6,13 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { FlowExecutorService } from './executor/flow-executor.service';
 import { FlowDelayProcessor } from './executor/flow-delay.processor';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { MessagingModule } from '../messaging/messaging.module';
 
 @Module({
   imports: [
     PrismaModule,
     WhatsappModule,
+    MessagingModule,
     BullModule.registerQueue({ name: 'flow-delays' }),
   ],
   controllers: [ChatbotsController],
