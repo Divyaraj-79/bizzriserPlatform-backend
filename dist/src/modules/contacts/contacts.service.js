@@ -71,11 +71,12 @@ let ContactsService = ContactsService_1 = class ContactsService {
             throw new common_1.NotFoundException('Contact not found');
         const lastInbound = await this.prisma.message.findFirst({
             where: { contactId, direction: 'INBOUND' },
-            orderBy: { createdAt: 'desc' },
-            select: { createdAt: true },
+            orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }],
+            select: { sentAt: true, createdAt: true },
         });
-        const windowExpiresAt = lastInbound
-            ? new Date(lastInbound.createdAt.getTime() + 24 * 60 * 60 * 1000)
+        const lastInboundTime = lastInbound?.sentAt || lastInbound?.createdAt;
+        const windowExpiresAt = lastInboundTime
+            ? new Date(lastInboundTime.getTime() + 24 * 60 * 60 * 1000)
             : null;
         const isInWindow = windowExpiresAt ? windowExpiresAt > new Date() : false;
         return {
