@@ -365,6 +365,7 @@ model Conversation {
   contactId         String
   lastMessageBody   String?
   lastMessageAt     DateTime @default(now())
+  unreadCount       Int      @default(0)
   metadata          Json     @default("{}")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

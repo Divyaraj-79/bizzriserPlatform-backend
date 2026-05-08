@@ -90,4 +90,9 @@ export class MessagingController {
   async clearMessages(@Param('id') id: string, @Req() req: any) {
     return this.messagingService.clearConversationMessages(req.user.orgId, id);
   }
+
+  @Post('conversations/:id/read')
+  async markAsRead(@Param('id') id: string, @Req() req: any) {
+    return this.messagingService.markAsRead(req.user.orgId, id);
+  }
 }

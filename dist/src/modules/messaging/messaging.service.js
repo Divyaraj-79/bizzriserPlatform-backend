@@ -64,6 +64,7 @@ let MessagingService = MessagingService_1 = class MessagingService {
             data: {
                 lastMessageBody: body,
                 lastMessageAt: message.sentAt || message.createdAt,
+                ...(data.direction === 'INBOUND' ? { unreadCount: { increment: 1 } } : {}),
             },
             include: {
                 contact: {
@@ -325,6 +326,20 @@ let MessagingService = MessagingService_1 = class MessagingService {
             };
         }));
         return enhanced;
+    }
+    async markAsRead(orgId, conversationId) {
+        const updatedConversation = await this.prisma.conversation.update({
+            where: { id: conversationId, organizationId: orgId },
+            data: { unreadCount: 0 },
+            include: {
+                contact: {
+                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true }
+                },
+                whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
+            }
+        });
+        this.realtimeGateway.emitConversationUpdate(orgId, updatedConversation);
+        return updatedConversation;
     }
 };
 exports.MessagingService = MessagingService;

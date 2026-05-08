@@ -46,6 +46,9 @@ let MessagingController = class MessagingController {
     async clearMessages(id, req) {
         return this.messagingService.clearConversationMessages(req.user.orgId, id);
     }
+    async markAsRead(id, req) {
+        return this.messagingService.markAsRead(req.user.orgId, id);
+    }
 };
 exports.MessagingController = MessagingController;
 __decorate([
@@ -106,6 +109,14 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], MessagingController.prototype, "clearMessages", null);
+__decorate([
+    (0, common_1.Post)('conversations/:id/read'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], MessagingController.prototype, "markAsRead", null);
 exports.MessagingController = MessagingController = __decorate([
     (0, common_1.Controller)({
         path: 'messaging',
