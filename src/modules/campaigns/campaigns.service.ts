@@ -247,4 +247,29 @@ export class CampaignsService {
       data: { campaignId, message, level, metadata },
     });
   }
+
+  async updateCampaignStats(campaignId: string, oldStatus: MessageStatus, newStatus: MessageStatus) {
+    if (oldStatus === newStatus) return;
+
+    const updateData: any = {};
+
+    // Decrement old status counter if it wasn't PENDING
+    if (oldStatus === MessageStatus.SENT) updateData.sentCount = { decrement: 1 };
+    else if (oldStatus === MessageStatus.DELIVERED) updateData.deliveredCount = { decrement: 1 };
+    else if (oldStatus === MessageStatus.READ) updateData.readCount = { decrement: 1 };
+    else if (oldStatus === MessageStatus.FAILED) updateData.failedCount = { decrement: 1 };
+
+    // Increment new status counter
+    if (newStatus === MessageStatus.SENT) updateData.sentCount = { increment: 1 };
+    else if (newStatus === MessageStatus.DELIVERED) updateData.deliveredCount = { increment: 1 };
+    else if (newStatus === MessageStatus.READ) updateData.readCount = { increment: 1 };
+    else if (newStatus === MessageStatus.FAILED) updateData.failedCount = { increment: 1 };
+
+    if (Object.keys(updateData).length > 0) {
+      await this.prisma.campaign.update({
+        where: { id: campaignId },
+        data: updateData
+      });
+    }
+  }
 }

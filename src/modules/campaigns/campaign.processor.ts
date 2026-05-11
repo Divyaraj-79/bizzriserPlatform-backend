@@ -47,7 +47,11 @@ export class CampaignProcessor {
         return;
       }
 
-      // 2. Fetch Contact
+      // 2. Fetch Recipient and Contact
+      const recipient = await this.prisma.campaignRecipient.findUnique({ where: { id: recipientId } });
+      if (!recipient) throw new Error('Recipient not found');
+      const oldStatus = recipient.status;
+
       const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
       if (!contact) throw new Error('Contact not found');
 
@@ -75,20 +79,26 @@ export class CampaignProcessor {
             const broadcastParam = broadcastParams.find(p => String(p.index) === String(index));
             let text = '';
 
-            // 1. Prioritize static value from broadcast UI
-            if (broadcastParam?.value) {
-                text = broadcastParam.value;
+            // 1. Check for Static Value from UI (even if empty string)
+            const hasStaticValue = broadcastParam && (broadcastParam.field === '__STATIC__' || (broadcastParam.value !== undefined && broadcastParam.value !== null && broadcastParam.field === ''));
+            
+            if (hasStaticValue || broadcastParam?.field === '__STATIC__') {
+                text = broadcastParam?.value || '';
             } else {
-              // 2. Resolve via mapping (either broadcast-specific or template-default)
+              // 2. Resolve via Mapping
               const fieldKey = broadcastParam?.field || variableMapping[index];
-              if (fieldKey.startsWith('custom:')) {
+              
+              if (!fieldKey || fieldKey === '__STATIC__') {
+                text = '';
+              } else if (fieldKey.startsWith('custom:')) {
                 const cfKey = fieldKey.replace('custom:', '');
                 text = (contact.customFields as any)?.[cfKey] || '';
               } else if (fieldKey.startsWith('var:')) {
                 const varKey = fieldKey.replace('var:', '');
                 text = (templateParams as any)?.[varKey] || (templateParams as any)?.find?.((p: any) => p.name === varKey)?.value || '';
-              } else if (fieldKey) {
-                text = (contact as any)[fieldKey] || '';
+              } else {
+                // Try direct field then custom field fallback
+                text = (contact as any)[fieldKey] || (contact.customFields as any)?.[fieldKey] || '';
               }
             }
             
@@ -118,21 +128,15 @@ export class CampaignProcessor {
       );
 
       // 5. Update recipient and campaign
-      const updatedCampaign = await this.prisma.campaign.update({
-        where: { id: campaignId },
-        data: {
-          sentCount: { increment: 1 },
-          recipients: {
-            update: {
-              where: { id: recipientId },
-              data: { status: MessageStatus.SENT, sentAt: new Date() },
-            },
-          },
-        },
+      await this.prisma.campaignRecipient.update({
+        where: { id: recipientId },
+        data: { status: MessageStatus.SENT, sentAt: new Date() },
       });
+      await this.campaignsService.updateCampaignStats(campaignId, oldStatus, MessageStatus.SENT);
 
       // 6. Completion check
-      if (updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients) {
+      const updatedCampaign = await this.prisma.campaign.findUnique({ where: { id: campaignId } });
+      if (updatedCampaign && updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients) {
         await this.prisma.campaign.update({
           where: { id: campaignId },
           data: { status: CampaignStatus.COMPLETED, completedAt: new Date() },
@@ -143,18 +147,14 @@ export class CampaignProcessor {
     } catch (error: any) {
       this.logger.error(`Failed to process campaign message for recipient ${recipientId}: ${error.message}`);
       
-      await this.prisma.campaign.update({
-        where: { id: campaignId },
-        data: {
-          failedCount: { increment: 1 },
-          recipients: {
-            update: {
-              where: { id: recipientId },
-              data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: error.message } as any,
-            },
-          },
-        },
+      const currentRecipient = await this.prisma.campaignRecipient.findUnique({ where: { id: recipientId } });
+      const currentStatus = currentRecipient?.status || MessageStatus.PENDING;
+
+      await this.prisma.campaignRecipient.update({
+        where: { id: recipientId },
+        data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: `PROCESSOR_V2: ${error.message}` } as any,
       });
+      await this.campaignsService.updateCampaignStats(campaignId, currentStatus, MessageStatus.FAILED);
 
       await this.campaignsService.log(campaignId, `Message failed for recipient ${contactId}: ${error.message}`, CampaignLogLevel.ERROR);
       throw error;

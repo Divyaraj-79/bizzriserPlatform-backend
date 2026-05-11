@@ -370,6 +370,27 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             this.handleError(error, `Failed to upload media via account ${accountId}`);
         }
     }
+    async getMediaUrl(orgId, accountId, mediaId) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${mediaId}`;
+        try {
+            this.logger.log(`Fetching media URL for ID: ${mediaId} via account ${accountId}`);
+            const response = await axios_1.default.get(url, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                },
+            });
+            return response.data.url;
+        }
+        catch (error) {
+            this.handleError(error, `Failed to fetch media URL for ID ${mediaId}`);
+        }
+    }
     async sendMediaMessage(orgId, accountId, to, type, mediaId, caption) {
         const account = await this.prisma.whatsAppAccount.findUnique({
             where: { id: accountId, organizationId: orgId },
@@ -1318,7 +1339,8 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         if (error.response?.status === common_1.HttpStatus.UNAUTHORIZED) {
             throw new common_1.HttpException(`${context}: Authentication failed. Please reconnect your WhatsApp account.`, common_1.HttpStatus.UNAUTHORIZED);
         }
-        throw new common_1.HttpException(`${context}: ${errorMsg || 'Unknown WhatsApp API error'}`, error.response?.status || common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+        const formattedError = `WHATSAPP_SVC_V2: ${errorMsg || 'Unknown WhatsApp API error'}${errorCode ? ` (Code: ${errorCode}${errorSubcode ? `, Subcode: ${errorSubcode}` : ''})` : ''}`;
+        throw new common_1.HttpException(`${context}: ${formattedError}`, error.response?.status || common_1.HttpStatus.INTERNAL_SERVER_ERROR);
     }
 };
 exports.WhatsappService = WhatsappService;

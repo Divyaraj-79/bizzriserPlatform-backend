@@ -27,16 +27,19 @@ const messaging_service_1 = require("../../messaging/messaging.service");
 const axios_1 = __importDefault(require("axios"));
 const libphonenumber_js_1 = require("libphonenumber-js");
 const uuid_1 = require("uuid");
+const whatsapp_flows_service_1 = require("../../flows/whatsapp-flows.service");
 let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
     prisma;
     whatsappService;
     messagingService;
+    flowsService;
     delayQueue;
     logger = new common_1.Logger(FlowExecutorService_1.name);
-    constructor(prisma, whatsappService, messagingService, delayQueue) {
+    constructor(prisma, whatsappService, messagingService, flowsService, delayQueue) {
         this.prisma = prisma;
         this.whatsappService = whatsappService;
         this.messagingService = messagingService;
+        this.flowsService = flowsService;
         this.delayQueue = delayQueue;
     }
     async startSession(orgId, accountId, chatbot, contact, messageData) {
@@ -460,6 +463,26 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
                 else {
                     routeHandle = 'notSubmitted';
                 }
+            }
+        }
+        else if (waitingType === 'flow') {
+            const config = currentNode.data?.config || {};
+            const interactive = messageData.interactive;
+            if (interactive?.type === 'nfm_reply') {
+                try {
+                    const responseJson = JSON.parse(interactive.nfm_reply.response_json || '{}');
+                    if (config.flowId) {
+                        await this.flowsService.handleFlowSubmission(session.organizationId, config.flowId, contact.id, responseJson);
+                    }
+                    routeHandle = 'submitted';
+                }
+                catch (err) {
+                    this.logger.error(`Error parsing flow response: ${err.message}`);
+                    routeHandle = 'notSubmitted';
+                }
+            }
+            else {
+                routeHandle = 'notSubmitted';
             }
         }
         const updatedSession = await this.prisma.chatbotSession.update({
@@ -1784,10 +1807,11 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
 exports.FlowExecutorService = FlowExecutorService;
 exports.FlowExecutorService = FlowExecutorService = FlowExecutorService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(3, (0, bull_1.InjectQueue)('flow-delays')),
+    __param(4, (0, bull_1.InjectQueue)('flow-delays')),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         whatsapp_service_1.WhatsappService,
         messaging_service_1.MessagingService,
+        whatsapp_flows_service_1.WhatsAppFlowsService,
         bullmq_1.Queue])
 ], FlowExecutorService);
 //# sourceMappingURL=flow-executor.service.js.map

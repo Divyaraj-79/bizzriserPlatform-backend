@@ -427,6 +427,31 @@ export class WhatsappService {
   }
 
   /**
+   * Resolves a Meta Media ID into a temporary download URL.
+   */
+  async getMediaUrl(orgId: string, accountId: string, mediaId: string) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const url = `${this.graphBaseUrl}/${this.apiVersion}/${mediaId}`;
+
+    try {
+      this.logger.log(`Fetching media URL for ID: ${mediaId} via account ${accountId}`);
+      const response = await axios.get(url, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+        },
+      });
+      return response.data.url;
+    } catch (error) {
+      this.handleError(error, `Failed to fetch media URL for ID ${mediaId}`);
+    }
+  }
+
+  /**
    * Sends a media message (image, video, document, audio) using a media_id.
    */
   async sendMediaMessage(orgId: string, accountId: string, to: string, type: MessageType, mediaId: string, caption?: string) {
@@ -1582,8 +1607,10 @@ export class WhatsappService {
       throw new HttpException(`${context}: Authentication failed. Please reconnect your WhatsApp account.`, HttpStatus.UNAUTHORIZED);
     }
 
+    const formattedError = `WHATSAPP_SVC_V2: ${errorMsg || 'Unknown WhatsApp API error'}${errorCode ? ` (Code: ${errorCode}${errorSubcode ? `, Subcode: ${errorSubcode}` : ''})` : ''}`;
+
     throw new HttpException(
-      `${context}: ${errorMsg || 'Unknown WhatsApp API error'}`,
+      `${context}: ${formattedError}`,
       error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
     );
   }

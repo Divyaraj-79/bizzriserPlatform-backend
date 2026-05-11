@@ -209,6 +209,33 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
             data: { campaignId, message, level, metadata },
         });
     }
+    async updateCampaignStats(campaignId, oldStatus, newStatus) {
+        if (oldStatus === newStatus)
+            return;
+        const updateData = {};
+        if (oldStatus === client_1.MessageStatus.SENT)
+            updateData.sentCount = { decrement: 1 };
+        else if (oldStatus === client_1.MessageStatus.DELIVERED)
+            updateData.deliveredCount = { decrement: 1 };
+        else if (oldStatus === client_1.MessageStatus.READ)
+            updateData.readCount = { decrement: 1 };
+        else if (oldStatus === client_1.MessageStatus.FAILED)
+            updateData.failedCount = { decrement: 1 };
+        if (newStatus === client_1.MessageStatus.SENT)
+            updateData.sentCount = { increment: 1 };
+        else if (newStatus === client_1.MessageStatus.DELIVERED)
+            updateData.deliveredCount = { increment: 1 };
+        else if (newStatus === client_1.MessageStatus.READ)
+            updateData.readCount = { increment: 1 };
+        else if (newStatus === client_1.MessageStatus.FAILED)
+            updateData.failedCount = { increment: 1 };
+        if (Object.keys(updateData).length > 0) {
+            await this.prisma.campaign.update({
+                where: { id: campaignId },
+                data: updateData
+            });
+        }
+    }
 };
 exports.CampaignsService = CampaignsService;
 exports.CampaignsService = CampaignsService = CampaignsService_1 = __decorate([

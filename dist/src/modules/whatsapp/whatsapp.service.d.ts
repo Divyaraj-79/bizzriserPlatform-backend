@@ -18,20 +18,20 @@ export declare class WhatsappService {
         phoneNumberId?: string;
     }): Promise<{
         id: string;
-        phoneNumber: string;
+        organizationId: string;
+        status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        accessToken: string;
         phoneNumberId: string;
         verifyToken: string;
-        organizationId: string;
         displayName: string;
+        phoneNumber: string;
         wabaId: string;
-        accessToken: string;
         webhookSecret: string;
-        status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
         messagingLimitTier: string | null;
         messagingLimitCount: number;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     sendTextMessage(orgId: string, accountId: string, to: string, message: string): Promise<any>;
     sendTemplateMessage(orgId: string, accountId: string, to: string, templateName: string, languageCode?: string, components?: any[]): Promise<any>;
@@ -39,6 +39,7 @@ export declare class WhatsappService {
         handle: any;
     } | undefined>;
     uploadMedia(orgId: string, accountId: string, file: any): Promise<any>;
+    getMediaUrl(orgId: string, accountId: string, mediaId: string): Promise<any>;
     sendMediaMessage(orgId: string, accountId: string, to: string, type: MessageType, mediaId: string, caption?: string): Promise<any>;
     sendMediaByUrl(orgId: string, accountId: string, to: string, mediaType: 'image' | 'video' | 'document' | 'audio', mediaUrl: string, caption?: string, filename?: string): Promise<any>;
     sendInteractiveButtons(orgId: string, accountId: string, to: string, bodyText: string, buttons: Array<{
@@ -58,13 +59,13 @@ export declare class WhatsappService {
         sub: string;
     }): Promise<{
         id: string;
-        phoneNumber: string;
+        status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
+        createdAt: Date;
         phoneNumberId: string;
         displayName: string;
+        phoneNumber: string;
         wabaId: string;
-        status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
     }[]>;
     getTemplates(orgId: string, accountId: string, forceSync?: boolean): Promise<{
         id: string;
@@ -85,37 +86,37 @@ export declare class WhatsappService {
     deleteTemplate(orgId: string, accountId: string, templateName: string): Promise<any>;
     syncAccount(orgId: string, accountId: string): Promise<{
         id: string;
-        phoneNumber: string;
+        organizationId: string;
+        status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        accessToken: string;
         phoneNumberId: string;
         verifyToken: string;
-        organizationId: string;
         displayName: string;
+        phoneNumber: string;
         wabaId: string;
-        accessToken: string;
         webhookSecret: string;
-        status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
         messagingLimitTier: string | null;
         messagingLimitCount: number;
-        createdAt: Date;
-        updatedAt: Date;
     } | undefined>;
     disconnectAccount(orgId: string, accountId: string): Promise<{
         id: string;
-        phoneNumber: string;
+        organizationId: string;
+        status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        accessToken: string;
         phoneNumberId: string;
         verifyToken: string;
-        organizationId: string;
         displayName: string;
+        phoneNumber: string;
         wabaId: string;
-        accessToken: string;
         webhookSecret: string;
-        status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
         businessProfile: import("@prisma/client/runtime/library").JsonValue;
         messagingLimitTier: string | null;
         messagingLimitCount: number;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     private getValidToken;
     registerPhoneNumber(orgId: string, accountId: string, force?: boolean): Promise<void>;

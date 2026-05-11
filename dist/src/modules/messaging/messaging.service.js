@@ -69,7 +69,17 @@ let MessagingService = MessagingService_1 = class MessagingService {
             },
             include: {
                 contact: {
-                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true }
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        phone: true,
+                        avatarUrl: true,
+                        createdAt: true,
+                        customFields: true,
+                        tags: true,
+                        status: true,
+                    }
                 },
                 whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
             }
@@ -190,7 +200,7 @@ let MessagingService = MessagingService_1 = class MessagingService {
                 if (recipient) {
                     await this.prisma.campaignRecipient.update({
                         where: { id: recipient.id },
-                        data: { status: client_1.MessageStatus.FAILED, failedAt: new Date(), failureReason: error.message }
+                        data: { status: client_1.MessageStatus.FAILED, failedAt: new Date(), failureReason: `API_ERROR: ${error.message}` }
                     });
                 }
             }
@@ -228,6 +238,7 @@ let MessagingService = MessagingService_1 = class MessagingService {
             const campaignId = metadata.campaignId;
             const updateData = {};
             const recipientUpdate = { status };
+            const oldStatus = message.status;
             if (status === client_1.MessageStatus.DELIVERED) {
                 updateData.deliveredCount = { increment: 1 };
                 recipientUpdate.deliveredAt = new Date();
@@ -239,8 +250,16 @@ let MessagingService = MessagingService_1 = class MessagingService {
             else if (status === client_1.MessageStatus.FAILED) {
                 updateData.failedCount = { increment: 1 };
                 recipientUpdate.failedAt = new Date();
-                recipientUpdate.failureReason = failureReason || 'Meta delivery failure';
+                recipientUpdate.failureReason = failureReason || 'WEBHOOK_FALLBACK_DEBUG_V2';
             }
+            if (oldStatus === client_1.MessageStatus.SENT)
+                updateData.sentCount = { decrement: 1 };
+            else if (oldStatus === client_1.MessageStatus.DELIVERED)
+                updateData.deliveredCount = { decrement: 1 };
+            else if (oldStatus === client_1.MessageStatus.READ)
+                updateData.readCount = { decrement: 1 };
+            else if (oldStatus === client_1.MessageStatus.FAILED)
+                updateData.failedCount = { decrement: 1 };
             if (Object.keys(updateData).length > 0) {
                 await this.prisma.campaign.update({
                     where: { id: campaignId },
@@ -348,7 +367,17 @@ let MessagingService = MessagingService_1 = class MessagingService {
             data: { unreadCount: 0 },
             include: {
                 contact: {
-                    select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true }
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        phone: true,
+                        avatarUrl: true,
+                        createdAt: true,
+                        customFields: true,
+                        tags: true,
+                        status: true,
+                    }
                 },
                 whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
             }
@@ -376,6 +405,9 @@ let MessagingService = MessagingService_1 = class MessagingService {
             : null;
         const isInWindow = windowExpiresAt ? windowExpiresAt > new Date() : false;
         return { isInWindow, windowExpiresAt };
+    }
+    async getMediaUrl(orgId, accountId, mediaId) {
+        return this.whatsapp.getMediaUrl(orgId, accountId, mediaId);
     }
 };
 exports.MessagingService = MessagingService;

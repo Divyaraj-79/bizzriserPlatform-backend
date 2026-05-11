@@ -49,6 +49,9 @@ let MessagingController = class MessagingController {
     async markAsRead(id, req) {
         return this.messagingService.markAsRead(req.user.orgId, id);
     }
+    async getMediaUrl(mediaId, accountId, req) {
+        return this.messagingService.getMediaUrl(req.user.orgId, accountId, mediaId);
+    }
 };
 exports.MessagingController = MessagingController;
 __decorate([
@@ -117,6 +120,15 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], MessagingController.prototype, "markAsRead", null);
+__decorate([
+    (0, common_1.Get)('media/:mediaId'),
+    __param(0, (0, common_1.Param)('mediaId')),
+    __param(1, (0, common_1.Query)('accountId')),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], MessagingController.prototype, "getMediaUrl", null);
 exports.MessagingController = MessagingController = __decorate([
     (0, common_1.Controller)({
         path: 'messaging',

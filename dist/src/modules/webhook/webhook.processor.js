@@ -73,12 +73,18 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
             status = client_1.MessageStatus.DELIVERED;
         else if (metaStatus === 'read')
             status = client_1.MessageStatus.READ;
-        else if (metaStatus === 'failed')
+        let failureReason = undefined;
+        if (metaStatus === 'failed') {
             status = client_1.MessageStatus.FAILED;
+            const error = statusData.errors?.[0];
+            if (error) {
+                failureReason = `WEBHOOK_V2: ${error.message || error.title}${error.code ? ` (Code: ${error.code})` : ''}`;
+            }
+        }
         this.logger.debug(`[WEBHOOK] Status update for ${waMessageId}: ${metaStatus} -> ${status}`);
         let updated = null;
         for (let i = 0; i < 3; i++) {
-            updated = await this.messagingService.updateMessageStatus(waMessageId, status);
+            updated = await this.messagingService.updateMessageStatus(waMessageId, status, failureReason);
             if (updated)
                 break;
             this.logger.warn(`[WEBHOOK] Message ${waMessageId} not found for status update. Retrying in 500ms... (Attempt ${i + 1}/3)`);
@@ -140,6 +146,19 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
                     body: messageData.interactive.list_reply?.title || '[List Reply]',
                     payload: messageData.interactive.list_reply?.id,
                 };
+            }
+            else if (it === 'nfm_reply') {
+                try {
+                    const responseJson = JSON.parse(messageData.interactive.nfm_reply.response_json || '{}');
+                    content = {
+                        body: messageData.interactive.nfm_reply.body || '[Flow Submission]',
+                        payload: responseJson,
+                        flow_token: messageData.interactive.nfm_reply.body
+                    };
+                }
+                catch (e) {
+                    content = { body: '[Flow Submission (Invalid JSON)]' };
+                }
             }
             else {
                 content = {

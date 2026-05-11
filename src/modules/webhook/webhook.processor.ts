@@ -66,7 +66,14 @@ export class WebhookProcessor {
     let status: MessageStatus = MessageStatus.SENT;
     if (metaStatus === 'delivered') status = MessageStatus.DELIVERED;
     else if (metaStatus === 'read') status = MessageStatus.READ;
-    else if (metaStatus === 'failed') status = MessageStatus.FAILED;
+    let failureReason: string | undefined = undefined;
+    if (metaStatus === 'failed') {
+      status = MessageStatus.FAILED;
+      const error = statusData.errors?.[0];
+      if (error) {
+        failureReason = `WEBHOOK_V2: ${error.message || error.title}${error.code ? ` (Code: ${error.code})` : ''}`;
+      }
+    }
 
     this.logger.debug(`[WEBHOOK] Status update for ${waMessageId}: ${metaStatus} -> ${status}`);
     
@@ -74,7 +81,7 @@ export class WebhookProcessor {
     // the outbound API call hasn't finished saving the ID yet.
     let updated = null;
     for (let i = 0; i < 3; i++) {
-      updated = await this.messagingService.updateMessageStatus(waMessageId, status);
+      updated = await this.messagingService.updateMessageStatus(waMessageId, status, failureReason);
       if (updated) break;
       
       this.logger.warn(`[WEBHOOK] Message ${waMessageId} not found for status update. Retrying in 500ms... (Attempt ${i+1}/3)`);
@@ -145,6 +152,18 @@ export class WebhookProcessor {
           body: messageData.interactive.list_reply?.title || '[List Reply]',
           payload: messageData.interactive.list_reply?.id,
         };
+      } else if (it === 'nfm_reply') {
+        // WhatsApp Flow Response
+        try {
+          const responseJson = JSON.parse(messageData.interactive.nfm_reply.response_json || '{}');
+          content = {
+            body: messageData.interactive.nfm_reply.body || '[Flow Submission]',
+            payload: responseJson,
+            flow_token: messageData.interactive.nfm_reply.body
+          };
+        } catch (e) {
+          content = { body: '[Flow Submission (Invalid JSON)]' };
+        }
       } else {
         content = {
           body: messageData.interactive[it]?.title || '[Interactive]',

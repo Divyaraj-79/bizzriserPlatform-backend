@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatbotSession, Contact, Chatbot } from '@prisma/client';
 import { WhatsappService } from '../../whatsapp/whatsapp.service';
 import { MessagingService } from '../../messaging/messaging.service';
+import { WhatsAppFlowsService } from '../../flows/whatsapp-flows.service';
 interface FlowNode {
     id: string;
     type: string;
@@ -19,9 +20,10 @@ export declare class FlowExecutorService {
     private prisma;
     private whatsappService;
     private messagingService;
+    private flowsService;
     private delayQueue;
     private readonly logger;
-    constructor(prisma: PrismaService, whatsappService: WhatsappService, messagingService: MessagingService, delayQueue: Queue);
+    constructor(prisma: PrismaService, whatsappService: WhatsappService, messagingService: MessagingService, flowsService: WhatsAppFlowsService, delayQueue: Queue);
     startSession(orgId: string, accountId: string, chatbot: Chatbot, contact: Contact, messageData: any): Promise<void>;
     resumeSession(session: ChatbotSession, contact: Contact, messageData: any): Promise<void>;
     executeNode(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any): Promise<void>;

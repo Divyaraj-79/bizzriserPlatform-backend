@@ -95,4 +95,13 @@ export class MessagingController {
   async markAsRead(@Param('id') id: string, @Req() req: any) {
     return this.messagingService.markAsRead(req.user.orgId, id);
   }
+  
+  @Get('media/:mediaId')
+  async getMediaUrl(
+    @Param('mediaId') mediaId: string,
+    @Query('accountId') accountId: string,
+    @Req() req: any
+  ) {
+    return this.messagingService.getMediaUrl(req.user.orgId, accountId, mediaId);
+  }
 }

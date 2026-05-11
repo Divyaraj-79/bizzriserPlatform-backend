@@ -8,6 +8,7 @@ import { MessagingService } from '../../messaging/messaging.service';
 import axios from 'axios';
 import { parsePhoneNumber, getCountryCallingCode } from 'libphonenumber-js';
 import { v4 as uuidv4 } from 'uuid';
+import { WhatsAppFlowsService } from '../../flows/whatsapp-flows.service';
 
 interface FlowNode {
   id: string;
@@ -31,6 +32,7 @@ export class FlowExecutorService {
     private prisma: PrismaService,
     private whatsappService: WhatsappService,
     private messagingService: MessagingService,
+    private flowsService: WhatsAppFlowsService,
     @InjectQueue('flow-delays') private delayQueue: Queue,
   ) {}
 
@@ -453,6 +455,33 @@ export class FlowExecutorService {
         } else {
           routeHandle = 'notSubmitted';
         }
+      }
+    } else if (waitingType === 'flow') {
+      const config = currentNode.data?.config || {};
+      const interactive = messageData.interactive;
+      
+      if (interactive?.type === 'nfm_reply') {
+        try {
+          const responseJson = JSON.parse(interactive.nfm_reply.response_json || '{}');
+          
+          // 1. Log submission to database & sync with CRM
+          if (config.flowId) {
+             await this.flowsService.handleFlowSubmission(
+                session.organizationId,
+                config.flowId,
+                contact.id,
+                responseJson
+              );
+          }
+
+          // 2. Advance to "Submitted" branch
+          routeHandle = 'submitted';
+        } catch (err) {
+          this.logger.error(`Error parsing flow response: ${err.message}`);
+          routeHandle = 'notSubmitted';
+        }
+      } else {
+        routeHandle = 'notSubmitted';
       }
     }
 

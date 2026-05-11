@@ -80,7 +80,17 @@ export class MessagingService {
       },
       include: {
         contact: {
-          select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true }
+          select: { 
+            id: true, 
+            firstName: true, 
+            lastName: true, 
+            phone: true, 
+            avatarUrl: true, 
+            createdAt: true, 
+            customFields: true, 
+            tags: true, 
+            status: true,
+          }
         },
         whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
       }
@@ -223,7 +233,7 @@ export class MessagingService {
          if (recipient) {
             await this.prisma.campaignRecipient.update({
               where: { id: recipient.id },
-              data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: error.message } as any
+              data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: `API_ERROR: ${error.message}` } as any
             });
          }
       }
@@ -270,6 +280,9 @@ export class MessagingService {
       const updateData: any = {};
       const recipientUpdate: any = { status };
 
+      const oldStatus = message.status;
+
+      // Increment new status counter
       if (status === MessageStatus.DELIVERED) {
          updateData.deliveredCount = { increment: 1 };
          recipientUpdate.deliveredAt = new Date();
@@ -279,8 +292,14 @@ export class MessagingService {
       } else if (status === MessageStatus.FAILED) {
          updateData.failedCount = { increment: 1 };
          recipientUpdate.failedAt = new Date();
-         recipientUpdate.failureReason = failureReason || 'Meta delivery failure';
+         recipientUpdate.failureReason = failureReason || 'WEBHOOK_FALLBACK_DEBUG_V2';
       }
+
+      // Decrement old status counter to maintain mutual exclusivity
+      if (oldStatus === MessageStatus.SENT) updateData.sentCount = { decrement: 1 };
+      else if (oldStatus === MessageStatus.DELIVERED) updateData.deliveredCount = { decrement: 1 };
+      else if (oldStatus === MessageStatus.READ) updateData.readCount = { decrement: 1 };
+      else if (oldStatus === MessageStatus.FAILED) updateData.failedCount = { decrement: 1 };
 
       if (Object.keys(updateData).length > 0) {
         await this.prisma.campaign.update({
@@ -410,7 +429,17 @@ export class MessagingService {
       data: { unreadCount: 0 },
       include: {
         contact: {
-          select: { id: true, firstName: true, lastName: true, phone: true, avatarUrl: true, createdAt: true, customFields: true, tags: true, status: true }
+          select: { 
+            id: true, 
+            firstName: true, 
+            lastName: true, 
+            phone: true, 
+            avatarUrl: true, 
+            createdAt: true, 
+            customFields: true, 
+            tags: true, 
+            status: true,
+          }
         },
         whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
       }
@@ -444,5 +473,9 @@ export class MessagingService {
     const isInWindow = windowExpiresAt ? windowExpiresAt > new Date() : false;
 
     return { isInWindow, windowExpiresAt };
+  }
+
+  async getMediaUrl(orgId: string, accountId: string, mediaId: string) {
+    return this.whatsapp.getMediaUrl(orgId, accountId, mediaId);
   }
 }

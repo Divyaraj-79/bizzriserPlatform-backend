@@ -16,6 +16,7 @@ const flow_executor_service_1 = require("./executor/flow-executor.service");
 const flow_delay_processor_1 = require("./executor/flow-delay.processor");
 const whatsapp_module_1 = require("../whatsapp/whatsapp.module");
 const messaging_module_1 = require("../messaging/messaging.module");
+const flows_module_1 = require("../flows/flows.module");
 let ChatbotsModule = class ChatbotsModule {
 };
 exports.ChatbotsModule = ChatbotsModule;
@@ -25,6 +26,7 @@ exports.ChatbotsModule = ChatbotsModule = __decorate([
             prisma_module_1.PrismaModule,
             whatsapp_module_1.WhatsappModule,
             messaging_module_1.MessagingModule,
+            flows_module_1.FlowsModule,
             bull_1.BullModule.registerQueue({ name: 'flow-delays' }),
         ],
         controllers: [chatbots_controller_1.ChatbotsController],

@@ -90,6 +90,14 @@ enum WebhookEventType {
   MESSAGE_RECEIVED
   MESSAGE_STATUS_UPDATE
   TEMPLATE_STATUS_UPDATE
+  FLOW_STATUS_UPDATE
+}
+
+enum WhatsAppFlowStatus {
+  DRAFT
+  PUBLISHED
+  DEPRECATED
+  BLOCKED
 }
 
 enum ChatbotChannel {
@@ -180,6 +188,8 @@ model Organization {
   customRoles     CustomRole[]
   contactNotes    ContactNote[]
   cannedResponses CannedResponse[]
+  whatsappFlows   WhatsAppFlow[]
+  whatsappFlowSubmissions WhatsAppFlowSubmission[]
 
   @@map("organizations")
 }
@@ -299,6 +309,7 @@ model Contact {
   sessions        ChatbotSession[]
   enrollments     SequenceEnrollment[]
   notes           ContactNote[]
+  whatsappFlowSubmissions WhatsAppFlowSubmission[]
 
   @@unique([organizationId, phone])
   @@index([organizationId])
@@ -663,4 +674,41 @@ model CannedResponse {
   @@unique([organizationId, shortcut])
   @@index([organizationId])
   @@map("canned_responses")
+}
+
+model WhatsAppFlow {
+  id             String             @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  flowId         String?            @unique // Meta's ID
+  definition     Json               @default("{}")
+  status         WhatsAppFlowStatus @default(DRAFT)
+  version        Int                @default(1)
+  categories     String[]           @default(["OTHER"])
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  submissions    WhatsAppFlowSubmission[]
+
+  @@index([organizationId])
+  @@map("whatsapp_flows")
+}
+
+model WhatsAppFlowSubmission {
+  id             String       @id @default(uuid())
+  organizationId String
+  flowId         String       // Local WhatsAppFlow ID
+  contactId      String
+  data           Json         // The actual form results
+  submittedAt    DateTime     @default(now())
+  
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  flow           WhatsAppFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([flowId])
+  @@index([contactId])
+  @@map("whatsapp_flow_submissions")
 }

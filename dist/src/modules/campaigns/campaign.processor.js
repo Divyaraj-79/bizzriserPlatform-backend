@@ -51,6 +51,10 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
                 this.logger.warn(`Campaign ${campaignId} is CANCELLED. Skipping message for recipient ${recipientId}.`);
                 return;
             }
+            const recipient = await this.prisma.campaignRecipient.findUnique({ where: { id: recipientId } });
+            if (!recipient)
+                throw new Error('Recipient not found');
+            const oldStatus = recipient.status;
             const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
             if (!contact)
                 throw new Error('Contact not found');
@@ -71,12 +75,16 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
                     .forEach(index => {
                     const broadcastParam = broadcastParams.find(p => String(p.index) === String(index));
                     let text = '';
-                    if (broadcastParam?.value) {
-                        text = broadcastParam.value;
+                    const hasStaticValue = broadcastParam && (broadcastParam.field === '__STATIC__' || (broadcastParam.value !== undefined && broadcastParam.value !== null && broadcastParam.field === ''));
+                    if (hasStaticValue || broadcastParam?.field === '__STATIC__') {
+                        text = broadcastParam?.value || '';
                     }
                     else {
                         const fieldKey = broadcastParam?.field || variableMapping[index];
-                        if (fieldKey.startsWith('custom:')) {
+                        if (!fieldKey || fieldKey === '__STATIC__') {
+                            text = '';
+                        }
+                        else if (fieldKey.startsWith('custom:')) {
                             const cfKey = fieldKey.replace('custom:', '');
                             text = contact.customFields?.[cfKey] || '';
                         }
@@ -84,8 +92,8 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
                             const varKey = fieldKey.replace('var:', '');
                             text = templateParams?.[varKey] || templateParams?.find?.((p) => p.name === varKey)?.value || '';
                         }
-                        else if (fieldKey) {
-                            text = contact[fieldKey] || '';
+                        else {
+                            text = contact[fieldKey] || contact.customFields?.[fieldKey] || '';
                         }
                     }
                     bodyParameters.push({ type: 'text', text: String(text || '') });
@@ -108,19 +116,13 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
             const components = [{ type: 'body', parameters: bodyParameters }];
             const finalLanguage = templateLanguage || mappingRecord?.language || 'en_US';
             await this.messagingService.sendTemplateMessage(orgId, accountId, contactId, templateName, finalLanguage, components, { campaignId });
-            const updatedCampaign = await this.prisma.campaign.update({
-                where: { id: campaignId },
-                data: {
-                    sentCount: { increment: 1 },
-                    recipients: {
-                        update: {
-                            where: { id: recipientId },
-                            data: { status: client_1.MessageStatus.SENT, sentAt: new Date() },
-                        },
-                    },
-                },
+            await this.prisma.campaignRecipient.update({
+                where: { id: recipientId },
+                data: { status: client_1.MessageStatus.SENT, sentAt: new Date() },
             });
-            if (updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients) {
+            await this.campaignsService.updateCampaignStats(campaignId, oldStatus, client_1.MessageStatus.SENT);
+            const updatedCampaign = await this.prisma.campaign.findUnique({ where: { id: campaignId } });
+            if (updatedCampaign && updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients) {
                 await this.prisma.campaign.update({
                     where: { id: campaignId },
                     data: { status: client_1.CampaignStatus.COMPLETED, completedAt: new Date() },
@@ -130,18 +132,13 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
         }
         catch (error) {
             this.logger.error(`Failed to process campaign message for recipient ${recipientId}: ${error.message}`);
-            await this.prisma.campaign.update({
-                where: { id: campaignId },
-                data: {
-                    failedCount: { increment: 1 },
-                    recipients: {
-                        update: {
-                            where: { id: recipientId },
-                            data: { status: client_1.MessageStatus.FAILED, failedAt: new Date(), failureReason: error.message },
-                        },
-                    },
-                },
+            const currentRecipient = await this.prisma.campaignRecipient.findUnique({ where: { id: recipientId } });
+            const currentStatus = currentRecipient?.status || client_1.MessageStatus.PENDING;
+            await this.prisma.campaignRecipient.update({
+                where: { id: recipientId },
+                data: { status: client_1.MessageStatus.FAILED, failedAt: new Date(), failureReason: `PROCESSOR_V2: ${error.message}` },
             });
+            await this.campaignsService.updateCampaignStats(campaignId, currentStatus, client_1.MessageStatus.FAILED);
             await this.campaignsService.log(campaignId, `Message failed for recipient ${contactId}: ${error.message}`, client_1.CampaignLogLevel.ERROR);
             throw error;
         }
