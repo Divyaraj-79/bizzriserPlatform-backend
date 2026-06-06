@@ -19,15 +19,18 @@ const bull_1 = require("@nestjs/bull");
 const bullmq_1 = require("bullmq");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const contacts_service_1 = require("../contacts/contacts.service");
+const realtime_gateway_1 = require("../realtime/realtime.gateway");
 const client_1 = require("@prisma/client");
 let CampaignsService = CampaignsService_1 = class CampaignsService {
     prisma;
     contactsService;
+    realtimeGateway;
     campaignQueue;
     logger = new common_1.Logger(CampaignsService_1.name);
-    constructor(prisma, contactsService, campaignQueue) {
+    constructor(prisma, contactsService, realtimeGateway, campaignQueue) {
         this.prisma = prisma;
         this.contactsService = contactsService;
+        this.realtimeGateway = realtimeGateway;
         this.campaignQueue = campaignQueue;
     }
     async findAll(orgId, accountContext) {
@@ -235,19 +238,21 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
                 updateData.failedCount += count;
         }
         if (Object.keys(updateData).length > 0) {
-            await this.prisma.campaign.update({
+            const updatedCampaign = await this.prisma.campaign.update({
                 where: { id: campaignId },
                 data: updateData
             });
+            this.realtimeGateway.emitCampaignUpdate(updatedCampaign.organizationId, updatedCampaign);
         }
     }
 };
 exports.CampaignsService = CampaignsService;
 exports.CampaignsService = CampaignsService = CampaignsService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(2, (0, bull_1.InjectQueue)('campaign-messages')),
+    __param(3, (0, bull_1.InjectQueue)('campaign-messages')),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         contacts_service_1.ContactsService,
+        realtime_gateway_1.RealtimeGateway,
         bullmq_1.Queue])
 ], CampaignsService);
 //# sourceMappingURL=campaigns.service.js.map

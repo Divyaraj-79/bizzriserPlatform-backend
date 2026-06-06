@@ -11,6 +11,7 @@ export declare class RealtimeGateway implements OnGatewayConnection, OnGatewayDi
     emitNewMessage(orgId: string, message: any): void;
     emitMessageStatusUpdate(orgId: string, message: any): void;
     emitConversationUpdate(orgId: string, conversation: any): void;
+    emitCampaignUpdate(orgId: string, campaign: any): void;
     emitImportProgress(orgId: string, jobId: string, stats: any): void;
     emitContactUpdate(orgId: string, eventName: 'contact:created' | 'contact:updated', contact: any): void;
     handleJoinConversation(socket: Socket, conversationId: string): {

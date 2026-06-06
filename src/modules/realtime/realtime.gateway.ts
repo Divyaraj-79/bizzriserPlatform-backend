@@ -98,6 +98,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   /**
+   * Emits campaign updates to instantly refresh campaign stats.
+   */
+  emitCampaignUpdate(orgId: string, campaign: any) {
+    if (this.server) {
+      this.server.to(`org_${orgId}`).emit('campaign:update', campaign);
+    }
+  }
+
+  /**
    * Emits real-time progress for bulk contact imports.
    */
   emitImportProgress(orgId: string, jobId: string, stats: any) {

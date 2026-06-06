@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContactsService } from '../contacts/contacts.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CampaignStatus, CampaignLogLevel, MessageStatus } from '@prisma/client';
 
 
@@ -13,6 +14,7 @@ export class CampaignsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contactsService: ContactsService,
+    private readonly realtimeGateway: RealtimeGateway,
     @InjectQueue('campaign-messages') private readonly campaignQueue: Queue,
   ) {}
 
@@ -274,10 +276,11 @@ export class CampaignsService {
     }
 
     if (Object.keys(updateData).length > 0) {
-      await this.prisma.campaign.update({
+      const updatedCampaign = await this.prisma.campaign.update({
         where: { id: campaignId },
         data: updateData
       });
+      this.realtimeGateway.emitCampaignUpdate(updatedCampaign.organizationId, updatedCampaign);
     }
   }
 }

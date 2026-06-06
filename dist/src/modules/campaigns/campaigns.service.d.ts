@@ -1,13 +1,15 @@
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContactsService } from '../contacts/contacts.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CampaignLogLevel, MessageStatus } from '@prisma/client';
 export declare class CampaignsService {
     private readonly prisma;
     private readonly contactsService;
+    private readonly realtimeGateway;
     private readonly campaignQueue;
     private readonly logger;
-    constructor(prisma: PrismaService, contactsService: ContactsService, campaignQueue: Queue);
+    constructor(prisma: PrismaService, contactsService: ContactsService, realtimeGateway: RealtimeGateway, campaignQueue: Queue);
     findAll(orgId: string, accountContext?: string | string[]): Promise<({
         _count: {
             recipients: number;

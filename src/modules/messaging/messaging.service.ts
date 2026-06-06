@@ -260,10 +260,11 @@ export class MessagingService {
                if (stat.status === MessageStatus.FAILED) updateData.failedCount += count;
             }
 
-            await this.prisma.campaign.update({
+            const updatedCampaign = await this.prisma.campaign.update({
               where: { id: metadata.campaignId },
               data: updateData
             });
+            this.realtimeGateway.emitCampaignUpdate(updatedCampaign.organizationId, updatedCampaign);
          }
       }
       throw error;
@@ -379,10 +380,11 @@ export class MessagingService {
             }
 
             if (oldRecipientStatus !== finalStatus && Object.keys(updateData).length > 0) {
-              await this.prisma.campaign.update({
+              const updatedCampaign = await this.prisma.campaign.update({
                 where: { id: campaignId },
                 data: updateData
               });
+              this.realtimeGateway.emitCampaignUpdate(updatedCampaign.organizationId, updatedCampaign);
             }
          }
       }

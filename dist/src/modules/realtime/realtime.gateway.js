@@ -72,6 +72,11 @@ let RealtimeGateway = RealtimeGateway_1 = class RealtimeGateway {
             this.logger.log(`[RT] Emitted conversation:update to org_${orgId} - ConvID: ${conversation.id}`);
         }
     }
+    emitCampaignUpdate(orgId, campaign) {
+        if (this.server) {
+            this.server.to(`org_${orgId}`).emit('campaign:update', campaign);
+        }
+    }
     emitImportProgress(orgId, jobId, stats) {
         if (this.server) {
             this.server.to(`org_${orgId}`).emit('import:progress', { jobId, ...stats });

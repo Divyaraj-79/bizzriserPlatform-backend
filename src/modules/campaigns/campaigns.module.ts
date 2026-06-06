@@ -5,6 +5,7 @@ import { CampaignProcessor } from './campaign.processor';
 import { MessagingModule } from '../messaging/messaging.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { ContactsModule } from '../contacts/contacts.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { CampaignsController } from './campaigns.controller';
 
 
@@ -16,6 +17,7 @@ import { CampaignsController } from './campaigns.controller';
     MessagingModule,
     PrismaModule,
     ContactsModule,
+    RealtimeModule,
   ],
   controllers: [CampaignsController],
   providers: [CampaignsService, CampaignProcessor],
