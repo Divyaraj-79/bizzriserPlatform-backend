@@ -199,7 +199,56 @@ export class WebhookProcessor {
     });
 
     try {
-      // 4. Check for active chatbot session (WAITING_REPLY)
+      // 4. Check for template button / quick reply click
+      const isButtonClick = messageData.type === 'button' || 
+                            (messageData.type === 'interactive' && messageData.interactive?.type === 'button_reply');
+
+      if (isButtonClick) {
+        let attachedChatbotId: string | null = null;
+
+        // Try finding the original sent message that this button click is replying to
+        if (messageData.context?.id) {
+          const originalMessage = await this.prisma.message.findUnique({
+            where: { waMessageId: messageData.context.id }
+          });
+          if (originalMessage && (originalMessage.metadata as any)?.chatbotId) {
+            attachedChatbotId = (originalMessage.metadata as any).chatbotId;
+          }
+        }
+
+        // Fallback: Find the last sent template message to this contact in the last 24 hours that has a chatbotId in its metadata
+        if (!attachedChatbotId) {
+          const lastSentTemplate = await this.prisma.message.findFirst({
+            where: {
+              contactId: contact.id,
+              direction: MessageDirection.OUTBOUND,
+              type: MessageType.TEMPLATE,
+              createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+            },
+            orderBy: { createdAt: 'desc' }
+          });
+          if (lastSentTemplate && (lastSentTemplate.metadata as any)?.chatbotId) {
+            attachedChatbotId = (lastSentTemplate.metadata as any).chatbotId;
+          }
+        }
+
+        if (attachedChatbotId) {
+          const attachedBot = await this.prisma.chatbot.findFirst({
+            where: { id: attachedChatbotId, organizationId, status: 'ACTIVE' }
+          });
+          if (attachedBot) {
+            // Close any existing active sessions
+            await this.prisma.chatbotSession.updateMany({
+              where: { contactId: contact.id, organizationId, status: { in: ['ACTIVE', 'WAITING_REPLY'] } },
+              data: { status: 'COMPLETED' }
+            });
+            await this.flowExecutor.startSession(organizationId, accountId, attachedBot, contact, messageData);
+            return;
+          }
+        }
+      }
+
+      // Check for active chatbot session (WAITING_REPLY)
       const existingSession = await this.prisma.chatbotSession.findFirst({
         where: { contactId: contact.id, organizationId, status: ChatbotSessionStatus.WAITING_REPLY }
       });

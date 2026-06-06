@@ -13,6 +13,7 @@ export declare class CannedResponsesService {
     create(orgId: string, data: {
         shortcut: string;
         body: string;
+        imageUrl?: string | null;
     }): Promise<{
         id: string;
         organizationId: string;
@@ -24,6 +25,7 @@ export declare class CannedResponsesService {
     update(orgId: string, id: string, data: {
         shortcut?: string;
         body?: string;
+        imageUrl?: string | null;
     }): Promise<{
         id: string;
         organizationId: string;

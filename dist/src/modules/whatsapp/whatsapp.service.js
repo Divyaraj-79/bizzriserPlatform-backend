@@ -361,7 +361,6 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             const response = await axios_1.default.post(url, formData, {
                 headers: {
                     Authorization: `Bearer ${validatedToken}`,
-                    'Content-Type': 'multipart/form-data',
                 },
             });
             return response.data;
@@ -389,6 +388,37 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         }
         catch (error) {
             this.handleError(error, `Failed to fetch media URL for ID ${mediaId}`);
+        }
+    }
+    async downloadMedia(orgId, accountId, mediaId) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const metadataUrl = `${this.graphBaseUrl}/${this.apiVersion}/${mediaId}`;
+        try {
+            this.logger.log(`Fetching media metadata for ID: ${mediaId} via account ${accountId}`);
+            const metadataRes = await axios_1.default.get(metadataUrl, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                },
+            });
+            const downloadUrl = metadataRes.data.url;
+            const mimeType = metadataRes.data.mime_type;
+            this.logger.log(`Downloading media stream from Meta for ID: ${mediaId}...`);
+            const response = await axios_1.default.get(downloadUrl, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                },
+                responseType: 'stream',
+            });
+            return { stream: response.data, mimeType };
+        }
+        catch (error) {
+            this.handleError(error, `Failed to download media for ID ${mediaId}`);
+            throw error;
         }
     }
     async sendMediaMessage(orgId, accountId, to, type, mediaId, caption) {

@@ -20,6 +20,8 @@ import { ChatbotsModule } from './modules/chatbots/chatbots.module';
 import { SequencesModule } from './modules/sequences/sequences.module';
 import { CannedResponsesModule } from './modules/canned-responses/canned-responses.module';
 import { FlowsModule } from './modules/flows/flows.module';
+import { MetaCommerceModule } from './meta-commerce/meta-commerce.module';
+import { ClientsModule } from './modules/clients/clients.module';
 
 @Module({
   imports: [
@@ -87,6 +89,8 @@ import { FlowsModule } from './modules/flows/flows.module';
     SequencesModule,
     CannedResponsesModule,
     FlowsModule,
+    MetaCommerceModule,
+    ClientsModule,
   ],
 })
 export class AppModule {}

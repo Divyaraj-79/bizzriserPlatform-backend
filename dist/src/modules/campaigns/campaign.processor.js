@@ -66,61 +66,140 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
                     language: templateLanguage || undefined
                 }
             });
-            const variableMapping = mappingRecord?.variableMapping || {};
-            const bodyParameters = [];
-            if (Object.keys(variableMapping).length > 0) {
-                const broadcastParams = templateParams || [];
-                Object.keys(variableMapping)
-                    .sort((a, b) => parseInt(a) - parseInt(b))
-                    .forEach(index => {
-                    const broadcastParam = broadcastParams.find(p => String(p.index) === String(index));
-                    let text = '';
-                    const hasStaticValue = broadcastParam && (broadcastParam.field === '__STATIC__' || (broadcastParam.value !== undefined && broadcastParam.value !== null && broadcastParam.field === ''));
-                    if (hasStaticValue || broadcastParam?.field === '__STATIC__') {
-                        text = broadcastParam?.value || '';
+            const resolveParamValue = (param, fallbackFieldKey) => {
+                let text = '';
+                const fieldKey = param?.field || fallbackFieldKey;
+                const hasStaticValue = param && (param.field === '__STATIC__' || (param.value !== undefined && param.value !== null && param.field === ''));
+                if (hasStaticValue || param?.field === '__STATIC__') {
+                    text = param?.value || '';
+                }
+                else if (fieldKey) {
+                    if (fieldKey.startsWith('custom:')) {
+                        const cfKey = fieldKey.replace('custom:', '');
+                        text = contact.customFields?.[cfKey] || '';
+                    }
+                    else if (fieldKey.startsWith('var:')) {
+                        const varKey = fieldKey.replace('var:', '');
+                        text = templateParams?.[varKey] || templateParams?.find?.((p) => p.name === varKey)?.value || '';
                     }
                     else {
-                        const fieldKey = broadcastParam?.field || variableMapping[index];
-                        if (!fieldKey || fieldKey === '__STATIC__') {
-                            text = '';
+                        text = contact[fieldKey] || contact.customFields?.[fieldKey] || '';
+                    }
+                }
+                return text;
+            };
+            const components = [];
+            const broadcastParams = templateParams || [];
+            const headerParams = broadcastParams.filter(p => p.componentType === 'HEADER');
+            if (headerParams.length > 0) {
+                const headerParameters = [];
+                headerParams.forEach(p => {
+                    const resolvedValue = resolveParamValue(p);
+                    if (p.mediaType && p.mediaType !== 'TEXT') {
+                        const mediaValue = String(resolvedValue || '').trim();
+                        const isLink = mediaValue.startsWith('http://') || mediaValue.startsWith('https://');
+                        const mediaObj = isLink ? { link: mediaValue } : { id: mediaValue };
+                        if (p.mediaType === 'IMAGE') {
+                            headerParameters.push({ type: 'image', image: mediaObj });
                         }
-                        else if (fieldKey.startsWith('custom:')) {
-                            const cfKey = fieldKey.replace('custom:', '');
-                            text = contact.customFields?.[cfKey] || '';
+                        else if (p.mediaType === 'VIDEO') {
+                            headerParameters.push({ type: 'video', video: mediaObj });
                         }
-                        else if (fieldKey.startsWith('var:')) {
-                            const varKey = fieldKey.replace('var:', '');
-                            text = templateParams?.[varKey] || templateParams?.find?.((p) => p.name === varKey)?.value || '';
-                        }
-                        else {
-                            text = contact[fieldKey] || contact.customFields?.[fieldKey] || '';
+                        else if (p.mediaType === 'DOCUMENT') {
+                            headerParameters.push({
+                                type: 'document',
+                                document: {
+                                    ...mediaObj,
+                                    filename: p.filename || 'Document.pdf'
+                                }
+                            });
                         }
                     }
-                    bodyParameters.push({ type: 'text', text: String(text || '') });
+                    else {
+                        headerParameters.push({ type: 'text', text: String(resolvedValue?.trim() || ' ') });
+                    }
+                });
+                if (headerParameters.length > 0) {
+                    components.push({ type: 'header', parameters: headerParameters });
+                }
+            }
+            const bodyParameters = [];
+            const bodyParams = broadcastParams.filter(p => !p.componentType || p.componentType === 'BODY');
+            if (bodyParams.length > 0) {
+                bodyParams
+                    .sort((a, b) => parseInt(a.index) - parseInt(b.index))
+                    .forEach(p => {
+                    const resolvedValue = resolveParamValue(p);
+                    bodyParameters.push({ type: 'text', text: String(resolvedValue?.trim() || ' ') });
                 });
             }
             else {
-                (templateParams || [])
-                    .sort((a, b) => a.index - b.index)
-                    .forEach((p) => {
-                    let text = '';
-                    if (p.field) {
-                        text = contact[p.field] || contact.customFields?.[p.field] || '';
+                const variableMapping = mappingRecord?.variableMapping || {};
+                if (Object.keys(variableMapping).length > 0) {
+                    Object.keys(variableMapping)
+                        .sort((a, b) => parseInt(a) - parseInt(b))
+                        .forEach(index => {
+                        const fallbackField = variableMapping[index];
+                        const resolvedValue = resolveParamValue(null, fallbackField);
+                        bodyParameters.push({ type: 'text', text: String(resolvedValue?.trim() || ' ') });
+                    });
+                }
+            }
+            if (bodyParameters.length > 0) {
+                components.push({ type: 'body', parameters: bodyParameters });
+            }
+            const buttonParams = broadcastParams.filter(p => p.componentType === 'BUTTON');
+            if (buttonParams.length > 0) {
+                const buttonsMap = {};
+                buttonParams.forEach(p => {
+                    const btnIdx = typeof p.buttonIndex === 'number' ? p.buttonIndex : parseInt(p.buttonIndex || '0');
+                    if (!buttonsMap[btnIdx]) {
+                        buttonsMap[btnIdx] = [];
                     }
-                    else {
-                        text = p.value || '';
-                    }
-                    bodyParameters.push({ type: 'text', text: String(text || '') });
+                    buttonsMap[btnIdx].push(p);
+                });
+                Object.keys(buttonsMap).forEach(btnIdxStr => {
+                    const btnIdx = parseInt(btnIdxStr);
+                    const params = buttonsMap[btnIdx];
+                    const buttonParameters = params
+                        .sort((a, b) => parseInt(a.index) - parseInt(b.index))
+                        .map(p => {
+                        const resolvedValue = resolveParamValue(p);
+                        return { type: 'text', text: String(resolvedValue?.trim() || ' ') };
+                    });
+                    components.push({
+                        type: 'button',
+                        sub_type: 'url',
+                        index: String(btnIdx),
+                        parameters: buttonParameters
+                    });
                 });
             }
-            const components = [{ type: 'body', parameters: bodyParameters }];
             const finalLanguage = templateLanguage || mappingRecord?.language || 'en_US';
-            await this.messagingService.sendTemplateMessage(orgId, accountId, contactId, templateName, finalLanguage, components, { campaignId });
+            const chatbotId = campaign.metadata?.chatbotId;
+            await this.messagingService.sendTemplateMessage(orgId, accountId, contactId, templateName, finalLanguage, components, {
+                campaignId,
+                ...(chatbotId && { chatbotId })
+            });
+            const currentRecipient = await this.prisma.campaignRecipient.findUnique({
+                where: { id: recipientId },
+                select: { status: true }
+            });
+            const oldRecipientStatus = currentRecipient?.status || client_1.MessageStatus.PENDING;
+            const statusOrder = { PENDING: 0, SENT: 1, DELIVERED: 2, READ: 3, FAILED: 4 };
+            const currentOrder = statusOrder[oldRecipientStatus] || 0;
+            const newOrder = statusOrder[client_1.MessageStatus.SENT] || 0;
+            const recipientUpdate = { sentAt: new Date() };
+            let finalStatus = oldRecipientStatus;
+            if (newOrder > currentOrder) {
+                recipientUpdate.status = client_1.MessageStatus.SENT;
+                finalStatus = client_1.MessageStatus.SENT;
+            }
             await this.prisma.campaignRecipient.update({
                 where: { id: recipientId },
-                data: { status: client_1.MessageStatus.SENT, sentAt: new Date() },
+                data: recipientUpdate,
             });
-            await this.campaignsService.updateCampaignStats(campaignId, oldStatus, client_1.MessageStatus.SENT);
+            await this.campaignsService.updateCampaignStats(campaignId, oldRecipientStatus, finalStatus);
             const updatedCampaign = await this.prisma.campaign.findUnique({ where: { id: campaignId } });
             if (updatedCampaign && updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients) {
                 await this.prisma.campaign.update({
@@ -134,11 +213,13 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
             this.logger.error(`Failed to process campaign message for recipient ${recipientId}: ${error.message}`);
             const currentRecipient = await this.prisma.campaignRecipient.findUnique({ where: { id: recipientId } });
             const currentStatus = currentRecipient?.status || client_1.MessageStatus.PENDING;
-            await this.prisma.campaignRecipient.update({
-                where: { id: recipientId },
-                data: { status: client_1.MessageStatus.FAILED, failedAt: new Date(), failureReason: `PROCESSOR_V2: ${error.message}` },
-            });
-            await this.campaignsService.updateCampaignStats(campaignId, currentStatus, client_1.MessageStatus.FAILED);
+            if (currentStatus !== client_1.MessageStatus.FAILED) {
+                await this.prisma.campaignRecipient.update({
+                    where: { id: recipientId },
+                    data: { status: client_1.MessageStatus.FAILED, failedAt: new Date(), failureReason: `PROCESSOR_V2: ${error.message}` },
+                });
+                await this.campaignsService.updateCampaignStats(campaignId, currentStatus, client_1.MessageStatus.FAILED);
+            }
             await this.campaignsService.log(campaignId, `Message failed for recipient ${contactId}: ${error.message}`, client_1.CampaignLogLevel.ERROR);
             throw error;
         }

@@ -74,8 +74,8 @@ let ContactsController = class ContactsController {
     async update(req, id, data) {
         return this.contactsService.updateContact(req.user.orgId, id, data);
     }
-    async getTagsAnalytics(req) {
-        return this.contactsService.getTagsAnalytics(req.user.orgId);
+    async getTagsAnalytics(req, includeSystem) {
+        return this.contactsService.getTagsAnalytics(req.user.orgId, includeSystem === 'true');
     }
     async bulkAddTags(req, body) {
         return this.contactsService.bulkAddTags(req.user.orgId, body.contactIds, body.tags);
@@ -84,7 +84,13 @@ let ContactsController = class ContactsController {
         return this.contactsService.bulkRemoveTags(req.user.orgId, body.contactIds, body.tags);
     }
     async bulkDelete(req, body) {
-        return this.contactsService.deleteContacts(req.user.orgId, body.contactIds);
+        if (body.tag) {
+            return this.contactsService.deleteContactsByTag(req.user.orgId, body.tag);
+        }
+        if (body.untagged) {
+            return this.contactsService.deleteUntaggedContacts(req.user.orgId);
+        }
+        return this.contactsService.deleteContacts(req.user.orgId, body.contactIds || []);
     }
     async getImportStatus(jobId) {
         return this.contactsService.getImportStatus(jobId);
@@ -149,8 +155,9 @@ __decorate([
 __decorate([
     (0, common_1.Get)('tags'),
     __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('includeSystem')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], ContactsController.prototype, "getTagsAnalytics", null);
 __decorate([

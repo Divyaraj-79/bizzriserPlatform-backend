@@ -184,7 +184,7 @@ export declare class ContactsService {
         totalPages: number;
         debugOrgId: string;
     }>;
-    getTagsAnalytics(orgId: string): Promise<{
+    getTagsAnalytics(orgId: string, includeSystem?: boolean): Promise<{
         name: string;
         count: number;
     }[]>;
@@ -227,4 +227,6 @@ export declare class ContactsService {
         lastContactedAt: Date | null;
     } | undefined)[]>;
     deleteContacts(orgId: string, contactIds: string[]): Promise<import(".prisma/client").Prisma.BatchPayload>;
+    deleteContactsByTag(orgId: string, tag: string): Promise<import(".prisma/client").Prisma.BatchPayload>;
+    deleteUntaggedContacts(orgId: string): Promise<import(".prisma/client").Prisma.BatchPayload>;
 }

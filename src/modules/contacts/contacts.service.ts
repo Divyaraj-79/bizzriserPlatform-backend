@@ -406,7 +406,7 @@ export class ContactsService {
     };
   }
 
-  async getTagsAnalytics(orgId: string) {
+  async getTagsAnalytics(orgId: string, includeSystem = false) {
     const contacts = await this.prisma.contact.findMany({
       where: { organizationId: orgId },
       select: { tags: true }
@@ -415,7 +415,9 @@ export class ContactsService {
     const tagCounts: Record<string, number> = {};
     contacts.forEach(c => {
       c.tags.forEach(tag => {
-        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        if (includeSystem || !tag.startsWith('_sys_')) {
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        }
       });
     });
 
@@ -484,5 +486,27 @@ export class ContactsService {
       this.logger.error(`Failed to bulk delete contacts: ${err.message}`, err.stack);
       throw err;
     }
+  }
+
+  async deleteContactsByTag(orgId: string, tag: string) {
+    this.logger.log(`Delete contacts request for Org: ${orgId} by tag: ${tag}`);
+    const contacts = await this.prisma.contact.findMany({
+      where: { organizationId: orgId, tags: { has: tag } },
+      select: { id: true }
+    });
+    const contactIds = contacts.map(c => c.id);
+    if (contactIds.length === 0) return { count: 0 };
+    return this.deleteContacts(orgId, contactIds);
+  }
+
+  async deleteUntaggedContacts(orgId: string) {
+    this.logger.log(`Delete untagged contacts request for Org: ${orgId}`);
+    const contacts = await this.prisma.contact.findMany({
+      where: { organizationId: orgId, tags: { equals: [] } },
+      select: { id: true }
+    });
+    const contactIds = contacts.map(c => c.id);
+    if (contactIds.length === 0) return { count: 0 };
+    return this.deleteContacts(orgId, contactIds);
   }
 }

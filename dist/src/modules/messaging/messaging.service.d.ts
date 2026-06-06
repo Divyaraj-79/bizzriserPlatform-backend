@@ -128,11 +128,14 @@ export declare class MessagingService {
         lastMessageAt: Date;
         unreadCount: number;
     }>;
+    private messageLocks;
     updateMessageStatus(waMessageId: string, status: MessageStatus, failureReason?: string): Promise<{
         id: string;
         organizationId: string;
         status: import(".prisma/client").$Enums.MessageStatus;
         metadata: import("@prisma/client/runtime/library").JsonValue;
+        deliveredAt: Date | null;
+        readAt: Date | null;
         contactId: string;
     } | null>;
     emitMessageStatus(orgId: string, message: any): void;
@@ -192,4 +195,8 @@ export declare class MessagingService {
     markAsRead(orgId: string, conversationId: string): Promise<any>;
     private calculateWindow;
     getMediaUrl(orgId: string, accountId: string, mediaId: string): Promise<any>;
+    downloadMedia(orgId: string, accountId: string, mediaId: string): Promise<{
+        stream: any;
+        mimeType: any;
+    }>;
 }

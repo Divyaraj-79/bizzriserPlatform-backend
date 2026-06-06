@@ -66,73 +66,159 @@ export class CampaignProcessor {
          }
       });
 
-      const variableMapping = mappingRecord?.variableMapping as any || {};
-      const bodyParameters: any[] = [];
-
-      // If we have a local mapping, use it to resolve variables from the contact
-      if (Object.keys(variableMapping).length > 0) {
-        const broadcastParams = templateParams as any[] || [];
+      const resolveParamValue = (param: any, fallbackFieldKey?: string) => {
+        let text = '';
+        const fieldKey = param?.field || fallbackFieldKey;
         
-        Object.keys(variableMapping)
-          .sort((a, b) => parseInt(a) - parseInt(b))
-          .forEach(index => {
-            const broadcastParam = broadcastParams.find(p => String(p.index) === String(index));
-            let text = '';
+        const hasStaticValue = param && (param.field === '__STATIC__' || (param.value !== undefined && param.value !== null && param.field === ''));
+        
+        if (hasStaticValue || param?.field === '__STATIC__') {
+          text = param?.value || '';
+        } else if (fieldKey) {
+          if (fieldKey.startsWith('custom:')) {
+            const cfKey = fieldKey.replace('custom:', '');
+            text = (contact.customFields as any)?.[cfKey] || '';
+          } else if (fieldKey.startsWith('var:')) {
+            const varKey = fieldKey.replace('var:', '');
+            text = (templateParams as any)?.[varKey] || (templateParams as any)?.find?.((p: any) => p.name === varKey)?.value || '';
+          } else {
+            text = (contact as any)[fieldKey] || (contact.customFields as any)?.[fieldKey] || '';
+          }
+        }
+        return text;
+      };
 
-            // 1. Check for Static Value from UI (even if empty string)
-            const hasStaticValue = broadcastParam && (broadcastParam.field === '__STATIC__' || (broadcastParam.value !== undefined && broadcastParam.value !== null && broadcastParam.field === ''));
+      const components: any[] = [];
+      const broadcastParams = (templateParams as any[]) || [];
+
+      // 1. Build HEADER parameters
+      const headerParams = broadcastParams.filter(p => p.componentType === 'HEADER');
+      if (headerParams.length > 0) {
+        const headerParameters: any[] = [];
+        headerParams.forEach(p => {
+          const resolvedValue = resolveParamValue(p);
+          
+          if (p.mediaType && p.mediaType !== 'TEXT') {
+            const mediaValue = String(resolvedValue || '').trim();
+            const isLink = mediaValue.startsWith('http://') || mediaValue.startsWith('https://');
+            const mediaObj = isLink ? { link: mediaValue } : { id: mediaValue };
             
-            if (hasStaticValue || broadcastParam?.field === '__STATIC__') {
-                text = broadcastParam?.value || '';
-            } else {
-              // 2. Resolve via Mapping
-              const fieldKey = broadcastParam?.field || variableMapping[index];
-              
-              if (!fieldKey || fieldKey === '__STATIC__') {
-                text = '';
-              } else if (fieldKey.startsWith('custom:')) {
-                const cfKey = fieldKey.replace('custom:', '');
-                text = (contact.customFields as any)?.[cfKey] || '';
-              } else if (fieldKey.startsWith('var:')) {
-                const varKey = fieldKey.replace('var:', '');
-                text = (templateParams as any)?.[varKey] || (templateParams as any)?.find?.((p: any) => p.name === varKey)?.value || '';
-              } else {
-                // Try direct field then custom field fallback
-                text = (contact as any)[fieldKey] || (contact.customFields as any)?.[fieldKey] || '';
-              }
+            if (p.mediaType === 'IMAGE') {
+              headerParameters.push({ type: 'image', image: mediaObj });
+            } else if (p.mediaType === 'VIDEO') {
+              headerParameters.push({ type: 'video', video: mediaObj });
+            } else if (p.mediaType === 'DOCUMENT') {
+              headerParameters.push({ 
+                type: 'document', 
+                document: { 
+                  ...mediaObj, 
+                  filename: p.filename || 'Document.pdf' 
+                } 
+              });
             }
-            
-            bodyParameters.push({ type: 'text', text: String(text || '') });
-          });
-      } else {
-        // Fallback to old behavior if no local mapping exists
-        (templateParams || [])
-          .sort((a: any, b: any) => a.index - b.index)
-          .forEach((p: any) => {
-            let text = '';
-            if (p.field) {
-              text = (contact as any)[p.field] || (contact.customFields as any)?.[p.field] || '';
-            } else {
-              text = p.value || '';
-            }
-            bodyParameters.push({ type: 'text', text: String(text || '') });
-          });
+          } else {
+            headerParameters.push({ type: 'text', text: String(resolvedValue?.trim() || ' ') });
+          }
+        });
+        
+        if (headerParameters.length > 0) {
+          components.push({ type: 'header', parameters: headerParameters });
+        }
       }
 
-      const components = [ { type: 'body', parameters: bodyParameters } ];
+      // 2. Build BODY parameters
+      const bodyParameters: any[] = [];
+      const bodyParams = broadcastParams.filter(p => !p.componentType || p.componentType === 'BODY');
+      
+      if (bodyParams.length > 0) {
+        bodyParams
+          .sort((a, b) => parseInt(a.index) - parseInt(b.index))
+          .forEach(p => {
+            const resolvedValue = resolveParamValue(p);
+            bodyParameters.push({ type: 'text', text: String(resolvedValue?.trim() || ' ') });
+          });
+      } else {
+        const variableMapping = mappingRecord?.variableMapping as any || {};
+        if (Object.keys(variableMapping).length > 0) {
+          Object.keys(variableMapping)
+            .sort((a, b) => parseInt(a) - parseInt(b))
+            .forEach(index => {
+              const fallbackField = variableMapping[index];
+              const resolvedValue = resolveParamValue(null, fallbackField);
+              bodyParameters.push({ type: 'text', text: String(resolvedValue?.trim() || ' ') });
+            });
+        }
+      }
+      
+      if (bodyParameters.length > 0) {
+        components.push({ type: 'body', parameters: bodyParameters });
+      }
+
+      // 3. Build BUTTON parameters
+      const buttonParams = broadcastParams.filter(p => p.componentType === 'BUTTON');
+      if (buttonParams.length > 0) {
+        const buttonsMap: Record<number, any[]> = {};
+        buttonParams.forEach(p => {
+          const btnIdx = typeof p.buttonIndex === 'number' ? p.buttonIndex : parseInt(p.buttonIndex || '0');
+          if (!buttonsMap[btnIdx]) {
+            buttonsMap[btnIdx] = [];
+          }
+          buttonsMap[btnIdx].push(p);
+        });
+
+        Object.keys(buttonsMap).forEach(btnIdxStr => {
+          const btnIdx = parseInt(btnIdxStr);
+          const params = buttonsMap[btnIdx];
+          const buttonParameters = params
+            .sort((a, b) => parseInt(a.index) - parseInt(b.index))
+            .map(p => {
+              const resolvedValue = resolveParamValue(p);
+              return { type: 'text', text: String(resolvedValue?.trim() || ' ') };
+            });
+          
+          components.push({
+            type: 'button',
+            sub_type: 'url',
+            index: String(btnIdx),
+            parameters: buttonParameters
+          });
+        });
+      }
 
       // 4. Send template message 
       const finalLanguage = templateLanguage || mappingRecord?.language || 'en_US';
+      const chatbotId = (campaign.metadata as any)?.chatbotId;
       await this.messagingService.sendTemplateMessage(
-        orgId, accountId, contactId, templateName, finalLanguage, components, { campaignId }
+        orgId, accountId, contactId, templateName, finalLanguage, components, { 
+          campaignId,
+          ...(chatbotId && { chatbotId })
+        }
       );
 
-      // 5. Update recipient and campaign
+      // 5. Update recipient and campaign safely (progressive update)
+      const currentRecipient = await this.prisma.campaignRecipient.findUnique({
+        where: { id: recipientId },
+        select: { status: true }
+      });
+      const oldRecipientStatus = currentRecipient?.status || MessageStatus.PENDING;
+      
+      const statusOrder: Record<string, number> = { PENDING: 0, SENT: 1, DELIVERED: 2, READ: 3, FAILED: 4 };
+      const currentOrder = statusOrder[oldRecipientStatus] || 0;
+      const newOrder = statusOrder[MessageStatus.SENT] || 0;
+      
+      const recipientUpdate: any = { sentAt: new Date() };
+      let finalStatus = oldRecipientStatus;
+      
+      if (newOrder > currentOrder) {
+        recipientUpdate.status = MessageStatus.SENT;
+        finalStatus = MessageStatus.SENT;
+      }
+      
       await this.prisma.campaignRecipient.update({
         where: { id: recipientId },
-        data: { status: MessageStatus.SENT, sentAt: new Date() },
+        data: recipientUpdate,
       });
-      await this.campaignsService.updateCampaignStats(campaignId, oldStatus, MessageStatus.SENT);
+      await this.campaignsService.updateCampaignStats(campaignId, oldRecipientStatus, finalStatus);
 
       // 6. Completion check
       const updatedCampaign = await this.prisma.campaign.findUnique({ where: { id: campaignId } });
@@ -150,11 +236,13 @@ export class CampaignProcessor {
       const currentRecipient = await this.prisma.campaignRecipient.findUnique({ where: { id: recipientId } });
       const currentStatus = currentRecipient?.status || MessageStatus.PENDING;
 
-      await this.prisma.campaignRecipient.update({
-        where: { id: recipientId },
-        data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: `PROCESSOR_V2: ${error.message}` } as any,
-      });
-      await this.campaignsService.updateCampaignStats(campaignId, currentStatus, MessageStatus.FAILED);
+      if (currentStatus !== MessageStatus.FAILED) {
+        await this.prisma.campaignRecipient.update({
+          where: { id: recipientId },
+          data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: `PROCESSOR_V2: ${error.message}` } as any,
+        });
+        await this.campaignsService.updateCampaignStats(campaignId, currentStatus, MessageStatus.FAILED);
+      }
 
       await this.campaignsService.log(campaignId, `Message failed for recipient ${contactId}: ${error.message}`, CampaignLogLevel.ERROR);
       throw error;

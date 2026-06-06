@@ -1131,7 +1131,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
                 }
             });
         }
-        await this.sendBotMessageAndTrack(session, contact, 'TEMPLATE', { name: config.templateName, language: config.language || 'en_US' }, () => this.whatsappService.sendTemplateMessage(session.organizationId, session.accountId, contact.phone, config.templateName, config.language || 'en_US', components));
+        await this.sendBotMessageAndTrack(session, contact, 'TEMPLATE', { templateName: config.templateName, name: config.templateName, language: config.language || 'en_US', components }, () => this.whatsappService.sendTemplateMessage(session.organizationId, session.accountId, contact.phone, config.templateName, config.language || 'en_US', components));
         await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
     }
     async handleSendPayment(session, node, edges, allNodes, contact, messageData) {

@@ -1,3 +1,4 @@
+import * as express from 'express';
 import { MessagingService } from './messaging.service';
 export declare class MessagingController {
     private readonly messagingService;
@@ -144,5 +145,5 @@ export declare class MessagingController {
         success: boolean;
     }>;
     markAsRead(id: string, req: any): Promise<any>;
-    getMediaUrl(mediaId: string, accountId: string, req: any): Promise<any>;
+    getMedia(mediaId: string, accountId: string, req: any, res: express.Response): Promise<void>;
 }

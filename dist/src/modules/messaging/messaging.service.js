@@ -197,10 +197,37 @@ let MessagingService = MessagingService_1 = class MessagingService {
                 const recipient = await this.prisma.campaignRecipient.findFirst({
                     where: { campaignId: metadata.campaignId, contactId }
                 });
-                if (recipient) {
+                if (recipient && recipient.status !== client_1.MessageStatus.FAILED) {
+                    const oldStatus = recipient.status;
                     await this.prisma.campaignRecipient.update({
                         where: { id: recipient.id },
                         data: { status: client_1.MessageStatus.FAILED, failedAt: new Date(), failureReason: `API_ERROR: ${error.message}` }
+                    });
+                    const stats = await this.prisma.campaignRecipient.groupBy({
+                        by: ['status'],
+                        where: { campaignId: metadata.campaignId },
+                        _count: { status: true }
+                    });
+                    const updateData = { sentCount: 0, deliveredCount: 0, readCount: 0, failedCount: 0 };
+                    for (const stat of stats) {
+                        const count = stat._count.status;
+                        if (stat.status === client_1.MessageStatus.SENT)
+                            updateData.sentCount += count;
+                        if (stat.status === client_1.MessageStatus.DELIVERED) {
+                            updateData.sentCount += count;
+                            updateData.deliveredCount += count;
+                        }
+                        if (stat.status === client_1.MessageStatus.READ) {
+                            updateData.sentCount += count;
+                            updateData.deliveredCount += count;
+                            updateData.readCount += count;
+                        }
+                        if (stat.status === client_1.MessageStatus.FAILED)
+                            updateData.failedCount += count;
+                    }
+                    await this.prisma.campaign.update({
+                        where: { id: metadata.campaignId },
+                        data: updateData
                     });
                 }
             }
@@ -211,73 +238,122 @@ let MessagingService = MessagingService_1 = class MessagingService {
         const contact = await this.contactsService.createOrUpdate(orgId, phone, data);
         return this.findOrCreateConversation(orgId, accountId, contact.id);
     }
+    messageLocks = new Map();
     async updateMessageStatus(waMessageId, status, failureReason) {
-        const message = await this.prisma.message.findUnique({
-            where: { waMessageId },
-            select: { id: true, organizationId: true, metadata: true, status: true, contactId: true }
-        });
-        if (!message)
-            return null;
-        if (message.status === status)
-            return message;
-        const data = { status };
-        if (status === client_1.MessageStatus.DELIVERED)
-            data.deliveredAt = new Date();
-        else if (status === client_1.MessageStatus.READ)
-            data.readAt = new Date();
-        else if (status === client_1.MessageStatus.FAILED) {
-            data.failedAt = new Date();
-            data.failureReason = failureReason;
-        }
-        const updatedMessage = await this.prisma.message.update({
-            where: { id: message.id },
-            data
-        });
-        const metadata = message.metadata;
-        if (metadata?.campaignId) {
-            const campaignId = metadata.campaignId;
-            const updateData = {};
-            const recipientUpdate = { status };
-            const oldStatus = message.status;
+        const currentLock = this.messageLocks.get(waMessageId) || Promise.resolve();
+        const nextPromise = currentLock.then(async () => {
+            const message = await this.prisma.message.findUnique({
+                where: { waMessageId },
+                select: { id: true, organizationId: true, metadata: true, status: true, contactId: true, deliveredAt: true, readAt: true }
+            });
+            if (!message)
+                return null;
+            const statusOrder = { PENDING: 0, SENT: 1, DELIVERED: 2, READ: 3, FAILED: 4 };
+            const currentOrder = statusOrder[message.status] || 0;
+            const newOrder = statusOrder[status] || 0;
+            const data = {};
             if (status === client_1.MessageStatus.DELIVERED) {
-                updateData.deliveredCount = { increment: 1 };
-                recipientUpdate.deliveredAt = new Date();
+                if (!message.deliveredAt)
+                    data.deliveredAt = new Date();
             }
             else if (status === client_1.MessageStatus.READ) {
-                updateData.readCount = { increment: 1 };
-                recipientUpdate.readAt = new Date();
+                if (!message.readAt)
+                    data.readAt = new Date();
+                if (!message.deliveredAt)
+                    data.deliveredAt = new Date();
             }
             else if (status === client_1.MessageStatus.FAILED) {
-                updateData.failedCount = { increment: 1 };
-                recipientUpdate.failedAt = new Date();
-                recipientUpdate.failureReason = failureReason || 'WEBHOOK_FALLBACK_DEBUG_V2';
+                data.failedAt = new Date();
+                data.failureReason = failureReason;
             }
-            if (oldStatus === client_1.MessageStatus.SENT)
-                updateData.sentCount = { decrement: 1 };
-            else if (oldStatus === client_1.MessageStatus.DELIVERED)
-                updateData.deliveredCount = { decrement: 1 };
-            else if (oldStatus === client_1.MessageStatus.READ)
-                updateData.readCount = { decrement: 1 };
-            else if (oldStatus === client_1.MessageStatus.FAILED)
-                updateData.failedCount = { decrement: 1 };
-            if (Object.keys(updateData).length > 0) {
-                await this.prisma.campaign.update({
-                    where: { id: campaignId },
-                    data: updateData
+            if (status === client_1.MessageStatus.FAILED || newOrder > currentOrder) {
+                data.status = status;
+            }
+            let updatedMessage = message;
+            if (Object.keys(data).length > 0) {
+                updatedMessage = await this.prisma.message.update({
+                    where: { id: message.id },
+                    data
                 });
+            }
+            const metadata = message.metadata;
+            if (metadata?.campaignId) {
+                const campaignId = metadata.campaignId;
                 const recipient = await this.prisma.campaignRecipient.findFirst({
                     where: { campaignId, contactId: updatedMessage.contactId }
                 });
                 if (recipient) {
-                    await this.prisma.campaignRecipient.update({
-                        where: { id: recipient.id },
-                        data: recipientUpdate
-                    });
+                    const oldRecipientStatus = recipient.status;
+                    const currentRecipientOrder = statusOrder[oldRecipientStatus] || 0;
+                    const recipientUpdate = {};
+                    if (status === client_1.MessageStatus.SENT && !recipient.sentAt)
+                        recipientUpdate.sentAt = new Date();
+                    else if (status === client_1.MessageStatus.DELIVERED && !recipient.deliveredAt)
+                        recipientUpdate.deliveredAt = new Date();
+                    else if (status === client_1.MessageStatus.READ) {
+                        if (!recipient.readAt)
+                            recipientUpdate.readAt = new Date();
+                        if (!recipient.deliveredAt)
+                            recipientUpdate.deliveredAt = new Date();
+                    }
+                    else if (status === client_1.MessageStatus.FAILED && !recipient.failedAt) {
+                        recipientUpdate.failedAt = new Date();
+                        recipientUpdate.failureReason = failureReason || 'WEBHOOK_FAILED';
+                    }
+                    let finalStatus = oldRecipientStatus;
+                    if (status === client_1.MessageStatus.FAILED || newOrder > currentRecipientOrder) {
+                        recipientUpdate.status = status;
+                        finalStatus = status;
+                    }
+                    if (Object.keys(recipientUpdate).length > 0) {
+                        await this.prisma.campaignRecipient.update({
+                            where: { id: recipient.id },
+                            data: recipientUpdate
+                        });
+                        const stats = await this.prisma.campaignRecipient.groupBy({
+                            by: ['status'],
+                            where: { campaignId },
+                            _count: { status: true }
+                        });
+                        const updateData = { sentCount: 0, deliveredCount: 0, readCount: 0, failedCount: 0 };
+                        for (const stat of stats) {
+                            const count = stat._count.status;
+                            if (stat.status === client_1.MessageStatus.SENT)
+                                updateData.sentCount += count;
+                            if (stat.status === client_1.MessageStatus.DELIVERED) {
+                                updateData.sentCount += count;
+                                updateData.deliveredCount += count;
+                            }
+                            if (stat.status === client_1.MessageStatus.READ) {
+                                updateData.sentCount += count;
+                                updateData.deliveredCount += count;
+                                updateData.readCount += count;
+                            }
+                            if (stat.status === client_1.MessageStatus.FAILED)
+                                updateData.failedCount += count;
+                        }
+                        if (oldRecipientStatus !== finalStatus && Object.keys(updateData).length > 0) {
+                            await this.prisma.campaign.update({
+                                where: { id: campaignId },
+                                data: updateData
+                            });
+                        }
+                    }
                 }
             }
-        }
-        this.realtimeGateway.emitMessageStatusUpdate(updatedMessage.organizationId, updatedMessage);
-        return updatedMessage;
+            this.realtimeGateway.emitMessageStatusUpdate(updatedMessage.organizationId, updatedMessage);
+            return updatedMessage;
+        }).catch(e => {
+            this.logger.error(`Status update error: ${e.message}`, e.stack);
+            throw e;
+        });
+        this.messageLocks.set(waMessageId, nextPromise);
+        nextPromise.finally(() => {
+            if (this.messageLocks.get(waMessageId) === nextPromise) {
+                this.messageLocks.delete(waMessageId);
+            }
+        });
+        return nextPromise;
     }
     emitMessageStatus(orgId, message) {
         this.realtimeGateway.emitMessageStatusUpdate(orgId, message);
@@ -408,6 +484,9 @@ let MessagingService = MessagingService_1 = class MessagingService {
     }
     async getMediaUrl(orgId, accountId, mediaId) {
         return this.whatsapp.getMediaUrl(orgId, accountId, mediaId);
+    }
+    async downloadMedia(orgId, accountId, mediaId) {
+        return this.whatsapp.downloadMedia(orgId, accountId, mediaId);
     }
 };
 exports.MessagingService = MessagingService;

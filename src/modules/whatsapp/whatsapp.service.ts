@@ -417,7 +417,6 @@ export class WhatsappService {
       const response = await axios.post(url, formData, {
         headers: {
           Authorization: `Bearer ${validatedToken}`,
-          'Content-Type': 'multipart/form-data',
         },
       });
       return response.data;
@@ -450,6 +449,40 @@ export class WhatsappService {
       this.handleError(error, `Failed to fetch media URL for ID ${mediaId}`);
     }
   }
+
+  async downloadMedia(orgId: string, accountId: string, mediaId: string) {
+    const account = await this.prisma.whatsAppAccount.findUnique({
+      where: { id: accountId, organizationId: orgId },
+    });
+    if (!account) throw new ConflictException('Account not found');
+
+    const { token: validatedToken } = await this.getValidToken(account);
+    const metadataUrl = `${this.graphBaseUrl}/${this.apiVersion}/${mediaId}`;
+
+    try {
+      this.logger.log(`Fetching media metadata for ID: ${mediaId} via account ${accountId}`);
+      const metadataRes = await axios.get(metadataUrl, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+        },
+      });
+      const downloadUrl = metadataRes.data.url;
+      const mimeType = metadataRes.data.mime_type;
+
+      this.logger.log(`Downloading media stream from Meta for ID: ${mediaId}...`);
+      const response = await axios.get(downloadUrl, {
+        headers: {
+          Authorization: `Bearer ${validatedToken}`,
+        },
+        responseType: 'stream',
+      });
+      return { stream: response.data, mimeType };
+    } catch (error) {
+      this.handleError(error, `Failed to download media for ID ${mediaId}`);
+      throw error;
+    }
+  }
+
 
   /**
    * Sends a media message (image, video, document, audio) using a media_id.

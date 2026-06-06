@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client');\nconst prisma = new PrismaClient();\nasync function main() {\n  const data = await prisma.cannedResponse.findMany();\n  console.log(data);\n}\nmain().catch(console.error).finally(() => prisma.$disconnect());

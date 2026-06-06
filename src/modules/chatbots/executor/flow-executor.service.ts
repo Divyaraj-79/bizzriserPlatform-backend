@@ -1321,7 +1321,7 @@ export class FlowExecutorService {
     }
 
     await this.sendBotMessageAndTrack(
-      session, contact, 'TEMPLATE' as any, { name: config.templateName, language: config.language || 'en_US' },
+      session, contact, 'TEMPLATE' as any, { templateName: config.templateName, name: config.templateName, language: config.language || 'en_US', components },
       () => this.whatsappService.sendTemplateMessage(
         session.organizationId,
         session.accountId,

@@ -57,7 +57,7 @@ export class CampaignsService {
 
     // Handle Pasted Numbers mode
     if (numbers && numbers.length > 0) {
-       const effectiveTagName = tagName || `pasted_${Date.now()}`;
+       const effectiveTagName = tagName || `_sys_broadcast_${Date.now()}`;
        const contactData = numbers.map(num => ({ phone: num, tags: [effectiveTagName] }));
        
        // Bulk upsert contacts with the specified tag
@@ -251,19 +251,27 @@ export class CampaignsService {
   async updateCampaignStats(campaignId: string, oldStatus: MessageStatus, newStatus: MessageStatus) {
     if (oldStatus === newStatus) return;
 
-    const updateData: any = {};
+    const stats = await this.prisma.campaignRecipient.groupBy({
+      by: ['status'],
+      where: { campaignId },
+      _count: { status: true }
+    });
 
-    // Decrement old status counter if it wasn't PENDING
-    if (oldStatus === MessageStatus.SENT) updateData.sentCount = { decrement: 1 };
-    else if (oldStatus === MessageStatus.DELIVERED) updateData.deliveredCount = { decrement: 1 };
-    else if (oldStatus === MessageStatus.READ) updateData.readCount = { decrement: 1 };
-    else if (oldStatus === MessageStatus.FAILED) updateData.failedCount = { decrement: 1 };
-
-    // Increment new status counter
-    if (newStatus === MessageStatus.SENT) updateData.sentCount = { increment: 1 };
-    else if (newStatus === MessageStatus.DELIVERED) updateData.deliveredCount = { increment: 1 };
-    else if (newStatus === MessageStatus.READ) updateData.readCount = { increment: 1 };
-    else if (newStatus === MessageStatus.FAILED) updateData.failedCount = { increment: 1 };
+    const updateData = { sentCount: 0, deliveredCount: 0, readCount: 0, failedCount: 0 };
+    for (const stat of stats) {
+       const count = stat._count.status;
+       if (stat.status === MessageStatus.SENT) updateData.sentCount += count;
+       if (stat.status === MessageStatus.DELIVERED) {
+          updateData.sentCount += count;
+          updateData.deliveredCount += count;
+       }
+       if (stat.status === MessageStatus.READ) {
+          updateData.sentCount += count;
+          updateData.deliveredCount += count;
+          updateData.readCount += count;
+       }
+       if (stat.status === MessageStatus.FAILED) updateData.failedCount += count;
+    }
 
     if (Object.keys(updateData).length > 0) {
       await this.prisma.campaign.update({

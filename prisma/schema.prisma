@@ -36,6 +36,7 @@ enum ContactStatus {
   ACTIVE
   BLOCKED
   UNSUBSCRIBED
+  DELETED
 }
 
 enum MessageDirection {
@@ -190,6 +191,12 @@ model Organization {
   cannedResponses CannedResponse[]
   whatsappFlows   WhatsAppFlow[]
   whatsappFlowSubmissions WhatsAppFlowSubmission[]
+  userInputFlows          UserInputFlow[]
+  metaCommerceConnection  MetaCommerceConnection?
+  metaCatalogs            MetaCatalog[]
+  catalogOrders           CatalogOrder[]
+  manualPayments          ManualPayment[]
+  catalogCoupons          CatalogCoupon[]
 
   @@map("organizations")
 }
@@ -711,4 +718,113 @@ model WhatsAppFlowSubmission {
   @@index([flowId])
   @@index([contactId])
   @@map("whatsapp_flow_submissions")
+}
+
+model UserInputFlow {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  config         Json         @default("[]")
+  webhookUrl     String?
+  googleSheetId  String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("user_input_flows")
+}
+
+model MetaCommerceConnection {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  accessToken    String
+  businessId     String?
+  catalogId      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("meta_commerce_connections")
+}
+
+model MetaCatalog {
+  id               String          @id @default(uuid())
+  organizationId   String
+  metaCatalogId    String
+  name             String
+  isPublic         Boolean         @default(false)
+  settings         Json            @default("{}")
+  messageTemplates Json            @default("{}")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  coupons          CatalogCoupon[]
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("meta_catalogs")
+}
+
+model CatalogOrder {
+  id              String       @id @default(uuid())
+  organizationId  String
+  catalogId       String
+  orderUniqueId   String?
+  buyerPhone      String?
+  buyerName       String?
+  amount          Float?
+  currency        String?
+  status          String       @default("PENDING")
+  shippingAddress Json         @default("{}")
+  reminderSentAt  DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  metadata        Json         @default("{}")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("catalog_orders")
+}
+
+model ManualPayment {
+  id             String       @id @default(uuid())
+  organizationId String
+  catalogId      String
+  buyerName      String?
+  amount         Float?
+  currency       String?
+  attachmentUrl  String?
+  status         String       @default("PENDING_VERIFICATION")
+  additionalInfo String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("manual_payments")
+}
+
+model CatalogCoupon {
+  id             String       @id @default(uuid())
+  organizationId String
+  catalogId      String
+  code           String
+  type           String       @default("PERCENTAGE")
+  value          Float        @default(0)
+  minOrder       Float        @default(0)
+  maxUses        Int          @default(0)
+  usedCount      Int          @default(0)
+  isActive       Boolean      @default(true)
+  validFrom      DateTime?
+  validTo        DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  metaCatalog    MetaCatalog  @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([catalogId])
+  @@index([organizationId])
+  @@map("catalog_coupons")
 }

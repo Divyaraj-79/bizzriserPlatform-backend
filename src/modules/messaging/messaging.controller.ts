@@ -1,5 +1,6 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Req, UseInterceptors, UploadedFile, Query, Delete } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Req, UseInterceptors, UploadedFile, Query, Delete, Res } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import * as express from 'express';
 import { MessagingService } from './messaging.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -97,11 +98,22 @@ export class MessagingController {
   }
   
   @Get('media/:mediaId')
-  async getMediaUrl(
+  async getMedia(
     @Param('mediaId') mediaId: string,
     @Query('accountId') accountId: string,
-    @Req() req: any
+    @Req() req: any,
+    @Res() res: express.Response,
   ) {
-    return this.messagingService.getMediaUrl(req.user.orgId, accountId, mediaId);
+    const media = await this.messagingService.downloadMedia(
+      req.user.orgId,
+      accountId,
+      mediaId,
+    );
+    if (!media) {
+      res.status(404).send('Media not found');
+      return;
+    }
+    res.setHeader('Content-Type', media.mimeType);
+    media.stream.pipe(res);
   }
 }

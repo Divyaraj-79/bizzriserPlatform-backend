@@ -158,7 +158,7 @@ export declare class ContactsController {
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
     }>;
-    getTagsAnalytics(req: any): Promise<{
+    getTagsAnalytics(req: any, includeSystem?: string): Promise<{
         name: string;
         count: number;
     }[]>;
@@ -207,7 +207,9 @@ export declare class ContactsController {
         lastContactedAt: Date | null;
     } | undefined)[]>;
     bulkDelete(req: any, body: {
-        contactIds: string[];
+        contactIds?: string[];
+        tag?: string;
+        untagged?: boolean;
     }): Promise<import(".prisma/client").Prisma.BatchPayload>;
     getImportStatus(jobId: string): Promise<{
         id: string;

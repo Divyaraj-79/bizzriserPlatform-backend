@@ -1,0 +1,625 @@
+
+> BizzRiserPlatform@0.0.1 start:dev
+> nest start --watch
+
+[2J[3J[H[[90m3:55:54 pm[0m] Starting compilation in watch mode...
+
+[[90m3:55:59 pm[0m] Found 0 errors. Watching for file changes.
+
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +21ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPrismaModule dependencies initialized[39m[38;5;3m +13ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPassportModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +15ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mDiscoveryModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +2ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm
+    "test:cov": "jest --coverage",
+    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:e2e": "jest --config ./test/jest-e2e.json"
+  },
+  "dependencies": {
+    "@nestjs/bull": "^11.0.4",
+    "@nestjs/cli": "^11.0.1",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.3",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/passport": "^11.0.5",
+    "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.1.17",
+    "@nestjs/schematics": "^11.0.1",
+    "@nestjs/websockets": "^11.1.17",
+    "@prisma/client": "^5.22.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.7",
+    "@types/passport-jwt": "^4.0.1",
+    "@types/passport-local": "^1.0.38",
+    "@types/uuid": "^10.0.0",
+    "axios": "^1.13.6",
+    "bcryptjs": "^3.0.3",
+    "bullmq": "^5.71.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "exceljs": "^4.4.0",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.10.1",
+    "joi": "^18.1.1",
+    "libphonenumber-js": "^1.12.42",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "passport-local": "^1.0.0",
+    "prisma": "^5.22.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.8.3",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
+    "@eslint/js": "^9.18.0",
+    "@nestjs/testing": "^11.0.1",
+    "@types/jest": "^30.0.0",
+    "@types/supertest": "^6.0.2",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.2",
+    "globals": "^16.0.0",
+    "jest": "^30.0.0",
+    "prettier": "^3.4.2",
+    "source-map-support": "^0.5.21",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.5",
+    "typescript-eslint": "^8.20.0"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node"
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/canned-responses/:id, DELETE} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mUserInputFlowController {/api/v1/input-flows}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/input-flows, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/input-flows, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/input-flows/:id, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/input-flows/:id, PUT} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/input-flows/:id, DELETE} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[PrismaService] [39m[32mDatabase connection established[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[ImportProcessor] [39m[32m🚀 Bulk Import Processor successfully initialized and connected to Redis.[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +1ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 3:56:01 pm [32m    LOG[39m [38;5;3m[Bootstrap] [39m[32mApplication is running on: http://localhost:3001/api/v1[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    [7m   [0m [96m                ~~~~~~~~~~~~~~~~~~~[0m
+    'handleSequenceLogic' is declared here.
+
+[[90m4:29:54 pm[0m] Found 2 errors. Watching for file changes.
+
+[95m[Nest] 29280  - [39m27/05/2026, 5:55:25 pm [95m  DEBUG[39m [38;5;3m[RealtimeGateway] [39m[95m[Socket] New connection attempt: m5xfFiMYdYjRwe45AAAF[39m
+[32m[Nest] 29280  - [39m27/05/2026, 5:55:25 pm [32m    LOG[39m [38;5;3m[RealtimeGateway] [39m[32m[Socket] Client Authenticated & Joined Room: org_2d672d52-30df-484b-bd07-650ba09f22a6 (User: dc015c30-aff3-4133-8eb3-4624cd36d307, Socket: m5xfFiMYdYjRwe45AAAF)[39m
+[32m[Nest] 29280  - [39m27/05/2026, 5:55:25 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/whatsapp/accounts 200 +239ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 5:55:25 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots/8f8e0a7b-03f2-4de2-9109-5602326db3a2 200 +170ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 5:55:25 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/analytics/campaigns?startDate=2026-04-27T00:00:00.000Z&endDate=2026-05-27T23:59:59.999Z 200 +323ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 5:55:26 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/users/me/permissions 200 +801ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 5:55:26 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/analytics/automations?startDate=2026-04-27T00:00:00.000Z&endDate=2026-05-27T23:59:59.999Z 200 +633ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 5:55:26 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots/8f8e0a7b-03f2-4de2-9109-5602326db3a2 200 +791ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 5:55:26 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/analytics/overview?accountId=a0a1904d-616a-41b5-bf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[32m[Nest] 29280  - [39m27/05/2026, 7:22:42 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots 200 +157ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:22:42 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots 200 +151ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:22:45 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots/8f8e0a7b-03f2-4de2-9109-5602326db3a2 200 +151ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:22:45 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots/8f8e0a7b-03f2-4de2-9109-5602326db3a2 200 +75ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:22:45 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots/8f8e0a7b-03f2-4de2-9109-5602326db3a2 200 +75ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:22:45 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots/8f8e0a7b-03f2-4de2-9109-5602326db3a2 200 +78ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:22:49 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots 200 +145ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:22:49 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots 200 +150ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:22:49 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots 200 +77ms[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:22:49 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/chatbots 200 +148ms[39m
+[95m[Nest] 29280  - [39m27/05/2026, 7:23:51 pm [95m  DEBUG[39m [38;5;3m[ContactsService] [39m[
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[95m[Nest] 29280  - [39m27/05/2026, 7:25:40 pm [95m  DEBUG[39m [38;5;3m[ContactsService] [39m[95m[DEBUG] ContactsService.findAll - Org: 2d672d52-30df-484b-bd07-650ba09f22a6, Where: {"organizationId":"2d672d52-30df-484b-bd07-650ba09f22a6"}, Options: {"page":1,"limit":10}[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:25:40 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/contacts?page=1&limit=10 200 +681ms[39m
+[95m[Nest] 29280  - [39m27/05/2026, 7:25:40 pm [95m  DEBUG[39m [38;5;3m[ContactsService] [39m[95m[DEBUG] ContactsService.findAll - Org: 2d672d52-30df-484b-bd07-650ba09f22a6, Where: {"organizationId":"2d672d52-30df-484b-bd07-650ba09f22a6"}, Options: {"page":1,"limit":10}[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:25:41 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/contacts?page=1&limit=10 200 +156ms[39m
+[95m[Nest] 29280  - [39m27/05/2026, 7:25:41 pm [95m  DEBUG[39m [38;5;3m[ContactsService] [39m[95m[DEBUG] ContactsService.findAll - Org: 2d672d52-30df-484b-bd07-650ba09f22a6, Where: {"organizationId":"2d672d52-30df-484b-bd07-650ba09f22a6"}, Options: {"page":1,"limit":10}[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:25:41 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/contacts?page=1&limit=10 200 +84ms[39m
+[95m[Nest] 29280  - [39m27/05/2026, 7:25:41 pm [95m  DEBUG[39m [38;5;3m[ContactsService] [39m[95m[DEBUG] ContactsService.findAll - Org: 2d672d52-30df-484b-bd07-650ba09f22a6, Where: {"organizationId":"2d672d52-30df-484b-bd07-650ba09f22a6"}, Options: {"page":1,"limit":10}[39m
+[32m[Nest] 29280  - [39m27/05/2026, 7:25:41 pm [32m    LOG[39m [38;5;3m[HTTP] [39m[32mGET /api/v1/contacts?page=1&limit=10 200 +85ms[39m

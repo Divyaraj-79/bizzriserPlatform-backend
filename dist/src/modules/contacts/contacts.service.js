@@ -342,7 +342,7 @@ let ContactsService = ContactsService_1 = class ContactsService {
             debugOrgId: orgId,
         };
     }
-    async getTagsAnalytics(orgId) {
+    async getTagsAnalytics(orgId, includeSystem = false) {
         const contacts = await this.prisma.contact.findMany({
             where: { organizationId: orgId },
             select: { tags: true }
@@ -350,7 +350,9 @@ let ContactsService = ContactsService_1 = class ContactsService {
         const tagCounts = {};
         contacts.forEach(c => {
             c.tags.forEach(tag => {
-                tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                if (includeSystem || !tag.startsWith('_sys_')) {
+                    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                }
             });
         });
         return Object.entries(tagCounts).map(([name, count]) => ({ name, count }));
@@ -409,6 +411,28 @@ let ContactsService = ContactsService_1 = class ContactsService {
             this.logger.error(`Failed to bulk delete contacts: ${err.message}`, err.stack);
             throw err;
         }
+    }
+    async deleteContactsByTag(orgId, tag) {
+        this.logger.log(`Delete contacts request for Org: ${orgId} by tag: ${tag}`);
+        const contacts = await this.prisma.contact.findMany({
+            where: { organizationId: orgId, tags: { has: tag } },
+            select: { id: true }
+        });
+        const contactIds = contacts.map(c => c.id);
+        if (contactIds.length === 0)
+            return { count: 0 };
+        return this.deleteContacts(orgId, contactIds);
+    }
+    async deleteUntaggedContacts(orgId) {
+        this.logger.log(`Delete untagged contacts request for Org: ${orgId}`);
+        const contacts = await this.prisma.contact.findMany({
+            where: { organizationId: orgId, tags: { equals: [] } },
+            select: { id: true }
+        });
+        const contactIds = contacts.map(c => c.id);
+        if (contactIds.length === 0)
+            return { count: 0 };
+        return this.deleteContacts(orgId, contactIds);
     }
 };
 exports.ContactsService = ContactsService;

@@ -12,7 +12,7 @@ export class CannedResponsesService {
     });
   }
 
-  async create(orgId: string, data: { shortcut: string; body: string }) {
+  async create(orgId: string, data: { shortcut: string; body: string; imageUrl?: string | null }) {
     return this.prisma.cannedResponse.create({
       data: {
         ...data,
@@ -21,7 +21,7 @@ export class CannedResponsesService {
     });
   }
 
-  async update(orgId: string, id: string, data: { shortcut?: string; body?: string }) {
+  async update(orgId: string, id: string, data: { shortcut?: string; body?: string; imageUrl?: string | null }) {
     const response = await this.prisma.cannedResponse.findUnique({ where: { id } });
     if (!response || response.organizationId !== orgId) {
       throw new NotFoundException('Canned response not found');

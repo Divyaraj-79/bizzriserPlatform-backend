@@ -195,6 +195,46 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
             sentAt: new Date(parseInt(messageData.timestamp) * 1000),
         });
         try {
+            const isButtonClick = messageData.type === 'button' ||
+                (messageData.type === 'interactive' && messageData.interactive?.type === 'button_reply');
+            if (isButtonClick) {
+                let attachedChatbotId = null;
+                if (messageData.context?.id) {
+                    const originalMessage = await this.prisma.message.findUnique({
+                        where: { waMessageId: messageData.context.id }
+                    });
+                    if (originalMessage && originalMessage.metadata?.chatbotId) {
+                        attachedChatbotId = originalMessage.metadata.chatbotId;
+                    }
+                }
+                if (!attachedChatbotId) {
+                    const lastSentTemplate = await this.prisma.message.findFirst({
+                        where: {
+                            contactId: contact.id,
+                            direction: client_1.MessageDirection.OUTBOUND,
+                            type: client_1.MessageType.TEMPLATE,
+                            createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+                        },
+                        orderBy: { createdAt: 'desc' }
+                    });
+                    if (lastSentTemplate && lastSentTemplate.metadata?.chatbotId) {
+                        attachedChatbotId = lastSentTemplate.metadata.chatbotId;
+                    }
+                }
+                if (attachedChatbotId) {
+                    const attachedBot = await this.prisma.chatbot.findFirst({
+                        where: { id: attachedChatbotId, organizationId, status: 'ACTIVE' }
+                    });
+                    if (attachedBot) {
+                        await this.prisma.chatbotSession.updateMany({
+                            where: { contactId: contact.id, organizationId, status: { in: ['ACTIVE', 'WAITING_REPLY'] } },
+                            data: { status: 'COMPLETED' }
+                        });
+                        await this.flowExecutor.startSession(organizationId, accountId, attachedBot, contact, messageData);
+                        return;
+                    }
+                }
+            }
             const existingSession = await this.prisma.chatbotSession.findFirst({
                 where: { contactId: contact.id, organizationId, status: client_1.ChatbotSessionStatus.WAITING_REPLY }
             });

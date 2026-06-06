@@ -93,8 +93,11 @@ export class ContactsController {
   }
 
   @Get('tags')
-  async getTagsAnalytics(@Req() req: any) {
-    return this.contactsService.getTagsAnalytics(req.user.orgId);
+  async getTagsAnalytics(
+    @Req() req: any,
+    @Query('includeSystem') includeSystem?: string
+  ) {
+    return this.contactsService.getTagsAnalytics(req.user.orgId, includeSystem === 'true');
   }
 
   @Post('bulk-tags')
@@ -116,9 +119,15 @@ export class ContactsController {
   @Delete('bulk-delete')
   async bulkDelete(
     @Req() req: any,
-    @Body() body: { contactIds: string[] }
+    @Body() body: { contactIds?: string[], tag?: string, untagged?: boolean }
   ) {
-    return this.contactsService.deleteContacts(req.user.orgId, body.contactIds);
+    if (body.tag) {
+      return this.contactsService.deleteContactsByTag(req.user.orgId, body.tag);
+    }
+    if (body.untagged) {
+      return this.contactsService.deleteUntaggedContacts(req.user.orgId);
+    }
+    return this.contactsService.deleteContacts(req.user.orgId, body.contactIds || []);
   }
 
   @Get('import/status/:jobId')

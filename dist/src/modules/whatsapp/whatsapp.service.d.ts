@@ -40,6 +40,10 @@ export declare class WhatsappService {
     } | undefined>;
     uploadMedia(orgId: string, accountId: string, file: any): Promise<any>;
     getMediaUrl(orgId: string, accountId: string, mediaId: string): Promise<any>;
+    downloadMedia(orgId: string, accountId: string, mediaId: string): Promise<{
+        stream: any;
+        mimeType: any;
+    }>;
     sendMediaMessage(orgId: string, accountId: string, to: string, type: MessageType, mediaId: string, caption?: string): Promise<any>;
     sendMediaByUrl(orgId: string, accountId: string, to: string, mediaType: 'image' | 'video' | 'document' | 'audio', mediaUrl: string, caption?: string, filename?: string): Promise<any>;
     sendInteractiveButtons(orgId: string, accountId: string, to: string, bodyText: string, buttons: Array<{
