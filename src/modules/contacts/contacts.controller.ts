@@ -72,6 +72,14 @@ export class ContactsController {
     return result;
   }
 
+  @Get('tags')
+  async getTagsAnalytics(
+    @Req() req: any,
+    @Query('includeSystem') includeSystem?: string
+  ) {
+    return this.contactsService.getTagsAnalytics(req.user.orgId, includeSystem === 'true');
+  }
+
   @Get(':id')
   async findOne(@Req() req: any, @Param('id') id: string) {
     return this.contactsService.findOne(req.user.orgId, id);
@@ -92,13 +100,7 @@ export class ContactsController {
     return this.contactsService.updateContact(req.user.orgId, id, data);
   }
 
-  @Get('tags')
-  async getTagsAnalytics(
-    @Req() req: any,
-    @Query('includeSystem') includeSystem?: string
-  ) {
-    return this.contactsService.getTagsAnalytics(req.user.orgId, includeSystem === 'true');
-  }
+
 
   @Post('bulk-tags')
   async bulkAddTags(

@@ -65,6 +65,9 @@ let ContactsController = class ContactsController {
         }
         return result;
     }
+    async getTagsAnalytics(req, includeSystem) {
+        return this.contactsService.getTagsAnalytics(req.user.orgId, includeSystem === 'true');
+    }
     async findOne(req, id) {
         return this.contactsService.findOne(req.user.orgId, id);
     }
@@ -73,9 +76,6 @@ let ContactsController = class ContactsController {
     }
     async update(req, id, data) {
         return this.contactsService.updateContact(req.user.orgId, id, data);
-    }
-    async getTagsAnalytics(req, includeSystem) {
-        return this.contactsService.getTagsAnalytics(req.user.orgId, includeSystem === 'true');
     }
     async bulkAddTags(req, body) {
         return this.contactsService.bulkAddTags(req.user.orgId, body.contactIds, body.tags);
@@ -126,6 +126,14 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], ContactsController.prototype, "findAll", null);
 __decorate([
+    (0, common_1.Get)('tags'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('includeSystem')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], ContactsController.prototype, "getTagsAnalytics", null);
+__decorate([
     (0, common_1.Get)(':id'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)('id')),
@@ -152,14 +160,6 @@ __decorate([
     __metadata("design:paramtypes", [Object, String, Object]),
     __metadata("design:returntype", Promise)
 ], ContactsController.prototype, "update", null);
-__decorate([
-    (0, common_1.Get)('tags'),
-    __param(0, (0, common_1.Req)()),
-    __param(1, (0, common_1.Query)('includeSystem')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String]),
-    __metadata("design:returntype", Promise)
-], ContactsController.prototype, "getTagsAnalytics", null);
 __decorate([
     (0, common_1.Post)('bulk-tags'),
     __param(0, (0, common_1.Req)()),

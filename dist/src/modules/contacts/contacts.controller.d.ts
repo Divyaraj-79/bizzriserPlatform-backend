@@ -59,6 +59,10 @@ export declare class ContactsController {
         totalPages: number;
         debugOrgId: string;
     }>;
+    getTagsAnalytics(req: any, includeSystem?: string): Promise<{
+        name: string;
+        count: number;
+    }[]>;
     findOne(req: any, id: string): Promise<{
         windowExpiresAt: Date | null;
         isInWindow: boolean;
@@ -158,10 +162,6 @@ export declare class ContactsController {
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
     }>;
-    getTagsAnalytics(req: any, includeSystem?: string): Promise<{
-        name: string;
-        count: number;
-    }[]>;
     bulkAddTags(req: any, body: {
         contactIds: string[];
         tags: string[];
