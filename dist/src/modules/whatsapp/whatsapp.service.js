@@ -353,38 +353,37 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         }
         const { token: validatedToken } = await this.getValidToken(account);
         const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/media`;
+        const fs = require('fs');
+        const path = require('path');
+        const os = require('os');
+        const tempFilePath = path.join(os.tmpdir(), `meta_upload_${Date.now()}_${file.originalname}`);
+        fs.writeFileSync(tempFilePath, file.buffer);
         const formData = new form_data_1.default();
-        formData.append('file', file.buffer, {
-            filename: file.originalname,
-            contentType: file.mimetype,
-            knownLength: file.size,
-        });
+        formData.append('file', fs.createReadStream(tempFilePath));
         formData.append('type', file.mimetype);
         formData.append('messaging_product', 'whatsapp');
         try {
             this.logger.log(`Uploading media to Meta for org ${orgId} via account ${accountId}... (Size: ${file.size} bytes, Mime: ${file.mimetype})`);
-            const contentLength = await new Promise((resolve, reject) => {
-                formData.getLength((err, length) => {
-                    if (err)
-                        reject(err);
-                    else
-                        resolve(length);
-                });
-            });
-            this.logger.log(`Calculated Content-Length: ${contentLength}`);
             const response = await axios_1.default.post(url, formData, {
                 headers: {
                     Authorization: `Bearer ${validatedToken}`,
                     ...formData.getHeaders(),
-                    'Content-Length': String(contentLength),
                 },
                 maxBodyLength: Infinity,
                 maxContentLength: Infinity,
             });
             this.logger.log(`Upload successful! Media ID: ${response.data.id}`);
+            try {
+                fs.unlinkSync(tempFilePath);
+            }
+            catch (e) { }
             return response.data;
         }
         catch (error) {
+            try {
+                fs.unlinkSync(tempFilePath);
+            }
+            catch (e) { }
             this.handleError(error, `Failed to upload media via account ${accountId}`);
         }
     }
