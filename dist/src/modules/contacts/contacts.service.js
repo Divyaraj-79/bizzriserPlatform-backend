@@ -342,6 +342,58 @@ let ContactsService = ContactsService_1 = class ContactsService {
             debugOrgId: orgId,
         };
     }
+    async exportContacts(orgId, options) {
+        const { search, status, tag, startDate, endDate } = options;
+        let finalOrgId = orgId;
+        const where = finalOrgId ? { organizationId: finalOrgId } : {};
+        if (status && status !== 'ALL' && status !== 'All Statuses') {
+            where.status = status.toUpperCase();
+        }
+        if (tag && tag !== 'All Labels') {
+            where.tags = { has: tag };
+        }
+        if (search) {
+            const query = search.toLowerCase();
+            where.OR = [
+                { firstName: { contains: query, mode: 'insensitive' } },
+                { lastName: { contains: query, mode: 'insensitive' } },
+                { phone: { contains: query, mode: 'insensitive' } },
+                { email: { contains: query, mode: 'insensitive' } },
+            ];
+        }
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate)
+                where.createdAt.gte = new Date(startDate);
+            if (endDate) {
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                where.createdAt.lte = end;
+            }
+        }
+        const contacts = await this.prisma.contact.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+        });
+        return contacts.map(c => {
+            const mapped = {
+                'First Name': c.firstName || '',
+                'Last Name': c.lastName || '',
+                'Phone': c.phone || '',
+                'Email': c.email || '',
+                'Status': c.status || 'ACTIVE',
+                'Tags': c.tags.join(', ') || '',
+                'Created At': c.createdAt.toLocaleString(),
+                'Updated At': c.updatedAt.toLocaleString()
+            };
+            if (c.customFields && typeof c.customFields === 'object') {
+                for (const [k, v] of Object.entries(c.customFields)) {
+                    mapped[`Custom: ${k}`] = v;
+                }
+            }
+            return mapped;
+        });
+    }
     async getTagsAnalytics(orgId, includeSystem = false) {
         const contacts = await this.prisma.contact.findMany({
             where: { organizationId: orgId },

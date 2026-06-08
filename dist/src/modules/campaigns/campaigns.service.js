@@ -178,7 +178,11 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         return { success: true, message: 'Campaign cancelled' };
     }
     async deleteCampaign(orgId, campaignId) {
-        return this.prisma.campaign.delete({ where: { id: campaignId, organizationId: orgId } });
+        return this.prisma.$transaction([
+            this.prisma.campaignRecipient.deleteMany({ where: { campaignId } }),
+            this.prisma.campaignLog.deleteMany({ where: { campaignId } }),
+            this.prisma.campaign.delete({ where: { id: campaignId, organizationId: orgId } })
+        ]);
     }
     async getCampaign(orgId, campaignId) {
         return this.prisma.campaign.findUnique({

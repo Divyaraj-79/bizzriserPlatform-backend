@@ -65,6 +65,26 @@ let ContactsController = class ContactsController {
         }
         return result;
     }
+    async exportContacts(req, search, status, tag, startDate, endDate) {
+        let effectiveOrgId = req.user.orgId;
+        if (!effectiveOrgId && req.user.userId) {
+            try {
+                const fullUser = await this.contactsService.prisma.user.findUnique({
+                    where: { id: req.user.userId },
+                    select: { organizationId: true }
+                });
+                effectiveOrgId = fullUser?.organizationId;
+            }
+            catch (e) { }
+        }
+        return this.contactsService.exportContacts(effectiveOrgId, {
+            search,
+            status,
+            tag,
+            startDate,
+            endDate
+        });
+    }
     async getTagsAnalytics(req, includeSystem) {
         return this.contactsService.getTagsAnalytics(req.user.orgId, includeSystem === 'true');
     }
@@ -125,6 +145,18 @@ __decorate([
     __metadata("design:paramtypes", [Object, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], ContactsController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Get)('export'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('search')),
+    __param(2, (0, common_1.Query)('status')),
+    __param(3, (0, common_1.Query)('tag')),
+    __param(4, (0, common_1.Query)('startDate')),
+    __param(5, (0, common_1.Query)('endDate')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, String, String, String, String]),
+    __metadata("design:returntype", Promise)
+], ContactsController.prototype, "exportContacts", null);
 __decorate([
     (0, common_1.Get)('tags'),
     __param(0, (0, common_1.Req)()),

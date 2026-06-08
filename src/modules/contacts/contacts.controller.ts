@@ -72,6 +72,35 @@ export class ContactsController {
     return result;
   }
 
+  @Get('export')
+  async exportContacts(
+    @Req() req: any,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('tag') tag?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    let effectiveOrgId = req.user.orgId;
+    if (!effectiveOrgId && req.user.userId) {
+      try {
+        const fullUser = await (this.contactsService as any).prisma.user.findUnique({
+          where: { id: req.user.userId },
+          select: { organizationId: true }
+        });
+        effectiveOrgId = fullUser?.organizationId;
+      } catch (e) {}
+    }
+
+    return this.contactsService.exportContacts(effectiveOrgId, {
+      search,
+      status,
+      tag,
+      startDate,
+      endDate
+    });
+  }
+
   @Get('tags')
   async getTagsAnalytics(
     @Req() req: any,

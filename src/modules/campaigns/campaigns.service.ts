@@ -212,7 +212,11 @@ export class CampaignsService {
   }
 
   async deleteCampaign(orgId: string, campaignId: string) {
-    return this.prisma.campaign.delete({ where: { id: campaignId, organizationId: orgId } });
+    return this.prisma.$transaction([
+      this.prisma.campaignRecipient.deleteMany({ where: { campaignId } }),
+      this.prisma.campaignLog.deleteMany({ where: { campaignId } }),
+      this.prisma.campaign.delete({ where: { id: campaignId, organizationId: orgId } })
+    ]);
   }
 
   async getCampaign(orgId: string, campaignId: string) {
