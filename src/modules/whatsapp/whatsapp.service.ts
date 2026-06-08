@@ -5,6 +5,7 @@ import { SecurityService } from '../../common/services/security.service';
 import { WebhookEventType, MessageType } from '@prisma/client';
 import axios, { AxiosInstance } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import FormData from 'form-data';
 
 @Injectable()
 export class WhatsappService {
@@ -408,17 +409,36 @@ export class WhatsappService {
     const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/media`;
 
     const formData = new FormData();
-    formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+    formData.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+      knownLength: file.size,
+    });
     formData.append('type', file.mimetype);
     formData.append('messaging_product', 'whatsapp');
 
     try {
-      this.logger.log(`Uploading media to Meta for org ${orgId} via account ${accountId}...`);
+      this.logger.log(`Uploading media to Meta for org ${orgId} via account ${accountId}... (Size: ${file.size} bytes, Mime: ${file.mimetype})`);
+      
+      const contentLength = await new Promise((resolve, reject) => {
+        formData.getLength((err, length) => {
+          if (err) reject(err);
+          else resolve(length);
+        });
+      });
+      
+      this.logger.log(`Calculated Content-Length: ${contentLength}`);
+
       const response = await axios.post(url, formData, {
         headers: {
           Authorization: `Bearer ${validatedToken}`,
+          ...formData.getHeaders(),
+          'Content-Length': String(contentLength),
         },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
       });
+      this.logger.log(`Upload successful! Media ID: ${response.data.id}`);
       return response.data;
     } catch (error) {
       this.handleError(error, `Failed to upload media via account ${accountId}`);

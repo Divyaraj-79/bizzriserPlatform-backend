@@ -226,7 +226,13 @@ export declare class ContactsService {
         optedOutAt: Date | null;
         lastContactedAt: Date | null;
     } | undefined)[]>;
-    deleteContacts(orgId: string, contactIds: string[]): Promise<import(".prisma/client").Prisma.BatchPayload>;
-    deleteContactsByTag(orgId: string, tag: string): Promise<import(".prisma/client").Prisma.BatchPayload>;
-    deleteUntaggedContacts(orgId: string): Promise<import(".prisma/client").Prisma.BatchPayload>;
+    deleteContacts(orgId: string, contactIds: string[]): Promise<{
+        count: number;
+    }>;
+    deleteContactsByTag(orgId: string, tag: string): Promise<{
+        count: number;
+    }>;
+    deleteUntaggedContacts(orgId: string): Promise<{
+        count: number;
+    }>;
 }

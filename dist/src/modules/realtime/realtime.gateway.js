@@ -106,7 +106,7 @@ __decorate([
 exports.RealtimeGateway = RealtimeGateway = RealtimeGateway_1 = __decorate([
     (0, websockets_1.WebSocketGateway)({
         cors: {
-            origin: '*',
+            origin: true,
             methods: ['GET', 'POST'],
             credentials: true,
         },

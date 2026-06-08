@@ -457,32 +457,42 @@ export class ContactsService {
     
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // 1. Delete associated messages
-        const msgResult = await tx.message.deleteMany({
-          where: { contactId: { in: contactIds }, organizationId: orgId }
-        });
-        this.logger.log(`Deleted ${msgResult.count} associated messages`);
+        const CHUNK_SIZE = 5000;
+        let totalDeleted = 0;
 
-        // 2. Delete associated campaign recipients
-        const campaignResult = await tx.campaignRecipient.deleteMany({
-          where: { contactId: { in: contactIds } }
-        });
-        this.logger.log(`Deleted ${campaignResult.count} campaign recipient records`);
+        for (let i = 0; i < contactIds.length; i += CHUNK_SIZE) {
+          const chunk = contactIds.slice(i, i + CHUNK_SIZE);
+          
+          // 1. Delete associated messages
+          await tx.message.deleteMany({
+            where: { contactId: { in: chunk }, organizationId: orgId }
+          });
 
-        // 3. Delete associated conversations
-        const convResult = await tx.conversation.deleteMany({
-          where: { contactId: { in: contactIds }, organizationId: orgId }
-        });
-        this.logger.log(`Deleted ${convResult.count} conversations`);
+          // 2. Delete associated campaign recipients
+          await tx.campaignRecipient.deleteMany({
+            where: { contactId: { in: chunk } }
+          });
 
-        // 4. Finally delete the contacts
-        const contactResult = await tx.contact.deleteMany({
-          where: { id: { in: contactIds }, organizationId: orgId }
-        });
-        this.logger.log(`Successfully deleted ${contactResult.count} contacts`);
+          // 3. Delete associated conversations
+          await tx.conversation.deleteMany({
+            where: { contactId: { in: chunk }, organizationId: orgId }
+          });
+
+          // 4. Finally delete the contacts
+          const contactResult = await tx.contact.deleteMany({
+            where: { id: { in: chunk }, organizationId: orgId }
+          });
+          
+          totalDeleted += contactResult.count;
+        }
+
+        this.logger.log(`Successfully deleted ${totalDeleted} contacts in chunks`);
 
         this.realtimeGateway.emitContactUpdate(orgId, 'contact:updated', { deleted: true });
-        return contactResult;
+        return { count: totalDeleted };
+      }, {
+        maxWait: 10000, // default: 2000
+        timeout: 60000  // default: 5000 (5s is too short for 25k records)
       });
     } catch (err: any) {
       this.logger.error(`Failed to bulk delete contacts: ${err.message}`, err.stack);

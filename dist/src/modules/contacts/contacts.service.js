@@ -387,24 +387,30 @@ let ContactsService = ContactsService_1 = class ContactsService {
         this.logger.log(`Bulk delete request for Org: ${orgId}, IDs: ${contactIds.length}`);
         try {
             return await this.prisma.$transaction(async (tx) => {
-                const msgResult = await tx.message.deleteMany({
-                    where: { contactId: { in: contactIds }, organizationId: orgId }
-                });
-                this.logger.log(`Deleted ${msgResult.count} associated messages`);
-                const campaignResult = await tx.campaignRecipient.deleteMany({
-                    where: { contactId: { in: contactIds } }
-                });
-                this.logger.log(`Deleted ${campaignResult.count} campaign recipient records`);
-                const convResult = await tx.conversation.deleteMany({
-                    where: { contactId: { in: contactIds }, organizationId: orgId }
-                });
-                this.logger.log(`Deleted ${convResult.count} conversations`);
-                const contactResult = await tx.contact.deleteMany({
-                    where: { id: { in: contactIds }, organizationId: orgId }
-                });
-                this.logger.log(`Successfully deleted ${contactResult.count} contacts`);
+                const CHUNK_SIZE = 5000;
+                let totalDeleted = 0;
+                for (let i = 0; i < contactIds.length; i += CHUNK_SIZE) {
+                    const chunk = contactIds.slice(i, i + CHUNK_SIZE);
+                    await tx.message.deleteMany({
+                        where: { contactId: { in: chunk }, organizationId: orgId }
+                    });
+                    await tx.campaignRecipient.deleteMany({
+                        where: { contactId: { in: chunk } }
+                    });
+                    await tx.conversation.deleteMany({
+                        where: { contactId: { in: chunk }, organizationId: orgId }
+                    });
+                    const contactResult = await tx.contact.deleteMany({
+                        where: { id: { in: chunk }, organizationId: orgId }
+                    });
+                    totalDeleted += contactResult.count;
+                }
+                this.logger.log(`Successfully deleted ${totalDeleted} contacts in chunks`);
                 this.realtimeGateway.emitContactUpdate(orgId, 'contact:updated', { deleted: true });
-                return contactResult;
+                return { count: totalDeleted };
+            }, {
+                maxWait: 10000,
+                timeout: 60000
             });
         }
         catch (err) {

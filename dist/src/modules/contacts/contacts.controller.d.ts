@@ -210,7 +210,9 @@ export declare class ContactsController {
         contactIds?: string[];
         tag?: string;
         untagged?: boolean;
-    }): Promise<import(".prisma/client").Prisma.BatchPayload>;
+    }): Promise<{
+        count: number;
+    }>;
     getImportStatus(jobId: string): Promise<{
         id: string;
         status: any;
