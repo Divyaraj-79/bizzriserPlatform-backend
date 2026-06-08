@@ -359,9 +359,11 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         const tempFilePath = path.join(os.tmpdir(), `meta_upload_${Date.now()}_${file.originalname}`);
         fs.writeFileSync(tempFilePath, file.buffer);
         const formData = new form_data_1.default();
-        formData.append('file', fs.createReadStream(tempFilePath));
-        formData.append('type', file.mimetype);
         formData.append('messaging_product', 'whatsapp');
+        formData.append('file', fs.createReadStream(tempFilePath), {
+            contentType: file.mimetype,
+            filename: file.originalname,
+        });
         try {
             this.logger.log(`Uploading media to Meta for org ${orgId} via account ${accountId}... (Size: ${file.size} bytes, Mime: ${file.mimetype})`);
             const response = await axios_1.default.post(url, formData, {

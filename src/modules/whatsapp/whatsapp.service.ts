@@ -415,9 +415,11 @@ export class WhatsappService {
     fs.writeFileSync(tempFilePath, file.buffer);
 
     const formData = new FormData();
-    formData.append('file', fs.createReadStream(tempFilePath));
-    formData.append('type', file.mimetype);
     formData.append('messaging_product', 'whatsapp');
+    formData.append('file', fs.createReadStream(tempFilePath), {
+      contentType: file.mimetype,
+      filename: file.originalname,
+    });
 
     try {
       this.logger.log(`Uploading media to Meta for org ${orgId} via account ${accountId}... (Size: ${file.size} bytes, Mime: ${file.mimetype})`);
