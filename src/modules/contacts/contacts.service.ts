@@ -299,7 +299,6 @@ export class ContactsService {
     if (!job) throw new NotFoundException('Import job not found');
     
     const state = await job.getState();
-    const progressData = job.progress; 
     const result = job.returnvalue;
     const failedReason = job.failedReason;
 
@@ -311,12 +310,15 @@ export class ContactsService {
     let current = 0;
     let total = 0;
 
-    if (typeof progressData === 'object' && progressData !== null) {
-      current = progressData.current || 0;
-      total = progressData.total || 0;
-      progress = progressData.progress || (total > 0 ? Math.floor((current / total) * 100) : 0);
+    // job.progress is a function in Bull
+    const actualProgressData = typeof job.progress === 'function' ? job.progress() : job.progress;
+
+    if (typeof actualProgressData === 'object' && actualProgressData !== null) {
+      current = actualProgressData.current || 0;
+      total = actualProgressData.total || 0;
+      progress = actualProgressData.progress || (total > 0 ? Math.floor((current / total) * 100) : 0);
     } else {
-      progress = typeof progressData === 'number' ? progressData : 0;
+      progress = typeof actualProgressData === 'number' ? actualProgressData : 0;
     }
 
     return {
