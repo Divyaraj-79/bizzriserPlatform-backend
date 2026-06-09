@@ -20,18 +20,10 @@ export class CampaignsService {
 
 
   async findAll(orgId: string, accountContext?: string | string[]) {
-    const where: any = { organizationId: orgId };
-    
-    if (accountContext) {
-      if (Array.isArray(accountContext)) {
-        where.whatsappAccountId = { in: accountContext };
-      } else {
-        where.whatsappAccountId = accountContext;
-      }
-    }
-
+    // Note: accountId is stored inside metadata JSON, not as a top-level column on Campaign.
+    // We return all campaigns for the org; filtering by account would require JSON path queries.
     return this.prisma.campaign.findMany({
-      where,
+      where: { organizationId: orgId },
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { recipients: true } }

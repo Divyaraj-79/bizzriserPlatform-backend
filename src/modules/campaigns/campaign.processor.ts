@@ -100,6 +100,13 @@ export class CampaignProcessor {
           
           if (p.mediaType && p.mediaType !== 'TEXT') {
             const mediaValue = String(resolvedValue || '').trim();
+            
+            // Guard: skip empty media values to avoid sending invalid requests to Meta
+            if (!mediaValue) {
+              this.logger.warn(`[Campaign ${campaignId}] Skipping media header for recipient ${recipientId}: media value is empty. Template: ${templateName}, mediaType: ${p.mediaType}`);
+              return; // Skip this param
+            }
+            
             const isLink = mediaValue.startsWith('http://') || mediaValue.startsWith('https://');
             const mediaObj = isLink ? { link: mediaValue } : { id: mediaValue };
             
@@ -125,6 +132,7 @@ export class CampaignProcessor {
           components.push({ type: 'header', parameters: headerParameters });
         }
       }
+
 
       // 2. Build BODY parameters
       const bodyParameters: any[] = [];

@@ -395,6 +395,7 @@ export class WhatsappService {
 
   /**
    * Uploads a file to Meta's media endpoint to get a media_id.
+   * Uses buffer directly (no temp files) for reliability across all environments.
    */
   async uploadMedia(orgId: string, accountId: string, file: any) {
     const account = await this.prisma.whatsAppAccount.findUnique({
@@ -402,27 +403,25 @@ export class WhatsappService {
     });
     if (!account) throw new ConflictException('Account not found');
 
-    if (!file) {
-      throw new ConflictException('No file provided for upload.');
+    if (!file || !file.buffer) {
+      this.logger.error(`[uploadMedia] Upload failed: file object is missing or has no buffer. File: ${JSON.stringify({ originalname: file?.originalname, mimetype: file?.mimetype, size: file?.size })}`);
+      throw new HttpException('No file buffer received. Ensure the request uses multipart/form-data encoding.', HttpStatus.BAD_REQUEST);
     }
+
     const { token: validatedToken } = await this.getValidToken(account);
     const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/media`;
 
-    const fs = require('fs');
-    const path = require('path');
-    const os = require('os');
-    const tempFilePath = path.join(os.tmpdir(), `meta_upload_${Date.now()}_${file.originalname}`);
-    fs.writeFileSync(tempFilePath, file.buffer);
-
+    // Use buffer directly — no temp files needed, works in Docker/serverless/read-only filesystems
     const formData = new FormData();
     formData.append('messaging_product', 'whatsapp');
-    formData.append('file', fs.createReadStream(tempFilePath), {
+    formData.append('file', file.buffer, {
       contentType: file.mimetype,
       filename: file.originalname,
+      knownLength: file.buffer.length,
     });
 
     try {
-      this.logger.log(`Uploading media to Meta for org ${orgId} via account ${accountId}... (Size: ${file.size} bytes, Mime: ${file.mimetype})`);
+      this.logger.log(`[uploadMedia] Uploading to Meta: ${file.originalname} (${file.size} bytes, ${file.mimetype}) via account ${accountId}`);
 
       const response = await axios.post(url, formData, {
         headers: {
@@ -432,16 +431,16 @@ export class WhatsappService {
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
       });
-      
-      this.logger.log(`Upload successful! Media ID: ${response.data.id}`);
-      
-      // Cleanup temp file
-      try { fs.unlinkSync(tempFilePath); } catch (e) {}
-      
-      return response.data;
+
+      if (!response.data?.id) {
+        this.logger.error(`[uploadMedia] Meta returned success but no media ID. Response: ${JSON.stringify(response.data)}`);
+        throw new HttpException('Media uploaded but Meta did not return a media ID. Please try again.', HttpStatus.BAD_GATEWAY);
+      }
+
+      this.logger.log(`[uploadMedia] SUCCESS. Media ID: ${response.data.id}`);
+      return { id: response.data.id };
     } catch (error) {
-      // Cleanup temp file on error
-      try { fs.unlinkSync(tempFilePath); } catch (e) {}
+      if (error instanceof HttpException) throw error;
       this.handleError(error, `Failed to upload media via account ${accountId}`);
     }
   }

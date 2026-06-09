@@ -97,6 +97,10 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
                     const resolvedValue = resolveParamValue(p);
                     if (p.mediaType && p.mediaType !== 'TEXT') {
                         const mediaValue = String(resolvedValue || '').trim();
+                        if (!mediaValue) {
+                            this.logger.warn(`[Campaign ${campaignId}] Skipping media header for recipient ${recipientId}: media value is empty. Template: ${templateName}, mediaType: ${p.mediaType}`);
+                            return;
+                        }
                         const isLink = mediaValue.startsWith('http://') || mediaValue.startsWith('https://');
                         const mediaObj = isLink ? { link: mediaValue } : { id: mediaValue };
                         if (p.mediaType === 'IMAGE') {

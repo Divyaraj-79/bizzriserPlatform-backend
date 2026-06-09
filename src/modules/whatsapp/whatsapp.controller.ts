@@ -54,7 +54,10 @@ export class WhatsappController {
   }
 
   @Post('accounts/:id/media/upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 25 * 1024 * 1024 }, // 25MB max (Meta's limit for images/videos)
+    storage: undefined, // Use memory storage (buffer)
+  }))
   async uploadMedia(
     @Req() req: any,
     @Param('id') id: string,

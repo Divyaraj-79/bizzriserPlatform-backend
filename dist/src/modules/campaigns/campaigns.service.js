@@ -34,17 +34,8 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         this.campaignQueue = campaignQueue;
     }
     async findAll(orgId, accountContext) {
-        const where = { organizationId: orgId };
-        if (accountContext) {
-            if (Array.isArray(accountContext)) {
-                where.whatsappAccountId = { in: accountContext };
-            }
-            else {
-                where.whatsappAccountId = accountContext;
-            }
-        }
         return this.prisma.campaign.findMany({
-            where,
+            where: { organizationId: orgId },
             orderBy: { createdAt: 'desc' },
             include: {
                 _count: { select: { recipients: true } }

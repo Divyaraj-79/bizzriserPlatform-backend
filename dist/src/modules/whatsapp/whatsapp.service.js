@@ -348,24 +348,21 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         });
         if (!account)
             throw new common_1.ConflictException('Account not found');
-        if (!file) {
-            throw new common_1.ConflictException('No file provided for upload.');
+        if (!file || !file.buffer) {
+            this.logger.error(`[uploadMedia] Upload failed: file object is missing or has no buffer. File: ${JSON.stringify({ originalname: file?.originalname, mimetype: file?.mimetype, size: file?.size })}`);
+            throw new common_1.HttpException('No file buffer received. Ensure the request uses multipart/form-data encoding.', common_1.HttpStatus.BAD_REQUEST);
         }
         const { token: validatedToken } = await this.getValidToken(account);
         const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/media`;
-        const fs = require('fs');
-        const path = require('path');
-        const os = require('os');
-        const tempFilePath = path.join(os.tmpdir(), `meta_upload_${Date.now()}_${file.originalname}`);
-        fs.writeFileSync(tempFilePath, file.buffer);
         const formData = new form_data_1.default();
         formData.append('messaging_product', 'whatsapp');
-        formData.append('file', fs.createReadStream(tempFilePath), {
+        formData.append('file', file.buffer, {
             contentType: file.mimetype,
             filename: file.originalname,
+            knownLength: file.buffer.length,
         });
         try {
-            this.logger.log(`Uploading media to Meta for org ${orgId} via account ${accountId}... (Size: ${file.size} bytes, Mime: ${file.mimetype})`);
+            this.logger.log(`[uploadMedia] Uploading to Meta: ${file.originalname} (${file.size} bytes, ${file.mimetype}) via account ${accountId}`);
             const response = await axios_1.default.post(url, formData, {
                 headers: {
                     Authorization: `Bearer ${validatedToken}`,
@@ -374,18 +371,16 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                 maxBodyLength: Infinity,
                 maxContentLength: Infinity,
             });
-            this.logger.log(`Upload successful! Media ID: ${response.data.id}`);
-            try {
-                fs.unlinkSync(tempFilePath);
+            if (!response.data?.id) {
+                this.logger.error(`[uploadMedia] Meta returned success but no media ID. Response: ${JSON.stringify(response.data)}`);
+                throw new common_1.HttpException('Media uploaded but Meta did not return a media ID. Please try again.', common_1.HttpStatus.BAD_GATEWAY);
             }
-            catch (e) { }
-            return response.data;
+            this.logger.log(`[uploadMedia] SUCCESS. Media ID: ${response.data.id}`);
+            return { id: response.data.id };
         }
         catch (error) {
-            try {
-                fs.unlinkSync(tempFilePath);
-            }
-            catch (e) { }
+            if (error instanceof common_1.HttpException)
+                throw error;
             this.handleError(error, `Failed to upload media via account ${accountId}`);
         }
     }

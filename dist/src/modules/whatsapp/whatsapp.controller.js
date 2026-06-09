@@ -113,7 +113,10 @@ __decorate([
 ], WhatsappController.prototype, "uploadTemplateMedia", null);
 __decorate([
     (0, common_1.Post)('accounts/:id/media/upload'),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', {
+        limits: { fileSize: 25 * 1024 * 1024 },
+        storage: undefined,
+    })),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)('id')),
     __param(2, (0, common_1.UploadedFile)()),
