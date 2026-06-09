@@ -39,8 +39,10 @@ export declare class WhatsappService {
         handle: any;
     } | undefined>;
     uploadMedia(orgId: string, accountId: string, file: any): Promise<{
-        id: any;
-    } | undefined>;
+        id: string;
+        url: string;
+        filename: string;
+    }>;
     getMediaUrl(orgId: string, accountId: string, mediaId: string): Promise<any>;
     downloadMedia(orgId: string, accountId: string, mediaId: string): Promise<{
         stream: any;

@@ -48,8 +48,10 @@ export declare class WhatsappController {
         handle: any;
     } | undefined>;
     uploadMedia(req: any, id: string, file: any): Promise<{
-        id: any;
-    } | undefined>;
+        id: string;
+        url: string;
+        filename: string;
+    }>;
     updateTemplate(req: any, id: string, templateId: string, data: any): Promise<any>;
     deleteTemplate(req: any, id: string, templateName: string): Promise<any>;
     syncAccount(req: any, id: string): Promise<{

@@ -21,7 +21,6 @@ const security_service_1 = require("../../common/services/security.service");
 const client_1 = require("@prisma/client");
 const axios_1 = __importDefault(require("axios"));
 const uuid_1 = require("uuid");
-const form_data_1 = __importDefault(require("form-data"));
 let WhatsappService = WhatsappService_1 = class WhatsappService {
     configService;
     prisma;
@@ -349,39 +348,32 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         if (!account)
             throw new common_1.ConflictException('Account not found');
         if (!file || !file.buffer) {
-            this.logger.error(`[uploadMedia] Upload failed: file object is missing or has no buffer. File: ${JSON.stringify({ originalname: file?.originalname, mimetype: file?.mimetype, size: file?.size })}`);
-            throw new common_1.HttpException('No file buffer received. Ensure the request uses multipart/form-data encoding.', common_1.HttpStatus.BAD_REQUEST);
+            this.logger.error(`[uploadMedia] No file buffer received. File: ${JSON.stringify({ name: file?.originalname, size: file?.size })}`);
+            throw new common_1.HttpException('No file buffer received. Ensure the request uses multipart/form-data.', common_1.HttpStatus.BAD_REQUEST);
         }
-        const { token: validatedToken } = await this.getValidToken(account);
-        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/media`;
-        const formData = new form_data_1.default();
-        formData.append('messaging_product', 'whatsapp');
-        formData.append('file', file.buffer, {
-            contentType: file.mimetype,
-            filename: file.originalname,
-            knownLength: file.buffer.length,
-        });
         try {
-            this.logger.log(`[uploadMedia] Uploading to Meta: ${file.originalname} (${file.size} bytes, ${file.mimetype}) via account ${accountId}`);
-            const response = await axios_1.default.post(url, formData, {
-                headers: {
-                    Authorization: `Bearer ${validatedToken}`,
-                    ...formData.getHeaders(),
-                },
-                maxBodyLength: Infinity,
-                maxContentLength: Infinity,
-            });
-            if (!response.data?.id) {
-                this.logger.error(`[uploadMedia] Meta returned success but no media ID. Response: ${JSON.stringify(response.data)}`);
-                throw new common_1.HttpException('Media uploaded but Meta did not return a media ID. Please try again.', common_1.HttpStatus.BAD_GATEWAY);
+            const fs = require('fs');
+            const path = require('path');
+            const ext = path.extname(file.originalname) || `.${file.mimetype.split('/')[1] || 'bin'}`;
+            const uniqueName = `broadcast_${orgId.slice(0, 8)}_${Date.now()}${ext}`;
+            const uploadsDir = path.join(process.cwd(), 'uploads');
+            if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
             }
-            this.logger.log(`[uploadMedia] SUCCESS. Media ID: ${response.data.id}`);
-            return { id: response.data.id };
+            const filePath = path.join(uploadsDir, uniqueName);
+            fs.writeFileSync(filePath, file.buffer);
+            const backendUrl = this.configService.get('app.publicUrl') || 'http://localhost:3001';
+            const publicUrl = `${backendUrl}/uploads/${uniqueName}`;
+            this.logger.log(`[uploadMedia] Saved ${file.originalname} (${file.size} bytes) → ${publicUrl}`);
+            return {
+                id: publicUrl,
+                url: publicUrl,
+                filename: uniqueName
+            };
         }
         catch (error) {
-            if (error instanceof common_1.HttpException)
-                throw error;
-            this.handleError(error, `Failed to upload media via account ${accountId}`);
+            this.logger.error(`[uploadMedia] Failed to save file: ${error.message}`);
+            throw new common_1.HttpException(`Failed to process media upload: ${error.message}`, common_1.HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
     async getMediaUrl(orgId, accountId, mediaId) {

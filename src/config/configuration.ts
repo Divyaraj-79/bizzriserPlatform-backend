@@ -4,6 +4,10 @@ export const appConfig = registerAs('app', () => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3001', 10),
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
+  // The public URL of this backend server (used to generate media URLs for WhatsApp template sends)
+  // On Render: https://bizzriserplatform-backend.onrender.com
+  // Locally: http://localhost:3001
+  publicUrl: process.env.BACKEND_PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? '3001'}`,
 }));
 
 export const databaseConfig = registerAs('database', () => ({

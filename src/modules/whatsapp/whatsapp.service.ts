@@ -394,8 +394,17 @@ export class WhatsappService {
   }
 
   /**
-   * Uploads a file to Meta's media endpoint to get a media_id.
-   * Uses buffer directly (no temp files) for reliability across all environments.
+   * Handles media upload for broadcast template headers.
+   *
+   * WHY we save to disk and return a URL (not upload to Meta's media API):
+   * Meta error 131053 ("Media upload error") occurs when using media_ids from
+   * the /phone_numbers/{id}/media API in template message component parameters.
+   * That API is for regular messaging, not template header components.
+   * Meta's template delivery pipeline cannot reliably resolve those media_ids.
+   *
+   * The RELIABLE solution: save the file locally, serve it publicly via our backend,
+   * and use that URL as { link: url } in the template component — exactly like the
+   * "Link URL" mode that already works perfectly.
    */
   async uploadMedia(orgId: string, accountId: string, file: any) {
     const account = await this.prisma.whatsAppAccount.findUnique({
@@ -404,46 +413,45 @@ export class WhatsappService {
     if (!account) throw new ConflictException('Account not found');
 
     if (!file || !file.buffer) {
-      this.logger.error(`[uploadMedia] Upload failed: file object is missing or has no buffer. File: ${JSON.stringify({ originalname: file?.originalname, mimetype: file?.mimetype, size: file?.size })}`);
-      throw new HttpException('No file buffer received. Ensure the request uses multipart/form-data encoding.', HttpStatus.BAD_REQUEST);
+      this.logger.error(`[uploadMedia] No file buffer received. File: ${JSON.stringify({ name: file?.originalname, size: file?.size })}`);
+      throw new HttpException('No file buffer received. Ensure the request uses multipart/form-data.', HttpStatus.BAD_REQUEST);
     }
-
-    const { token: validatedToken } = await this.getValidToken(account);
-    const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/media`;
-
-    // Use buffer directly — no temp files needed, works in Docker/serverless/read-only filesystems
-    const formData = new FormData();
-    formData.append('messaging_product', 'whatsapp');
-    formData.append('file', file.buffer, {
-      contentType: file.mimetype,
-      filename: file.originalname,
-      knownLength: file.buffer.length,
-    });
 
     try {
-      this.logger.log(`[uploadMedia] Uploading to Meta: ${file.originalname} (${file.size} bytes, ${file.mimetype}) via account ${accountId}`);
+      const fs = require('fs');
+      const path = require('path');
 
-      const response = await axios.post(url, formData, {
-        headers: {
-          Authorization: `Bearer ${validatedToken}`,
-          ...formData.getHeaders(),
-        },
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-      });
+      // Generate a unique filename to avoid collisions
+      const ext = path.extname(file.originalname) || `.${file.mimetype.split('/')[1] || 'bin'}`;
+      const uniqueName = `broadcast_${orgId.slice(0, 8)}_${Date.now()}${ext}`;
 
-      if (!response.data?.id) {
-        this.logger.error(`[uploadMedia] Meta returned success but no media ID. Response: ${JSON.stringify(response.data)}`);
-        throw new HttpException('Media uploaded but Meta did not return a media ID. Please try again.', HttpStatus.BAD_GATEWAY);
+      // Save to uploads/ directory (served as static files from our backend)
+      const uploadsDir = path.join(process.cwd(), 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
       }
 
-      this.logger.log(`[uploadMedia] SUCCESS. Media ID: ${response.data.id}`);
-      return { id: response.data.id };
+      const filePath = path.join(uploadsDir, uniqueName);
+      fs.writeFileSync(filePath, file.buffer);
+
+      // Build the public URL using the configured backend public URL
+      const backendUrl = this.configService.get<string>('app.publicUrl') || 'http://localhost:3001';
+      const publicUrl = `${backendUrl}/uploads/${uniqueName}`;
+
+      this.logger.log(`[uploadMedia] Saved ${file.originalname} (${file.size} bytes) → ${publicUrl}`);
+
+      // Return a URL that Meta can download from (works as template { link: url } parameter)
+      return { 
+        id: publicUrl,       // Stored as 'id' in paramMapping for compatibility
+        url: publicUrl,      // Explicit url field
+        filename: uniqueName 
+      };
     } catch (error) {
-      if (error instanceof HttpException) throw error;
-      this.handleError(error, `Failed to upload media via account ${accountId}`);
+      this.logger.error(`[uploadMedia] Failed to save file: ${error.message}`);
+      throw new HttpException(`Failed to process media upload: ${error.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
 
   /**
    * Resolves a Meta Media ID into a temporary download URL.

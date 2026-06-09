@@ -103,12 +103,20 @@ export class CampaignProcessor {
             
             // Guard: skip empty media values to avoid sending invalid requests to Meta
             if (!mediaValue) {
-              this.logger.warn(`[Campaign ${campaignId}] Skipping media header for recipient ${recipientId}: media value is empty. Template: ${templateName}, mediaType: ${p.mediaType}`);
+              this.logger.warn(`[Campaign ${campaignId}] Skipping empty media header for recipient ${recipientId}. Template: ${templateName}, mediaType: ${p.mediaType}`);
               return; // Skip this param
             }
             
             const isLink = mediaValue.startsWith('http://') || mediaValue.startsWith('https://');
+            
+            // Guard: reject incomplete URLs like bare 'https://' which cause Meta error 131053
+            if (isLink && mediaValue.length < 12) {
+              this.logger.error(`[Campaign ${campaignId}] BLOCKED: media URL "${mediaValue}" is not a complete URL (too short). This would cause Meta error 131053. Skipping. Template: ${templateName}`);
+              return; // Skip this param
+            }
+            
             const mediaObj = isLink ? { link: mediaValue } : { id: mediaValue };
+
             
             if (p.mediaType === 'IMAGE') {
               headerParameters.push({ type: 'image', image: mediaObj });

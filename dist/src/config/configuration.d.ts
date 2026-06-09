@@ -2,10 +2,12 @@ export declare const appConfig: (() => {
     nodeEnv: string;
     port: number;
     apiPrefix: string;
+    publicUrl: string;
 }) & import("@nestjs/config").ConfigFactoryKeyHost<{
     nodeEnv: string;
     port: number;
     apiPrefix: string;
+    publicUrl: string;
 }>;
 export declare const databaseConfig: (() => {
     url: string | undefined;

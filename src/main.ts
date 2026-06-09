@@ -4,6 +4,9 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter, TransformInterceptor, LoggingInterceptor } from './common';
 import { json, urlencoded } from 'express';
+import * as express from 'express';
+import * as path from 'path';
+import * as fs from 'fs';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -19,6 +22,16 @@ async function bootstrap() {
     }
   }));
   app.use(urlencoded({ limit: '150mb', extended: true }));
+
+  // Serve uploaded media files publicly (used as WhatsApp template media links)
+  // Meta requires publicly accessible URLs for template media headers; media_ids from upload API cause error 131053
+  const uploadsDir = path.join(process.cwd(), 'uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    logger.log(`Created uploads directory: ${uploadsDir}`);
+  }
+  app.use('/uploads', express.static(uploadsDir));
+  logger.log(`Serving static uploads from: ${uploadsDir} at /uploads`);
 
 
   const configService = app.get(ConfigService);

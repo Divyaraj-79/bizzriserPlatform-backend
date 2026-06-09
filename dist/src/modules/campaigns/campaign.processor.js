@@ -98,10 +98,14 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
                     if (p.mediaType && p.mediaType !== 'TEXT') {
                         const mediaValue = String(resolvedValue || '').trim();
                         if (!mediaValue) {
-                            this.logger.warn(`[Campaign ${campaignId}] Skipping media header for recipient ${recipientId}: media value is empty. Template: ${templateName}, mediaType: ${p.mediaType}`);
+                            this.logger.warn(`[Campaign ${campaignId}] Skipping empty media header for recipient ${recipientId}. Template: ${templateName}, mediaType: ${p.mediaType}`);
                             return;
                         }
                         const isLink = mediaValue.startsWith('http://') || mediaValue.startsWith('https://');
+                        if (isLink && mediaValue.length < 12) {
+                            this.logger.error(`[Campaign ${campaignId}] BLOCKED: media URL "${mediaValue}" is not a complete URL (too short). This would cause Meta error 131053. Skipping. Template: ${templateName}`);
+                            return;
+                        }
                         const mediaObj = isLink ? { link: mediaValue } : { id: mediaValue };
                         if (p.mediaType === 'IMAGE') {
                             headerParameters.push({ type: 'image', image: mediaObj });
