@@ -59,6 +59,7 @@ export declare class AnalyticsService {
         deliveredCount: number;
         readCount: number;
         failedCount: number;
+        responseCount: number;
     }[]>;
     getAutomationsAnalytics(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string): Promise<{
         chatbots: {

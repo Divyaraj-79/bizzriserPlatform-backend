@@ -244,6 +244,8 @@ export class CampaignsService {
       'Delivered At': (r as any).deliveredAt?.toLocaleString() || 'N/A',
       'Read At': (r as any).readAt?.toLocaleString() || 'N/A',
       'Failed At': (r as any).failedAt?.toLocaleString() || 'N/A',
+      'First Response': (r as any).firstResponse || 'N/A',
+      'Responded At': (r as any).firstResponseAt?.toLocaleString() || 'N/A',
       'Error': (r as any).failureReason || ''
     }));
   }

@@ -416,6 +416,7 @@ model Campaign {
   deliveredCount Int            @default(0)
   readCount      Int            @default(0)
   failedCount    Int            @default(0)
+  responseCount  Int            @default(0)
   metadata       Json           @default("{}")
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -439,6 +440,8 @@ model CampaignRecipient {
   readAt     DateTime?
   failedAt   DateTime?
   failureReason String?
+  firstResponse String?
+  firstResponseAt DateTime?
   createdAt  DateTime      @default(now())
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)

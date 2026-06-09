@@ -20,19 +20,22 @@ const messaging_service_1 = require("../messaging/messaging.service");
 const client_1 = require("@prisma/client");
 const flow_executor_service_1 = require("../chatbots/executor/flow-executor.service");
 const whatsapp_service_1 = require("../whatsapp/whatsapp.service");
+const realtime_gateway_1 = require("../realtime/realtime.gateway");
 let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
     prisma;
     contactsService;
     messagingService;
     flowExecutor;
     whatsappService;
+    realtimeGateway;
     logger = new common_1.Logger(WebhookProcessor_1.name);
-    constructor(prisma, contactsService, messagingService, flowExecutor, whatsappService) {
+    constructor(prisma, contactsService, messagingService, flowExecutor, whatsappService, realtimeGateway) {
         this.prisma = prisma;
         this.contactsService = contactsService;
         this.messagingService = messagingService;
         this.flowExecutor = flowExecutor;
         this.whatsappService = whatsappService;
+        this.realtimeGateway = realtimeGateway;
     }
     async handleProcessMessage(job) {
         const { eventId, accountId, organizationId, data } = job.data;
@@ -195,6 +198,66 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
             sentAt: new Date(parseInt(messageData.timestamp) * 1000),
         });
         try {
+            const recipientCampaign = await this.prisma.campaignRecipient.findFirst({
+                where: {
+                    contactId: contact.id,
+                    firstResponse: null,
+                },
+                orderBy: {
+                    createdAt: 'desc',
+                },
+            });
+            if (recipientCampaign) {
+                let textBody = '';
+                if (messageData.type === 'text') {
+                    textBody = messageData.text.body;
+                }
+                else if (messageData.type === 'interactive') {
+                    const it = messageData.interactive.type;
+                    if (it === 'button_reply') {
+                        textBody = messageData.interactive.button_reply?.title || '[Button Reply]';
+                    }
+                    else if (it === 'list_reply') {
+                        textBody = messageData.interactive.list_reply?.title || '[List Reply]';
+                    }
+                    else if (it === 'nfm_reply') {
+                        textBody = messageData.interactive.nfm_reply?.body || '[Flow Response]';
+                    }
+                    else {
+                        textBody = messageData.interactive[it]?.title || '[Interactive Reply]';
+                    }
+                }
+                else if (messageData.type === 'button') {
+                    textBody = messageData.button.text;
+                }
+                else {
+                    textBody = `[${messageData.type.toUpperCase()}]`;
+                }
+                await this.prisma.campaignRecipient.update({
+                    where: { id: recipientCampaign.id },
+                    data: {
+                        firstResponse: textBody || '[Empty Message]',
+                        firstResponseAt: new Date(),
+                    },
+                });
+                const stats = await this.prisma.campaignRecipient.count({
+                    where: {
+                        campaignId: recipientCampaign.campaignId,
+                        firstResponse: { not: null },
+                    },
+                });
+                const updatedCampaign = await this.prisma.campaign.update({
+                    where: { id: recipientCampaign.campaignId },
+                    data: { responseCount: stats },
+                });
+                this.realtimeGateway.emitCampaignUpdate(updatedCampaign.organizationId, updatedCampaign);
+                this.logger.log(`Recorded first response for campaign ${recipientCampaign.campaignId}, contact ${contact.id}: "${textBody}"`);
+            }
+        }
+        catch (campaignErr) {
+            this.logger.error(`Error capturing campaign first response: ${campaignErr.message}`, campaignErr.stack);
+        }
+        try {
             const isButtonClick = messageData.type === 'button' ||
                 (messageData.type === 'interactive' && messageData.interactive?.type === 'button_reply');
             if (isButtonClick) {
@@ -296,6 +359,7 @@ exports.WebhookProcessor = WebhookProcessor = WebhookProcessor_1 = __decorate([
         contacts_service_1.ContactsService,
         messaging_service_1.MessagingService,
         flow_executor_service_1.FlowExecutorService,
-        whatsapp_service_1.WhatsappService])
+        whatsapp_service_1.WhatsappService,
+        realtime_gateway_1.RealtimeGateway])
 ], WebhookProcessor);
 //# sourceMappingURL=webhook.processor.js.map

@@ -7,6 +7,7 @@ import { MessagingService } from '../messaging/messaging.service';
 import { MessageDirection, MessageType, MessageStatus, ChatbotSessionStatus } from '@prisma/client';
 import { FlowExecutorService } from '../chatbots/executor/flow-executor.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 @Processor('webhooks')
 export class WebhookProcessor {
@@ -18,6 +19,7 @@ export class WebhookProcessor {
     private readonly messagingService: MessagingService,
     private readonly flowExecutor: FlowExecutorService,
     private readonly whatsappService: WhatsappService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   @Process('process-message')
@@ -197,6 +199,69 @@ export class WebhookProcessor {
       content,
       sentAt: new Date(parseInt(messageData.timestamp) * 1000),
     });
+
+    // Check if this is the contact's first response to a broadcast campaign
+    try {
+      const recipientCampaign = await this.prisma.campaignRecipient.findFirst({
+        where: {
+          contactId: contact.id,
+          firstResponse: null,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      if (recipientCampaign) {
+        let textBody = '';
+        if (messageData.type === 'text') {
+          textBody = messageData.text.body;
+        } else if (messageData.type === 'interactive') {
+          const it = messageData.interactive.type;
+          if (it === 'button_reply') {
+            textBody = messageData.interactive.button_reply?.title || '[Button Reply]';
+          } else if (it === 'list_reply') {
+            textBody = messageData.interactive.list_reply?.title || '[List Reply]';
+          } else if (it === 'nfm_reply') {
+            textBody = messageData.interactive.nfm_reply?.body || '[Flow Response]';
+          } else {
+            textBody = messageData.interactive[it]?.title || '[Interactive Reply]';
+          }
+        } else if (messageData.type === 'button') {
+          textBody = messageData.button.text;
+        } else {
+          textBody = `[${messageData.type.toUpperCase()}]`;
+        }
+
+        await this.prisma.campaignRecipient.update({
+          where: { id: recipientCampaign.id },
+          data: {
+            firstResponse: textBody || '[Empty Message]',
+            firstResponseAt: new Date(),
+          },
+        });
+
+        // Recalculate campaign responseCount
+        const stats = await this.prisma.campaignRecipient.count({
+          where: {
+            campaignId: recipientCampaign.campaignId,
+            firstResponse: { not: null },
+          },
+        });
+
+        const updatedCampaign = await this.prisma.campaign.update({
+          where: { id: recipientCampaign.campaignId },
+          data: { responseCount: stats },
+        });
+
+        // Emit updated campaign stats
+        this.realtimeGateway.emitCampaignUpdate(updatedCampaign.organizationId, updatedCampaign);
+
+        this.logger.log(`Recorded first response for campaign ${recipientCampaign.campaignId}, contact ${contact.id}: "${textBody}"`);
+      }
+    } catch (campaignErr) {
+      this.logger.error(`Error capturing campaign first response: ${campaignErr.message}`, campaignErr.stack);
+    }
 
     try {
       // 4. Check for template button / quick reply click

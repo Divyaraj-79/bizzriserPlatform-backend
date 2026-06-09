@@ -59,6 +59,7 @@ export declare class AnalyticsController {
         deliveredCount: number;
         readCount: number;
         failedCount: number;
+        responseCount: number;
     }[]>;
     getAutomations(req: any, query: AnalyticsQueryDto): Promise<{
         chatbots: {

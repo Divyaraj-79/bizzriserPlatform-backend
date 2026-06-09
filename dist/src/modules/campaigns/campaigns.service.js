@@ -208,6 +208,8 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
             'Delivered At': r.deliveredAt?.toLocaleString() || 'N/A',
             'Read At': r.readAt?.toLocaleString() || 'N/A',
             'Failed At': r.failedAt?.toLocaleString() || 'N/A',
+            'First Response': r.firstResponse || 'N/A',
+            'Responded At': r.firstResponseAt?.toLocaleString() || 'N/A',
             'Error': r.failureReason || ''
         }));
     }
