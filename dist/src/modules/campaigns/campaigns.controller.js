@@ -33,6 +33,9 @@ let CampaignsController = class CampaignsController {
     async cancelBroadcast(req, id) {
         return this.campaignsService.cancelCampaign(req.user.orgId, id);
     }
+    async triggerBroadcast(req, id) {
+        return this.campaignsService.triggerCampaign(req.user.orgId, id);
+    }
     async getCampaign(req, id) {
         return this.campaignsService.getCampaign(req.user.orgId, id);
     }
@@ -68,6 +71,14 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], CampaignsController.prototype, "cancelBroadcast", null);
+__decorate([
+    (0, common_1.Post)(':id/trigger'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], CampaignsController.prototype, "triggerBroadcast", null);
 __decorate([
     (0, common_1.Get)(':id'),
     __param(0, (0, common_1.Req)()),

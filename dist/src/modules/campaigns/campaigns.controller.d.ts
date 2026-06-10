@@ -45,6 +45,15 @@ export declare class CampaignsController {
         success: boolean;
         message: string;
     }>;
+    triggerBroadcast(req: any, id: string): Promise<{
+        success: boolean;
+        message: string;
+        campaignId?: undefined;
+    } | {
+        success: boolean;
+        message: string;
+        campaignId: string;
+    }>;
     getCampaign(req: any, id: string): Promise<({
         recipients: ({
             contact: {

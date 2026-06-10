@@ -42,10 +42,12 @@ export declare class CampaignsService {
         templateParams: any;
         contactIds?: string[];
         targetTag?: string;
+        targetTags?: string[];
         numbers?: string[];
         tagName?: string;
         autoSegment?: boolean;
         scheduledAt?: string;
+        saveAsDraft?: boolean;
     }): Promise<{
         success: boolean;
         message: string;
@@ -62,6 +64,15 @@ export declare class CampaignsService {
     }>;
     private getUpdatedTagsForLeftovers;
     startCampaign(orgId: string, campaignId: string, accountId: string): Promise<{
+        success: boolean;
+        message: string;
+        campaignId?: undefined;
+    } | {
+        success: boolean;
+        message: string;
+        campaignId: string;
+    }>;
+    triggerCampaign(orgId: string, campaignId: string): Promise<{
         success: boolean;
         message: string;
         campaignId?: undefined;

@@ -268,8 +268,8 @@ export class ContactsService {
             VALUES ${values}
             ON CONFLICT ("organizationId", "phone") DO UPDATE SET
               "firstName" = EXCLUDED."firstName",
-              "customFields" = EXCLUDED."customFields",
-              "tags" = EXCLUDED."tags",
+              "customFields" = "contacts"."customFields" || EXCLUDED."customFields",
+              "tags" = ARRAY(SELECT DISTINCT unnest(COALESCE("contacts"."tags", '{}') || COALESCE(EXCLUDED."tags", '{}'))),
               "updatedAt" = NOW();
           `;
 
@@ -406,6 +406,15 @@ export class ContactsService {
       totalPages: Math.ceil(total / limit),
       debugOrgId: orgId, // TEMP DEBUG
     };
+  }
+
+  async getContactsCount(orgId: string, tags?: string[]) {
+    const where: any = { organizationId: orgId };
+    if (tags && tags.length > 0) {
+      where.tags = { hasSome: tags };
+    }
+    const count = await this.prisma.contact.count({ where });
+    return { count };
   }
 
   async exportContacts(orgId: string, options: { 

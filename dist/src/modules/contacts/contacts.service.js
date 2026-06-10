@@ -239,8 +239,8 @@ let ContactsService = ContactsService_1 = class ContactsService {
             VALUES ${values}
             ON CONFLICT ("organizationId", "phone") DO UPDATE SET
               "firstName" = EXCLUDED."firstName",
-              "customFields" = EXCLUDED."customFields",
-              "tags" = EXCLUDED."tags",
+              "customFields" = "contacts"."customFields" || EXCLUDED."customFields",
+              "tags" = ARRAY(SELECT DISTINCT unnest(COALESCE("contacts"."tags", '{}') || COALESCE(EXCLUDED."tags", '{}'))),
               "updatedAt" = NOW();
           `;
                     await tx.$executeRawUnsafe(query);
@@ -341,6 +341,14 @@ let ContactsService = ContactsService_1 = class ContactsService {
             totalPages: Math.ceil(total / limit),
             debugOrgId: orgId,
         };
+    }
+    async getContactsCount(orgId, tags) {
+        const where = { organizationId: orgId };
+        if (tags && tags.length > 0) {
+            where.tags = { hasSome: tags };
+        }
+        const count = await this.prisma.contact.count({ where });
+        return { count };
     }
     async exportContacts(orgId, options) {
         const { search, status, tag, startDate, endDate } = options;

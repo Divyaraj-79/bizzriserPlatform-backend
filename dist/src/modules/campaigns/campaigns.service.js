@@ -43,20 +43,26 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         });
     }
     async createBroadcast(orgId, data) {
-        let { name, accountId, templateName, templateParams, contactIds, targetTag, numbers, tagName, autoSegment, scheduledAt } = data;
+        let { name, accountId, templateName, templateParams, contactIds, targetTag, targetTags, numbers, tagName, autoSegment, scheduledAt } = data;
         const account = await this.prisma.whatsAppAccount.findUnique({ where: { id: accountId, organizationId: orgId } });
         if (!account)
             throw new common_1.NotFoundException('Account not found');
         if (numbers && numbers.length > 0) {
-            const effectiveTagName = tagName || `_sys_broadcast_${Date.now()}`;
-            const contactData = numbers.map(num => ({ phone: num, tags: [effectiveTagName] }));
+            const broadcastSysTag = `_sys_broadcast_${Date.now()}`;
+            const contactData = numbers.map(num => {
+                const tagsToAssign = [broadcastSysTag];
+                if (tagName)
+                    tagsToAssign.push(tagName);
+                return { phone: num, tags: tagsToAssign };
+            });
             await this.contactsService.atomicBulkImport(orgId, contactData);
-            targetTag = effectiveTagName;
+            targetTag = broadcastSysTag;
         }
         let finalContactIds = contactIds || [];
-        if (targetTag) {
+        if (targetTag || (targetTags && targetTags.length > 0)) {
+            const queryTags = targetTags && targetTags.length > 0 ? targetTags : [targetTag];
             const taggedContacts = await this.prisma.contact.findMany({
-                where: { organizationId: orgId, tags: { has: targetTag } },
+                where: { organizationId: orgId, tags: { hasSome: queryTags } },
                 select: { id: true }
             });
             finalContactIds = taggedContacts.map(c => c.id);
@@ -66,7 +72,7 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         }
         let leftoverContactIds = [];
         const limitCount = account.messagingLimitCount || 1000;
-        if (finalContactIds.length > limitCount) {
+        if (!data.saveAsDraft && finalContactIds.length > limitCount) {
             if (autoSegment) {
                 leftoverContactIds = finalContactIds.slice(limitCount);
                 finalContactIds = finalContactIds.slice(0, limitCount);
@@ -88,13 +94,17 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         }
         const scheduledDate = scheduledAt ? new Date(scheduledAt) : null;
         const isScheduled = scheduledDate && scheduledDate.getTime() > Date.now();
+        let campaignStatus = isScheduled ? client_1.CampaignStatus.SCHEDULED : client_1.CampaignStatus.RUNNING;
+        if (data.saveAsDraft) {
+            campaignStatus = client_1.CampaignStatus.DRAFT;
+        }
         const campaign = await this.prisma.campaign.create({
             data: {
                 name,
                 organizationId: orgId,
                 templateName,
                 templateParams: templateParams || [],
-                status: isScheduled ? client_1.CampaignStatus.SCHEDULED : client_1.CampaignStatus.RUNNING,
+                status: campaignStatus,
                 scheduledAt: scheduledDate,
                 totalRecipients: finalContactIds.length,
                 metadata: {
@@ -117,7 +127,10 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
             skipDuplicates: true
         });
         await this.log(campaign.id, `Broadcast initiated with ${finalContactIds.length} recipients. ${leftoverContactIds.length > 0 ? leftoverContactIds.length + ' contacts segments for later.' : ''}`, client_1.CampaignLogLevel.INFO);
-        if (isScheduled) {
+        if (data.saveAsDraft) {
+            return { success: true, message: 'Broadcast saved as draft', campaignId: campaign.id, segmentedCount: leftoverContactIds.length };
+        }
+        else if (isScheduled) {
             const delay = scheduledDate.getTime() - Date.now();
             await this.campaignQueue.add('start-campaign', {
                 campaignId: campaign.id,
@@ -160,6 +173,19 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         }));
         await this.campaignQueue.addBulk(jobs);
         return { success: true, message: `Enqueued ${jobs.length} messages`, campaignId };
+    }
+    async triggerCampaign(orgId, campaignId) {
+        const campaign = await this.prisma.campaign.findUnique({
+            where: { id: campaignId, organizationId: orgId }
+        });
+        if (!campaign)
+            throw new common_1.NotFoundException('Campaign not found');
+        if (campaign.status !== 'DRAFT')
+            throw new common_1.BadRequestException('Only draft campaigns can be triggered');
+        const accountId = campaign.metadata?.accountId;
+        if (!accountId)
+            throw new common_1.BadRequestException('Campaign is missing account association');
+        return this.startCampaign(orgId, campaign.id, accountId);
     }
     async cancelCampaign(orgId, campaignId) {
         await this.prisma.campaign.update({

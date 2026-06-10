@@ -38,12 +38,14 @@ export class CampaignsService {
     templateParams: any, 
     contactIds?: string[], 
     targetTag?: string,
+    targetTags?: string[],
     numbers?: string[],
     tagName?: string,
     autoSegment?: boolean,
-    scheduledAt?: string 
+    scheduledAt?: string,
+    saveAsDraft?: boolean
   }) {
-    let { name, accountId, templateName, templateParams, contactIds, targetTag, numbers, tagName, autoSegment, scheduledAt } = data;
+    let { name, accountId, templateName, templateParams, contactIds, targetTag, targetTags, numbers, tagName, autoSegment, scheduledAt } = data;
 
 
     const account = await this.prisma.whatsAppAccount.findUnique({ where: { id: accountId, organizationId: orgId } });
@@ -51,23 +53,30 @@ export class CampaignsService {
 
     // Handle Pasted Numbers mode
     if (numbers && numbers.length > 0) {
-       const effectiveTagName = tagName || `_sys_broadcast_${Date.now()}`;
-       const contactData = numbers.map(num => ({ phone: num, tags: [effectiveTagName] }));
+       // Generate a unique system tag strictly for targeting THIS broadcast
+       const broadcastSysTag = `_sys_broadcast_${Date.now()}`;
        
-       // Bulk upsert contacts with the specified tag
+       const contactData = numbers.map(num => {
+          const tagsToAssign = [broadcastSysTag];
+          if (tagName) tagsToAssign.push(tagName);
+          return { phone: num, tags: tagsToAssign };
+       });
+       
+       // Bulk upsert contacts with the specified tags
        await this.contactsService.atomicBulkImport(orgId, contactData);
        
-       // Switch to tag-based targeting for these numbers
-       targetTag = effectiveTagName;
+       // Switch to tag-based targeting ONLY for this unique system tag
+       targetTag = broadcastSysTag;
     }
 
     let finalContactIds: string[] = contactIds || [];
 
 
     // 1. Tag-based targeting
-    if (targetTag) {
+    if (targetTag || (targetTags && targetTags.length > 0)) {
+       const queryTags = targetTags && targetTags.length > 0 ? targetTags : [targetTag!];
        const taggedContacts = await this.prisma.contact.findMany({
-          where: { organizationId: orgId, tags: { has: targetTag } },
+          where: { organizationId: orgId, tags: { hasSome: queryTags } },
           select: { id: true }
        });
        finalContactIds = taggedContacts.map(c => c.id);
@@ -80,7 +89,7 @@ export class CampaignsService {
     // 2. Messaging Limit Logic
     let leftoverContactIds: string[] = [];
     const limitCount = (account as any).messagingLimitCount || 1000;
-    if (finalContactIds.length > limitCount) {
+    if (!data.saveAsDraft && finalContactIds.length > limitCount) {
        if (autoSegment) {
           leftoverContactIds = finalContactIds.slice(limitCount);
           finalContactIds = finalContactIds.slice(0, limitCount);
@@ -96,8 +105,6 @@ export class CampaignsService {
                    } as any
                 }
              });
-             // Note: updateMany with array manipulation is tricky in Prisma. 
-             // We'll use a more robust way below.
           }
        } else {
           throw new BadRequestException(`Target audience (${finalContactIds.length}) exceeds your daily messaging limit (${(account as any).messagingLimitCount}). Please select a smaller audience or enable Auto-Segmentation.`);
@@ -108,13 +115,18 @@ export class CampaignsService {
     const isScheduled = scheduledDate && scheduledDate.getTime() > Date.now();
 
     // 3. Create Campaign
+    let campaignStatus: CampaignStatus = isScheduled ? CampaignStatus.SCHEDULED : CampaignStatus.RUNNING;
+    if (data.saveAsDraft) {
+      campaignStatus = CampaignStatus.DRAFT;
+    }
+
     const campaign = await this.prisma.campaign.create({
       data: {
         name,
         organizationId: orgId,
         templateName,
         templateParams: templateParams || [],
-        status: isScheduled ? CampaignStatus.SCHEDULED : CampaignStatus.RUNNING,
+        status: campaignStatus,
         scheduledAt: scheduledDate,
         totalRecipients: finalContactIds.length,
         metadata: { 
@@ -143,7 +155,9 @@ export class CampaignsService {
     await this.log(campaign.id, `Broadcast initiated with ${finalContactIds.length} recipients. ${leftoverContactIds.length > 0 ? leftoverContactIds.length + ' contacts segments for later.' : ''}`, CampaignLogLevel.INFO);
 
     // 5. Handle Execution
-    if (isScheduled) {
+    if (data.saveAsDraft) {
+       return { success: true, message: 'Broadcast saved as draft', campaignId: campaign.id, segmentedCount: leftoverContactIds.length };
+    } else if (isScheduled) {
        const delay = scheduledDate!.getTime() - Date.now();
        await this.campaignQueue.add('start-campaign', {
           campaignId: campaign.id,
@@ -193,6 +207,20 @@ export class CampaignsService {
 
     await this.campaignQueue.addBulk(jobs);
     return { success: true, message: `Enqueued ${jobs.length} messages`, campaignId };
+  }
+
+  async triggerCampaign(orgId: string, campaignId: string) {
+    const campaign = await this.prisma.campaign.findUnique({
+      where: { id: campaignId, organizationId: orgId }
+    });
+
+    if (!campaign) throw new NotFoundException('Campaign not found');
+    if (campaign.status !== ('DRAFT' as any)) throw new BadRequestException('Only draft campaigns can be triggered');
+
+    const accountId = (campaign.metadata as any)?.accountId;
+    if (!accountId) throw new BadRequestException('Campaign is missing account association');
+
+    return this.startCampaign(orgId, campaign.id, accountId);
   }
 
   async cancelCampaign(orgId: string, campaignId: string) {

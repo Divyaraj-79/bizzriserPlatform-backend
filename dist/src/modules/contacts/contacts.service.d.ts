@@ -184,6 +184,9 @@ export declare class ContactsService {
         totalPages: number;
         debugOrgId: string;
     }>;
+    getContactsCount(orgId: string, tags?: string[]): Promise<{
+        count: number;
+    }>;
     exportContacts(orgId: string, options: {
         search?: string;
         status?: string;

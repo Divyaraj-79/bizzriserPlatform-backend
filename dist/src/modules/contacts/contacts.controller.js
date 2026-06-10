@@ -112,6 +112,20 @@ let ContactsController = class ContactsController {
         }
         return this.contactsService.deleteContacts(req.user.orgId, body.contactIds || []);
     }
+    async getContactsCount(req, body) {
+        let effectiveOrgId = req.user.orgId;
+        if (!effectiveOrgId && req.user.userId) {
+            try {
+                const fullUser = await this.contactsService.prisma.user.findUnique({
+                    where: { id: req.user.userId },
+                    select: { organizationId: true }
+                });
+                effectiveOrgId = fullUser?.organizationId;
+            }
+            catch (e) { }
+        }
+        return this.contactsService.getContactsCount(effectiveOrgId, body.tags);
+    }
     async getImportStatus(jobId) {
         return this.contactsService.getImportStatus(jobId);
     }
@@ -216,6 +230,14 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], ContactsController.prototype, "bulkDelete", null);
+__decorate([
+    (0, common_1.Post)('count'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], ContactsController.prototype, "getContactsCount", null);
 __decorate([
     (0, common_1.Get)('import/status/:jobId'),
     __param(0, (0, common_1.Param)('jobId')),

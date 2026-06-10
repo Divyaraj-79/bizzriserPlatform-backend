@@ -214,6 +214,11 @@ export declare class ContactsController {
     }): Promise<{
         count: number;
     }>;
+    getContactsCount(req: any, body: {
+        tags?: string[];
+    }): Promise<{
+        count: number;
+    }>;
     getImportStatus(jobId: string): Promise<{
         id: string;
         status: any;

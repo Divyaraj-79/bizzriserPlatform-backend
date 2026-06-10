@@ -35,6 +35,14 @@ export class CampaignsController {
     return this.campaignsService.cancelCampaign(req.user.orgId, id);
   }
 
+  @Post(':id/trigger')
+  async triggerBroadcast(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    return this.campaignsService.triggerCampaign(req.user.orgId, id);
+  }
+
   @Get(':id')
   async getCampaign(
     @Req() req: any,
