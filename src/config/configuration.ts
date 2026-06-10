@@ -45,3 +45,9 @@ export const encryptionConfig = registerAs('encryption', () => ({
 export const corsConfig = registerAs('cors', () => ({
   origins: (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(',').map((o) => o.trim()),
 }));
+
+export const cloudinaryConfig = registerAs('cloudinary', () => ({
+  cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+  apiKey: process.env.CLOUDINARY_API_KEY,
+  apiSecret: process.env.CLOUDINARY_API_SECRET,
+}));

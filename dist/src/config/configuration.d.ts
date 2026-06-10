@@ -63,3 +63,12 @@ export declare const corsConfig: (() => {
 }) & import("@nestjs/config").ConfigFactoryKeyHost<{
     origins: string[];
 }>;
+export declare const cloudinaryConfig: (() => {
+    cloudName: string | undefined;
+    apiKey: string | undefined;
+    apiSecret: string | undefined;
+}) & import("@nestjs/config").ConfigFactoryKeyHost<{
+    cloudName: string | undefined;
+    apiKey: string | undefined;
+    apiSecret: string | undefined;
+}>;

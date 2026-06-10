@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.corsConfig = exports.encryptionConfig = exports.whatsappConfig = exports.jwtConfig = exports.redisConfig = exports.databaseConfig = exports.appConfig = void 0;
+exports.cloudinaryConfig = exports.corsConfig = exports.encryptionConfig = exports.whatsappConfig = exports.jwtConfig = exports.redisConfig = exports.databaseConfig = exports.appConfig = void 0;
 const config_1 = require("@nestjs/config");
 exports.appConfig = (0, config_1.registerAs)('app', () => ({
     nodeEnv: process.env.NODE_ENV ?? 'development',
@@ -37,5 +37,10 @@ exports.encryptionConfig = (0, config_1.registerAs)('encryption', () => ({
 }));
 exports.corsConfig = (0, config_1.registerAs)('cors', () => ({
     origins: (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(',').map((o) => o.trim()),
+}));
+exports.cloudinaryConfig = (0, config_1.registerAs)('cloudinary', () => ({
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
 }));
 //# sourceMappingURL=configuration.js.map

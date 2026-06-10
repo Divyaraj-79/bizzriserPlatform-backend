@@ -423,31 +423,80 @@ export class WhatsappService {
 
       // Generate a unique filename to avoid collisions
       const ext = path.extname(file.originalname) || `.${file.mimetype.split('/')[1] || 'bin'}`;
-      const uniqueName = `broadcast_${orgId.slice(0, 8)}_${Date.now()}${ext}`;
+      const uniqueName = `broadcast_${orgId.slice(0, 8)}_${Date.now()}`; // Cloudinary might add its own ext, so just use name
 
-      // Save to uploads/ directory (served as static files from our backend)
-      const uploadsDir = path.join(process.cwd(), 'uploads');
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
+      const cloudName = this.configService.get<string>('cloudinary.cloudName');
+      const apiKey = this.configService.get<string>('cloudinary.apiKey');
+      const apiSecret = this.configService.get<string>('cloudinary.apiSecret');
+
+      let publicUrl = '';
+      let filenameToReturn = uniqueName + ext;
+
+      if (cloudName && apiKey && apiSecret) {
+        // Use Cloudinary
+        const cloudinary = require('cloudinary').v2;
+        cloudinary.config({
+          cloud_name: cloudName,
+          api_key: apiKey,
+          api_secret: apiSecret,
+        });
+
+        // Determine resource type based on mimetype
+        let resourceType = 'auto';
+        if (file.mimetype.startsWith('image/')) resourceType = 'image';
+        else if (file.mimetype.startsWith('video/')) resourceType = 'video';
+        else resourceType = 'raw'; // For documents
+
+        this.logger.log(`[uploadMedia] Uploading to Cloudinary... (${resourceType})`);
+        
+        publicUrl = await new Promise<string>((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            {
+              resource_type: resourceType,
+              public_id: uniqueName,
+              folder: `bizzriser_media/${orgId}`,
+            },
+            (error: any, result: any) => {
+              if (error) {
+                this.logger.error(`Cloudinary upload failed: ${JSON.stringify(error)}`);
+                reject(error);
+              } else {
+                resolve(result.secure_url);
+              }
+            }
+          );
+          
+          const streamifier = require('streamifier');
+          streamifier.createReadStream(file.buffer).pipe(uploadStream);
+        });
+
+        this.logger.log(`[uploadMedia] Cloudinary Upload SUCCESS → ${publicUrl}`);
+      } else {
+        // Fallback to local disk (won't work for Meta if localhost, but fine for Render)
+        this.logger.log('[uploadMedia] Cloudinary not configured. Falling back to local disk storage.');
+        const uploadsDir = path.join(process.cwd(), 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+
+        filenameToReturn = uniqueName + ext;
+        const filePath = path.join(uploadsDir, filenameToReturn);
+        fs.writeFileSync(filePath, file.buffer);
+
+        const backendUrl = this.configService.get<string>('app.publicUrl') || 'http://localhost:3001';
+        publicUrl = `${backendUrl}/uploads/${filenameToReturn}`;
+
+        this.logger.log(`[uploadMedia] Saved locally (${file.size} bytes) → ${publicUrl}`);
       }
 
-      const filePath = path.join(uploadsDir, uniqueName);
-      fs.writeFileSync(filePath, file.buffer);
-
-      // Build the public URL using the configured backend public URL
-      const backendUrl = this.configService.get<string>('app.publicUrl') || 'http://localhost:3001';
-      const publicUrl = `${backendUrl}/uploads/${uniqueName}`;
-
-      this.logger.log(`[uploadMedia] Saved ${file.originalname} (${file.size} bytes) → ${publicUrl}`);
-
-      // Return a URL that Meta can download from (works as template { link: url } parameter)
+      // Return a URL that Meta can download from
       return { 
         id: publicUrl,       // Stored as 'id' in paramMapping for compatibility
         url: publicUrl,      // Explicit url field
-        filename: uniqueName 
+        filename: filenameToReturn 
       };
     } catch (error) {
-      this.logger.error(`[uploadMedia] Failed to save file: ${error.message}`);
+      this.logger.error(`[uploadMedia] Failed to process media upload: ${error.message}`);
       throw new HttpException(`Failed to process media upload: ${error.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
