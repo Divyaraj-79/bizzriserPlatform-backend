@@ -395,19 +395,15 @@ let ContactsService = ContactsService_1 = class ContactsService {
         });
     }
     async getTagsAnalytics(orgId, includeSystem = false) {
-        const contacts = await this.prisma.contact.findMany({
-            where: { organizationId: orgId },
-            select: { tags: true }
-        });
-        const tagCounts = {};
-        contacts.forEach(c => {
-            c.tags.forEach(tag => {
-                if (includeSystem || !tag.startsWith('_sys_')) {
-                    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-                }
-            });
-        });
-        return Object.entries(tagCounts).map(([name, count]) => ({ name, count }));
+        const rawResult = await this.prisma.$queryRaw `
+      SELECT tag, COUNT(*)::int as count
+      FROM contacts, UNNEST(tags) AS tag
+      WHERE "organizationId" = ${orgId}
+      GROUP BY tag
+    `;
+        return rawResult
+            .filter(row => row.tag && (includeSystem || !row.tag.startsWith('_sys_')))
+            .map(row => ({ name: row.tag, count: row.count }));
     }
     async bulkAddTags(orgId, contactIds, tags) {
         const promises = contactIds.map(async (id) => {

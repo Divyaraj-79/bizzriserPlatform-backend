@@ -461,7 +461,14 @@ export class WhatsappService {
                 this.logger.error(`Cloudinary upload failed: ${JSON.stringify(error)}`);
                 reject(error);
               } else {
-                resolve(result.secure_url);
+                // IMPORTANT: WhatsApp API strictly requires media URLs to have a valid file extension.
+                // Cloudinary strips extensions from the secure_url by default for images/videos.
+                // We MUST append the original extension if it's missing, otherwise Meta throws error 131053.
+                let finalUrl = result.secure_url;
+                if (!finalUrl.endsWith(ext) && !finalUrl.includes('?')) {
+                  finalUrl = `${finalUrl}${ext}`;
+                }
+                resolve(finalUrl);
               }
             }
           );

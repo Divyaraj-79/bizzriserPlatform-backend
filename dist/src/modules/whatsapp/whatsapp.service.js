@@ -355,24 +355,71 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             const fs = require('fs');
             const path = require('path');
             const ext = path.extname(file.originalname) || `.${file.mimetype.split('/')[1] || 'bin'}`;
-            const uniqueName = `broadcast_${orgId.slice(0, 8)}_${Date.now()}${ext}`;
-            const uploadsDir = path.join(process.cwd(), 'uploads');
-            if (!fs.existsSync(uploadsDir)) {
-                fs.mkdirSync(uploadsDir, { recursive: true });
+            const uniqueName = `broadcast_${orgId.slice(0, 8)}_${Date.now()}`;
+            const cloudName = this.configService.get('cloudinary.cloudName');
+            const apiKey = this.configService.get('cloudinary.apiKey');
+            const apiSecret = this.configService.get('cloudinary.apiSecret');
+            let publicUrl = '';
+            let filenameToReturn = uniqueName + ext;
+            if (cloudName && apiKey && apiSecret) {
+                const cloudinary = require('cloudinary').v2;
+                cloudinary.config({
+                    cloud_name: cloudName,
+                    api_key: apiKey,
+                    api_secret: apiSecret,
+                });
+                let resourceType = 'auto';
+                if (file.mimetype.startsWith('image/'))
+                    resourceType = 'image';
+                else if (file.mimetype.startsWith('video/'))
+                    resourceType = 'video';
+                else
+                    resourceType = 'raw';
+                this.logger.log(`[uploadMedia] Uploading to Cloudinary... (${resourceType})`);
+                publicUrl = await new Promise((resolve, reject) => {
+                    const uploadStream = cloudinary.uploader.upload_stream({
+                        resource_type: resourceType,
+                        public_id: uniqueName,
+                        folder: `bizzriser_media/${orgId}`,
+                    }, (error, result) => {
+                        if (error) {
+                            this.logger.error(`Cloudinary upload failed: ${JSON.stringify(error)}`);
+                            reject(error);
+                        }
+                        else {
+                            let finalUrl = result.secure_url;
+                            if (!finalUrl.endsWith(ext) && !finalUrl.includes('?')) {
+                                finalUrl = `${finalUrl}${ext}`;
+                            }
+                            resolve(finalUrl);
+                        }
+                    });
+                    const streamifier = require('streamifier');
+                    streamifier.createReadStream(file.buffer).pipe(uploadStream);
+                });
+                this.logger.log(`[uploadMedia] Cloudinary Upload SUCCESS → ${publicUrl}`);
             }
-            const filePath = path.join(uploadsDir, uniqueName);
-            fs.writeFileSync(filePath, file.buffer);
-            const backendUrl = this.configService.get('app.publicUrl') || 'http://localhost:3001';
-            const publicUrl = `${backendUrl}/uploads/${uniqueName}`;
-            this.logger.log(`[uploadMedia] Saved ${file.originalname} (${file.size} bytes) → ${publicUrl}`);
+            else {
+                this.logger.log('[uploadMedia] Cloudinary not configured. Falling back to local disk storage.');
+                const uploadsDir = path.join(process.cwd(), 'uploads');
+                if (!fs.existsSync(uploadsDir)) {
+                    fs.mkdirSync(uploadsDir, { recursive: true });
+                }
+                filenameToReturn = uniqueName + ext;
+                const filePath = path.join(uploadsDir, filenameToReturn);
+                fs.writeFileSync(filePath, file.buffer);
+                const backendUrl = this.configService.get('app.publicUrl') || 'http://localhost:3001';
+                publicUrl = `${backendUrl}/uploads/${filenameToReturn}`;
+                this.logger.log(`[uploadMedia] Saved locally (${file.size} bytes) → ${publicUrl}`);
+            }
             return {
                 id: publicUrl,
                 url: publicUrl,
-                filename: uniqueName
+                filename: filenameToReturn
             };
         }
         catch (error) {
-            this.logger.error(`[uploadMedia] Failed to save file: ${error.message}`);
+            this.logger.error(`[uploadMedia] Failed to process media upload: ${error.message}`);
             throw new common_1.HttpException(`Failed to process media upload: ${error.message}`, common_1.HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }

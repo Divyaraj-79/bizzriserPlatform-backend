@@ -476,21 +476,19 @@ export class ContactsService {
   }
 
   async getTagsAnalytics(orgId: string, includeSystem = false) {
-    const contacts = await this.prisma.contact.findMany({
-      where: { organizationId: orgId },
-      select: { tags: true }
-    });
+    // Highly optimized raw SQL query for processing massive datasets (100k+ contacts)
+    // Avoids loading hundreds of thousands of contacts into Node.js memory causing 30s timeouts.
+    // UNNEST expands the tags array, allowing Postgres to do the counting instantly.
+    const rawResult: { tag: string, count: number }[] = await this.prisma.$queryRaw`
+      SELECT tag, COUNT(*)::int as count
+      FROM contacts, UNNEST(tags) AS tag
+      WHERE "organizationId" = ${orgId}
+      GROUP BY tag
+    `;
 
-    const tagCounts: Record<string, number> = {};
-    contacts.forEach(c => {
-      c.tags.forEach(tag => {
-        if (includeSystem || !tag.startsWith('_sys_')) {
-          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-        }
-      });
-    });
-
-    return Object.entries(tagCounts).map(([name, count]) => ({ name, count }));
+    return rawResult
+      .filter(row => row.tag && (includeSystem || !row.tag.startsWith('_sys_')))
+      .map(row => ({ name: row.tag, count: row.count }));
   }
 
   async bulkAddTags(orgId: string, contactIds: string[], tags: string[]) {
