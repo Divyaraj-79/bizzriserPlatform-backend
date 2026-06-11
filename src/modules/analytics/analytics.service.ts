@@ -38,6 +38,12 @@ export class AnalyticsService {
         campaignWhere.createdAt = dateFilter;
       }
 
+      const chartMessageWhere = { ...messageWhere };
+      if (!startDate && !endDate) {
+         // Default to last 30 days for chart data to avoid pulling the whole DB
+         chartMessageWhere.createdAt = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
+      }
+
       // ── SAFE SEQUENTIAL QUERIES (To respect Neon connection limits) ──
       
       const messageStats = await this.prisma.message.groupBy({
@@ -48,6 +54,13 @@ export class AnalyticsService {
 
       const inboundCount = await this.prisma.message.count({
         where: { ...messageWhere, direction: 'INBOUND' },
+      });
+
+      const recentPairs = await this.prisma.message.findMany({
+        where: messageWhere,
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        select: { createdAt: true, direction: true, contactId: true }
       });
 
       let totalOutbound = 0;
@@ -69,13 +82,6 @@ export class AnalyticsService {
       const failureRate = totalOutbound > 0 ? (failed / totalOutbound) * 100 : 0;
 
       // Response Time
-      const recentPairs = await this.prisma.message.findMany({
-        where: messageWhere,
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-        select: { createdAt: true, direction: true, contactId: true }
-      });
-
       let totalResponseTime = 0;
       let responseCount = 0;
       for (let i = 0; i < recentPairs.length - 1; i++) {
@@ -122,8 +128,9 @@ export class AnalyticsService {
 
       // Chart Data
       const recentMessages = await this.prisma.message.findMany({
-        where: messageWhere,
-        select: { createdAt: true, direction: true, status: true }
+        where: chartMessageWhere,
+        select: { createdAt: true, direction: true, status: true },
+        take: 1000 // Limit memory usage
       });
 
       const end = endDate ? new Date(endDate) : new Date();

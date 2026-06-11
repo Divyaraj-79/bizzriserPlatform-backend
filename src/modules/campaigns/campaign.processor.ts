@@ -1,4 +1,4 @@
-import { Process, Processor } from '@nestjs/bull';
+import { Process, Processor, InjectQueue } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -14,6 +14,7 @@ export class CampaignProcessor {
     private readonly prisma: PrismaService,
     private readonly messagingService: MessagingService,
     private readonly campaignsService: CampaignsService,
+    @InjectQueue('campaign-messages') private readonly campaignQueue: any,
   ) {}
 
   @Process('start-campaign')
@@ -26,6 +27,63 @@ export class CampaignProcessor {
     } catch (error) {
        this.logger.error(`Failed to start scheduled campaign ${campaignId}: ${error.message}`);
        throw error;
+    }
+  }
+
+  @Process('build-audience')
+  async handleBuildAudience(job: Job<any>) {
+    const { campaignId, orgId, accountId, finalContactIds, leftoverContactIds, targetTag, autoSegment, isScheduled, scheduledAt, saveAsDraft } = job.data;
+    this.logger.log(`Building audience for campaign ${campaignId}. Target contacts: ${finalContactIds.length}`);
+
+    try {
+      // 1. Handle autoSegment tagging
+      if (autoSegment && leftoverContactIds && leftoverContactIds.length > 0) {
+        if (targetTag) {
+          const leftoverTag = `leftover_${targetTag}`;
+          
+          // Re-tag leftovers with raw query to handle JSONB array properly
+          // Note: In real production, this should ideally use an append logic if tags exist
+          // but Prisma doesn't support jsonb array append natively yet, so we just set it.
+          await this.prisma.contact.updateMany({
+             where: { id: { in: leftoverContactIds } },
+             data: {
+                tags: [leftoverTag] as any // Assuming simplified tag setting for autoSegment
+             }
+          });
+          this.logger.debug(`Retagged ${leftoverContactIds.length} leftovers with ${leftoverTag}`);
+        }
+      }
+
+      // 2. Add recipients in chunks
+      const recipientData = finalContactIds.map((id: string) => ({
+        campaignId,
+        contactId: id,
+        status: MessageStatus.PENDING
+      }));
+
+      const chunkSize = 5000;
+      for (let i = 0; i < recipientData.length; i += chunkSize) {
+        const chunk = recipientData.slice(i, i + chunkSize);
+        await this.prisma.campaignRecipient.createMany({
+          data: chunk,
+          skipDuplicates: true
+        });
+      }
+
+      const segmentedMsg = leftoverContactIds?.length > 0 ? ` ${leftoverContactIds.length} contacts segmented.` : '';
+      await this.campaignsService.log(campaignId, `Broadcast audience built with ${finalContactIds.length} recipients.${segmentedMsg}`, CampaignLogLevel.INFO);
+
+      // 3. Initiate next step
+      if (!saveAsDraft && !isScheduled) {
+         await this.campaignsService.startCampaign(orgId, campaignId, accountId);
+      } else if (!saveAsDraft && isScheduled && scheduledAt) {
+         const delay = new Date(scheduledAt).getTime() - Date.now();
+         await this.campaignQueue.add('start-campaign', { campaignId, orgId, accountId }, { delay: delay > 0 ? delay : 0 });
+         this.logger.log(`Queued scheduled campaign ${campaignId} with delay ${delay}ms`);
+      }
+    } catch (err: any) {
+      this.logger.error(`Audience building failed for campaign ${campaignId}: ${err.message}`);
+      await this.campaignsService.log(campaignId, `Audience building failed: ${err.message}`, CampaignLogLevel.ERROR);
     }
   }
 

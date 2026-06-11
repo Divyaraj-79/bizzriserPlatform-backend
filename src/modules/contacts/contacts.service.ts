@@ -24,6 +24,15 @@ export class ContactsService {
     return clean.replace(/\D/g, '');
   }
 
+  async countContacts(orgId: string, tags?: string[]) {
+    const where: any = { organizationId: orgId };
+    if (tags && tags.length > 0) {
+      where.tags = { hasSome: tags };
+    }
+    const count = await this.prisma.contact.count({ where });
+    return { count };
+  }
+
   async findOne(orgId: string, contactId: string) {
     const contact = await this.prisma.contact.findFirst({
       where: { id: contactId, organizationId: orgId },

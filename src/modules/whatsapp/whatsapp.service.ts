@@ -832,9 +832,40 @@ export class WhatsappService {
     // 1. If not forcing a sync, return from local database immediately (FAST)
     if (!forceSync) {
       this.logger.log(`[Templates] Fetching cached templates for account ${accountId} (Local DB)`);
-      return this.prisma.whatsAppTemplate.findMany({
+      const templates = await this.prisma.whatsAppTemplate.findMany({
         where: { accountId, organizationId: orgId, isActive: true },
         orderBy: { updatedAt: 'desc' }
+      });
+
+      const campaignStats = await this.prisma.campaign.groupBy({
+        by: ['templateName'],
+        _sum: { sentCount: true, deliveredCount: true, readCount: true },
+        where: { organizationId: orgId, templateName: { not: null } }
+      });
+      const statsMap = new Map(campaignStats.map(s => [s.templateName, s._sum]));
+
+      return templates.map(t => {
+        const rawSent = statsMap.get(t.name)?.sentCount || 0;
+        const rawDelivered = statsMap.get(t.name)?.deliveredCount || 0;
+        const rawRead = statsMap.get(t.name)?.readCount || 0;
+
+        // Meta webhooks can arrive out of order or get dropped, causing anomalies.
+        // Normalize the counts: Reads <= Deliveries <= Sent
+        const readCount = rawRead;
+        const deliveredCount = Math.max(rawDelivered, readCount);
+        const sentCount = Math.max(rawSent, deliveredCount);
+
+        const deliveryRate = sentCount > 0 ? Math.round((deliveredCount / sentCount) * 100) : 0;
+        const readRate = deliveredCount > 0 ? Math.round((readCount / deliveredCount) * 100) : 0;
+
+        return {
+          ...t,
+          sentCount,
+          deliveredCount,
+          readCount,
+          deliveryRate,
+          readRate
+        };
       });
     }
 
@@ -845,7 +876,7 @@ export class WhatsappService {
     try {
       this.logger.log(`[Templates] Forcing synchronization from Meta for account ${accountId}...`);
       const response = await axios.get(url, {
-        params: { limit: 100 },
+        params: { limit: 100, fields: 'name,language,category,status,components,quality_score' },
         headers: {
           Authorization: `Bearer ${validatedToken}`,
         },
@@ -853,42 +884,97 @@ export class WhatsappService {
 
       const metaTemplates = response.data.data || [];
       this.logger.log(`[Templates] Received ${metaTemplates.length} templates from Meta API.`);
+      if (metaTemplates.length > 0) {
+        this.logger.log(`[Templates] Sample template keys: ${Object.keys(metaTemplates[0]).join(', ')}`);
+        this.logger.log(`[Templates] Sample template: ${JSON.stringify(metaTemplates[0])}`);
+      }
 
       // 3. Sync meta templates into local DB
+      const existingTemplates = await this.prisma.whatsAppTemplate.findMany({
+        where: { accountId }
+      });
+      const existingMap = new Map(existingTemplates.map(t => [`${t.name}_${t.language}`, t]));
+
       for (const mt of metaTemplates) {
-        await this.prisma.whatsAppTemplate.upsert({
-          where: {
-            accountId_name_language: {
+        const key = `${mt.name}_${mt.language}`;
+        const existing = existingMap.get(key);
+
+        if (!existing) {
+          await this.prisma.whatsAppTemplate.create({
+            data: {
+              organizationId: orgId,
               accountId,
               name: mt.name,
-              language: mt.language
+              language: mt.language,
+              category: mt.category,
+              status: mt.status || 'APPROVED',
+              qualityScore: mt.quality_score || null,
+              components: mt.components,
+              variableMapping: {},
             }
-          },
-          create: {
-            organizationId: orgId,
-            accountId,
-            name: mt.name,
-            language: mt.language,
-            category: mt.category,
-            status: mt.status || 'APPROVED',
-            components: mt.components,
-            variableMapping: {},
-          },
-          update: {
-            category: mt.category,
-            status: mt.status || 'APPROVED',
-            components: mt.components,
-            isActive: true
+          });
+        } else {
+          // Check if data actually changed to prevent overwriting `updatedAt` unnecessarily
+          const hasChanged = 
+            existing.status !== (mt.status || 'APPROVED') ||
+            existing.category !== mt.category ||
+            JSON.stringify(existing.qualityScore) !== JSON.stringify(mt.quality_score || null) ||
+            JSON.stringify(existing.components) !== JSON.stringify(mt.components) ||
+            !existing.isActive;
+
+          if (hasChanged) {
+            await this.prisma.whatsAppTemplate.update({
+              where: { id: existing.id },
+              data: {
+                category: mt.category,
+                status: mt.status || 'APPROVED',
+                qualityScore: mt.quality_score || null,
+                components: mt.components,
+                isActive: true
+              }
+            });
           }
-        });
+        }
       }
 
       this.logger.log(`[Templates] Cache update complete for account ${accountId}.`);
 
-      // 4. Return the refreshed local list
-      return this.prisma.whatsAppTemplate.findMany({
+      // 4. Fetch refreshed local list
+      const templates = await this.prisma.whatsAppTemplate.findMany({
         where: { accountId, organizationId: orgId, isActive: true },
         orderBy: { updatedAt: 'desc' }
+      });
+
+      // 5. Attach aggregated delivery & read metrics from campaigns
+      const campaignStats = await this.prisma.campaign.groupBy({
+        by: ['templateName'],
+        _sum: { sentCount: true, deliveredCount: true, readCount: true },
+        where: { organizationId: orgId, templateName: { not: null } }
+      });
+      const statsMap = new Map(campaignStats.map(s => [s.templateName, s._sum]));
+
+      return templates.map(t => {
+        const rawSent = statsMap.get(t.name)?.sentCount || 0;
+        const rawDelivered = statsMap.get(t.name)?.deliveredCount || 0;
+        const rawRead = statsMap.get(t.name)?.readCount || 0;
+
+        // Meta webhooks can arrive out of order or get dropped, causing anomalies.
+        // Normalize the counts: Reads <= Deliveries <= Sent
+        const readCount = rawRead;
+        const deliveredCount = Math.max(rawDelivered, readCount);
+        const sentCount = Math.max(rawSent, deliveredCount);
+
+        const deliveryRate = sentCount > 0 ? Math.round((deliveredCount / sentCount) * 100) : 0;
+        const readRate = deliveredCount > 0 ? Math.round((readCount / deliveredCount) * 100) : 0;
+
+        return {
+          ...t,
+          sentCount,
+          deliveredCount,
+          readCount,
+          deliveryRate,
+          readRate
+        };
       });
     } catch (error) {
       this.handleError(error, `Failed to fetch and sync templates via account ${accountId}`);
@@ -989,12 +1075,14 @@ export class WhatsappService {
           name: data.name,
           language: data.language,
           category: data.category,
+          status: response.data?.status || 'PENDING',
           components: data.components,
           variableMapping: data.variableMapping || {},
         },
         update: {
           components: data.components,
           variableMapping: data.variableMapping || {},
+          status: response.data?.status || 'PENDING',
         }
       });
 
@@ -1024,6 +1112,21 @@ export class WhatsappService {
           'Content-Type': 'application/json',
         },
       });
+
+      // Update local cache status to PENDING since it goes back to review
+      await this.prisma.whatsAppTemplate.updateMany({
+        where: {
+          accountId,
+          organizationId: orgId,
+          name: data.name,
+          language: data.language
+        },
+        data: {
+          components: data.components,
+          status: response.data?.status || 'PENDING'
+        }
+      });
+
       return response.data;
     } catch (error) {
       this.handleError(error, `Failed to update template ${templateId}`);

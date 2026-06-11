@@ -11,6 +11,21 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
 
+  @Post('count')
+  async countContacts(@Req() req: any, @Body() data: { tags?: string[] }) {
+    let effectiveOrgId = req.user.orgId;
+    if (!effectiveOrgId && req.user.userId) {
+      try {
+        const fullUser = await (this.contactsService as any).prisma.user.findUnique({
+          where: { id: req.user.userId },
+          select: { organizationId: true }
+        });
+        effectiveOrgId = fullUser?.organizationId;
+      } catch (e) {}
+    }
+    return this.contactsService.countContacts(effectiveOrgId, data.tags);
+  }
+
   @Post()
   async create(@Req() req: any, @Body() data: any) {
     return this.contactsService.createOrUpdate(req.user.orgId, data.phone, data);

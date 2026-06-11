@@ -477,6 +477,7 @@ export class MessagingService {
         whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
       },
       orderBy: { lastMessageAt: 'desc' },
+      take: 100, // Limit to recent conversations to prevent N+1 timeout on large accounts
     });
 
     // Enhance conversations with 24h window status

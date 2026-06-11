@@ -42,6 +42,7 @@ export class CampaignsService {
     numbers?: string[],
     tagName?: string,
     autoSegment?: boolean,
+    sendAnyways?: boolean,
     scheduledAt?: string,
     saveAsDraft?: boolean
   }) {
@@ -75,11 +76,11 @@ export class CampaignsService {
     // 1. Tag-based targeting
     if (targetTag || (targetTags && targetTags.length > 0)) {
        const queryTags = targetTags && targetTags.length > 0 ? targetTags : [targetTag!];
-       const taggedContacts = await this.prisma.contact.findMany({
-          where: { organizationId: orgId, tags: { hasSome: queryTags } },
-          select: { id: true }
-       });
-       finalContactIds = taggedContacts.map(c => c.id);
+       const rawResult: { id: string }[] = await this.prisma.$queryRaw`
+         SELECT id FROM "contacts"
+         WHERE "organizationId" = ${orgId} AND "tags" && ${queryTags}
+       `;
+       finalContactIds = rawResult.map(c => c.id);
     }
 
     if (finalContactIds.length === 0) {
@@ -89,24 +90,12 @@ export class CampaignsService {
     // 2. Messaging Limit Logic
     let leftoverContactIds: string[] = [];
     const limitCount = (account as any).messagingLimitCount || 1000;
-    if (!data.saveAsDraft && finalContactIds.length > limitCount) {
+    
+    if (finalContactIds.length > limitCount) {
        if (autoSegment) {
           leftoverContactIds = finalContactIds.slice(limitCount);
           finalContactIds = finalContactIds.slice(0, limitCount);
-          
-          // Re-tag leftovers
-          if (targetTag) {
-             const leftoverTag = `leftover_${targetTag}`;
-             await this.prisma.contact.updateMany({
-                where: { id: { in: leftoverContactIds } },
-                data: {
-                   tags: {
-                      set: await this.getUpdatedTagsForLeftovers(leftoverContactIds, targetTag, leftoverTag)
-                   } as any
-                }
-             });
-          }
-       } else {
+       } else if (!data.saveAsDraft && !data.sendAnyways) {
           throw new BadRequestException(`Target audience (${finalContactIds.length}) exceeds your daily messaging limit (${(account as any).messagingLimitCount}). Please select a smaller audience or enable Auto-Segmentation.`);
        }
     }
@@ -140,33 +129,27 @@ export class CampaignsService {
       }
     });
 
-    // 4. Add recipients
-    const recipientData = finalContactIds.map(id => ({
-      campaignId: campaign.id,
-      contactId: id,
-      status: MessageStatus.PENDING
-    }));
-
-    await this.prisma.campaignRecipient.createMany({
-      data: recipientData,
-      skipDuplicates: true
+    // 4. Delegate heavy array mapping, retagging and inserts to the Bull Queue
+    await this.campaignQueue.add('build-audience', {
+       campaignId: campaign.id,
+       orgId,
+       accountId,
+       finalContactIds,
+       leftoverContactIds,
+       targetTag,
+       autoSegment,
+       isScheduled,
+       scheduledAt: scheduledDate,
+       saveAsDraft: data.saveAsDraft
     });
 
-    await this.log(campaign.id, `Broadcast initiated with ${finalContactIds.length} recipients. ${leftoverContactIds.length > 0 ? leftoverContactIds.length + ' contacts segments for later.' : ''}`, CampaignLogLevel.INFO);
-
-    // 5. Handle Execution
+    // 5. Instant Response
     if (data.saveAsDraft) {
-       return { success: true, message: 'Broadcast saved as draft', campaignId: campaign.id, segmentedCount: leftoverContactIds.length };
+       return { success: true, message: 'Broadcast saved as draft (building audience)', campaignId: campaign.id, segmentedCount: leftoverContactIds.length };
     } else if (isScheduled) {
-       const delay = scheduledDate!.getTime() - Date.now();
-       await this.campaignQueue.add('start-campaign', {
-          campaignId: campaign.id,
-          orgId,
-          accountId
-       }, { delay });
        return { success: true, message: 'Broadcast scheduled', campaignId: campaign.id, segmentedCount: leftoverContactIds.length };
     } else {
-       return this.startCampaign(orgId, campaign.id, accountId);
+       return { success: true, message: 'Broadcast initiated', campaignId: campaign.id, segmentedCount: leftoverContactIds.length };
     }
   }
 
