@@ -343,11 +343,25 @@ let ContactsService = ContactsService_1 = class ContactsService {
         };
     }
     async getContactsCount(orgId, tags) {
-        const where = { organizationId: orgId };
         if (tags && tags.length > 0) {
-            where.tags = { hasSome: tags };
+            let rawResult;
+            if (orgId) {
+                rawResult = await this.prisma.$queryRaw `
+          SELECT COUNT(*)::int as count FROM "contacts"
+          WHERE "organizationId" = ${orgId} AND "tags" && ${tags}
+        `;
+            }
+            else {
+                rawResult = await this.prisma.$queryRaw `
+          SELECT COUNT(*)::int as count FROM "contacts"
+          WHERE "tags" && ${tags}
+        `;
+            }
+            return { count: rawResult[0]?.count || 0 };
         }
-        const count = await this.prisma.contact.count({ where });
+        const count = await this.prisma.contact.count({
+            where: orgId ? { organizationId: orgId } : {}
+        });
         return { count };
     }
     async exportContacts(orgId, options) {
