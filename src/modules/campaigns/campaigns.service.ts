@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContactsService } from '../contacts/contacts.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { MessagingService } from '../messaging/messaging.service';
 import { CampaignStatus, CampaignLogLevel, MessageStatus } from '@prisma/client';
 
 
@@ -15,6 +16,7 @@ export class CampaignsService {
     private readonly prisma: PrismaService,
     private readonly contactsService: ContactsService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly messagingService: MessagingService,
     @InjectQueue('campaign-messages') private readonly campaignQueue: Queue,
   ) {}
 
@@ -251,6 +253,42 @@ export class CampaignsService {
       'Responded At': (r as any).firstResponseAt?.toLocaleString() || 'N/A',
       'Error': (r as any).failureReason || ''
     }));
+  }
+
+  async sendTestMessage(orgId: string, data: { accountId: string; phone: string; templateName: string; language?: string; components?: any[] }) {
+    const { accountId, phone, templateName, language = 'en_US', components = [] } = data;
+
+    // To make sure it appears in the inbox, we need the contact to exist.
+    // Use an atomic upsert or import to ensure we have a contact ID.
+    // We'll create a basic import payload.
+    await this.contactsService.atomicBulkImport(orgId, [{ phone, firstName: 'Test', lastName: 'User' }]);
+    
+    // Fetch the newly created/existing contact to get its ID.
+    let contact = await this.prisma.contact.findFirst({
+      where: { organizationId: orgId, phone: phone }
+    });
+
+    if (!contact) {
+      contact = await this.prisma.contact.create({
+        data: {
+          organizationId: orgId,
+          phone: phone,
+          firstName: 'Test',
+          lastName: 'Contact',
+        }
+      });
+    }
+
+    // Now send the template message via messagingService so it logs to DB and Inbox
+    return this.messagingService.sendTemplateMessage(
+      orgId,
+      accountId,
+      contact.id,
+      templateName,
+      language,
+      components,
+      { isTestMessage: true }
+    );
   }
 
   async log(campaignId: string, message: string, level: CampaignLogLevel = CampaignLogLevel.INFO, metadata: any = {}) {

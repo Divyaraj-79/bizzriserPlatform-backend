@@ -27,6 +27,14 @@ export class CampaignsController {
     return this.campaignsService.createBroadcast(req.user.orgId, data);
   }
 
+  @Post('test-message')
+  async sendTestMessage(
+    @Req() req: any,
+    @Body() data: { accountId: string; phone: string; templateName: string; language?: string; components?: any[] },
+  ) {
+    return this.campaignsService.sendTestMessage(req.user.orgId, data);
+  }
+
   @Post(':id/cancel')
   async cancelBroadcast(
     @Req() req: any,
