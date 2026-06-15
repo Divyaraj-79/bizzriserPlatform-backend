@@ -68,8 +68,8 @@ let MessagingController = class MessagingController {
     async sendTemplate(req, body) {
         return this.messagingService.sendTemplateMessage(req.user.orgId, body.accountId, body.contactId, body.templateName, body.language || 'en_US', body.components || []);
     }
-    async getConversations(req) {
-        return this.messagingService.getConversations(req.user.orgId, req.user);
+    async getConversations(req, section, page, limit) {
+        return this.messagingService.getConversations(req.user.orgId, req.user, section, page ? parseInt(page) : undefined, limit ? parseInt(limit) : undefined);
     }
     async createConversation(req, body) {
         return this.messagingService.startNewConversation(req.user.orgId, body.whatsappAccountId, body.phoneNumber, { firstName: body.firstName, lastName: body.lastName });
@@ -123,8 +123,11 @@ __decorate([
 __decorate([
     (0, common_1.Get)('conversations'),
     __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('section')),
+    __param(2, (0, common_1.Query)('page')),
+    __param(3, (0, common_1.Query)('limit')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, String, String, String]),
     __metadata("design:returntype", Promise)
 ], MessagingController.prototype, "getConversations", null);
 __decorate([

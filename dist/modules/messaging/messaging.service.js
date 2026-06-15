@@ -29,7 +29,7 @@ let MessagingService = MessagingService_1 = class MessagingService {
         this.realtimeGateway = realtimeGateway;
         this.contactsService = contactsService;
     }
-    async findOrCreateConversation(orgId, accountId, contactId) {
+    async findOrCreateConversation(orgId, accountId, contactId, isBroadcast = false) {
         return this.prisma.conversation.upsert({
             where: {
                 organizationId_whatsappAccountId_contactId: {
@@ -43,11 +43,13 @@ let MessagingService = MessagingService_1 = class MessagingService {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
                 contactId,
+                section: isBroadcast ? 'BROADCAST' : 'PRIMARY'
             },
         });
     }
     async createMessage(data) {
-        const conversation = await this.findOrCreateConversation(data.organizationId, data.whatsappAccountId, data.contactId);
+        const isBroadcast = !!data.metadata?.campaignId;
+        const conversation = await this.findOrCreateConversation(data.organizationId, data.whatsappAccountId, data.contactId, isBroadcast);
         const message = await this.prisma.message.create({
             data: {
                 ...data,
@@ -60,13 +62,19 @@ let MessagingService = MessagingService_1 = class MessagingService {
         else if (data.type === client_1.MessageType.TEMPLATE)
             body = `Template: ${data.content.templateName}`;
         const window = await this.calculateWindow(data.contactId);
+        const isManualOutbound = !isBroadcast && data.direction === client_1.MessageDirection.OUTBOUND;
+        const isInbound = data.direction === client_1.MessageDirection.INBOUND;
+        let updateData = {
+            lastMessageBody: body,
+            lastMessageAt: message.sentAt || message.createdAt,
+            ...(isInbound ? { unreadCount: { increment: 1 } } : {}),
+        };
+        if (isManualOutbound || isInbound) {
+            updateData.section = 'PRIMARY';
+        }
         const updatedConversation = await this.prisma.conversation.update({
             where: { id: conversation.id },
-            data: {
-                lastMessageBody: body,
-                lastMessageAt: message.sentAt || message.createdAt,
-                ...(data.direction === 'INBOUND' ? { unreadCount: { increment: 1 } } : {}),
-            },
+            data: updateData,
             include: {
                 contact: {
                     select: {
@@ -389,35 +397,43 @@ let MessagingService = MessagingService_1 = class MessagingService {
         });
         return { success: true };
     }
-    async getConversations(orgId, user) {
+    async getConversations(orgId, user, section, page = 1, limit = 50) {
         const isAdmin = !user || user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN';
-        const conversations = await this.prisma.conversation.findMany({
-            where: {
-                organizationId: orgId,
-                ...(isAdmin ? {} : {
-                    whatsappAccount: {
-                        accountAccess: {
-                            some: { userId: user.sub }
+        const whereClause = {
+            organizationId: orgId,
+            ...(isAdmin ? {} : {
+                whatsappAccount: {
+                    accountAccess: {
+                        some: { userId: user.sub }
+                    }
+                }
+            })
+        };
+        if (section) {
+            whereClause.section = section;
+        }
+        const [conversations, total] = await Promise.all([
+            this.prisma.conversation.findMany({
+                where: whereClause,
+                include: {
+                    contact: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                            phone: true,
+                            avatarUrl: true,
+                            createdAt: true
                         }
-                    }
-                })
-            },
-            include: {
-                contact: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        phone: true,
-                        avatarUrl: true,
-                        createdAt: true
-                    }
+                    },
+                    whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
                 },
-                whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
-            },
-            orderBy: { lastMessageAt: 'desc' },
-            take: 100,
-        });
+                orderBy: { lastMessageAt: 'desc' },
+                skip: (page - 1) * limit,
+                take: limit,
+            }),
+            this.prisma.conversation.count({ where: whereClause })
+        ]);
         const enhanced = await Promise.all(conversations.map(async (conv) => {
             const lastInbound = await this.prisma.message.findFirst({
                 where: { contactId: conv.contactId, direction: client_1.MessageDirection.INBOUND },
@@ -438,7 +454,12 @@ let MessagingService = MessagingService_1 = class MessagingService {
                 }
             };
         }));
-        return enhanced;
+        return {
+            data: enhanced,
+            total,
+            page,
+            limit
+        };
     }
     async markAsRead(orgId, conversationId) {
         const updatedConversation = await this.prisma.conversation.update({

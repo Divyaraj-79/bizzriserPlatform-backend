@@ -87,7 +87,7 @@ export class CampaignProcessor {
     }
   }
 
-  @Process('send-message')
+  @Process({ name: 'send-message', concurrency: 50 })
   async handleSendMessage(job: Job<any>) {
     const { campaignId, recipientId, orgId, accountId, contactId, templateName, templateParams } = job.data;
     

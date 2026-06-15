@@ -36,7 +36,11 @@ let ContactsService = ContactsService_1 = class ContactsService {
         if (clean.includes('E+') || clean.includes('e+')) {
             clean = Number(clean).toLocaleString('fullwide', { useGrouping: false });
         }
-        return clean.replace(/\D/g, '');
+        let sanitized = clean.replace(/\D/g, '');
+        if (sanitized.length === 10) {
+            sanitized = '91' + sanitized;
+        }
+        return sanitized;
     }
     async countContacts(orgId, tags) {
         const where = { organizationId: orgId };

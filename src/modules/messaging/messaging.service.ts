@@ -16,10 +16,7 @@ export class MessagingService {
     private readonly contactsService: ContactsService,
   ) {}
 
-  /**
-   * Retrieves or creates a conversation state.
-   */
-  async findOrCreateConversation(orgId: string, accountId: string, contactId: string) {
+  async findOrCreateConversation(orgId: string, accountId: string, contactId: string, isBroadcast: boolean = false) {
     return this.prisma.conversation.upsert({
       where: {
         organizationId_whatsappAccountId_contactId: {
@@ -33,6 +30,7 @@ export class MessagingService {
         organizationId: orgId,
         whatsappAccountId: accountId,
         contactId,
+        section: isBroadcast ? 'BROADCAST' : 'PRIMARY'
       },
     });
   }
@@ -52,10 +50,12 @@ export class MessagingService {
     sentAt?: Date;
     metadata?: any;
   }) {
+    const isBroadcast = !!data.metadata?.campaignId;
     const conversation = await this.findOrCreateConversation(
       data.organizationId,
       data.whatsappAccountId,
       data.contactId,
+      isBroadcast
     );
 
     const message = await this.prisma.message.create({
@@ -71,13 +71,22 @@ export class MessagingService {
 
     const window = await this.calculateWindow(data.contactId);
 
+    const isManualOutbound = !isBroadcast && data.direction === MessageDirection.OUTBOUND;
+    const isInbound = data.direction === MessageDirection.INBOUND;
+
+    let updateData: any = {
+      lastMessageBody: body,
+      lastMessageAt: message.sentAt || message.createdAt,
+      ...(isInbound ? { unreadCount: { increment: 1 } } : {}),
+    };
+
+    if (isManualOutbound || isInbound) {
+      updateData.section = 'PRIMARY';
+    }
+
     const updatedConversation: any = await this.prisma.conversation.update({
       where: { id: conversation.id },
-      data: {
-        lastMessageBody: body,
-        lastMessageAt: message.sentAt || message.createdAt,
-        ...(data.direction === 'INBOUND' ? { unreadCount: { increment: 1 } } : {}),
-      },
+      data: updateData,
       include: {
         contact: {
           select: { 
@@ -449,36 +458,46 @@ export class MessagingService {
     return { success: true };
   }
 
-  async getConversations(orgId: string, user?: { role: string; sub: string }) {
+  async getConversations(orgId: string, user?: { role: string; sub: string }, section?: string, page: number = 1, limit: number = 50) {
     const isAdmin = !user || user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN';
 
-    const conversations = await this.prisma.conversation.findMany({
-      where: { 
-        organizationId: orgId,
-        ...(isAdmin ? {} : {
-          whatsappAccount: {
-            accountAccess: {
-              some: { userId: user.sub }
-            }
+    const whereClause: any = {
+      organizationId: orgId,
+      ...(isAdmin ? {} : {
+        whatsappAccount: {
+          accountAccess: {
+            some: { userId: user.sub }
           }
-        })
-      },
-      include: {
-        contact: { 
-          select: { 
-            id: true, 
-            firstName: true, 
-            lastName: true, 
-            phone: true, 
-            avatarUrl: true,
-            createdAt: true
-          } 
+        }
+      })
+    };
+
+    if (section) {
+      whereClause.section = section;
+    }
+
+    const [conversations, total] = await Promise.all([
+      this.prisma.conversation.findMany({
+        where: whereClause,
+        include: {
+          contact: { 
+            select: { 
+              id: true, 
+              firstName: true, 
+              lastName: true, 
+              phone: true, 
+              avatarUrl: true,
+              createdAt: true
+            } 
+          },
+          whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
         },
-        whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
-      },
-      orderBy: { lastMessageAt: 'desc' },
-      take: 100, // Limit to recent conversations to prevent N+1 timeout on large accounts
-    });
+        orderBy: { lastMessageAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.conversation.count({ where: whereClause })
+    ]);
 
     // Enhance conversations with 24h window status
     const enhanced = await Promise.all(conversations.map(async (conv) => {
@@ -505,7 +524,12 @@ export class MessagingService {
       };
     }));
 
-    return enhanced;
+    return {
+      data: enhanced,
+      total,
+      page,
+      limit
+    };
   }
 
   async markAsRead(orgId: string, conversationId: string) {

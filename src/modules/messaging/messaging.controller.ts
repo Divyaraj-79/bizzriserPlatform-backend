@@ -61,8 +61,19 @@ export class MessagingController {
   }
 
   @Get('conversations')
-  async getConversations(@Req() req: any) {
-    return this.messagingService.getConversations(req.user.orgId, req.user);
+  async getConversations(
+    @Req() req: any,
+    @Query('section') section?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    return this.messagingService.getConversations(
+      req.user.orgId, 
+      req.user,
+      section,
+      page ? parseInt(page) : undefined,
+      limit ? parseInt(limit) : undefined
+    );
   }
 
   @Post('conversations')

@@ -166,7 +166,6 @@ export class CampaignsService {
   async startCampaign(orgId: string, campaignId: string, accountId: string) {
     const campaign = await this.prisma.campaign.findUnique({
       where: { id: campaignId, organizationId: orgId },
-      include: { recipients: true },
     });
 
     if (!campaign) throw new NotFoundException('Campaign not found');
@@ -177,21 +176,40 @@ export class CampaignsService {
       data: { status: CampaignStatus.RUNNING, startedAt: new Date() },
     });
 
-    const jobs = campaign.recipients.map((recipient) => ({
-      name: 'send-message',
-      data: {
-        campaignId: campaign.id,
-        recipientId: recipient.id,
-        orgId: campaign.organizationId,
-        accountId,
-        contactId: recipient.contactId,
-        templateName: campaign.templateName,
-        templateParams: campaign.templateParams,
-      },
-    }));
+    // Chunking to support 1 Lakh+ contacts without crashing RAM/Redis
+    const chunkSize = 5000;
+    let skip = 0;
+    let totalQueued = 0;
 
-    await this.campaignQueue.addBulk(jobs);
-    return { success: true, message: `Enqueued ${jobs.length} messages`, campaignId };
+    while (true) {
+      const recipients = await this.prisma.campaignRecipient.findMany({
+        where: { campaignId: campaign.id },
+        skip,
+        take: chunkSize,
+        select: { id: true, contactId: true }
+      });
+
+      if (recipients.length === 0) break;
+
+      const jobs = recipients.map((recipient) => ({
+        name: 'send-message',
+        data: {
+          campaignId: campaign.id,
+          recipientId: recipient.id,
+          orgId: campaign.organizationId,
+          accountId,
+          contactId: recipient.contactId,
+          templateName: campaign.templateName,
+          templateParams: campaign.templateParams,
+        },
+      }));
+
+      await this.campaignQueue.addBulk(jobs);
+      totalQueued += jobs.length;
+      skip += chunkSize;
+    }
+
+    return { success: true, message: `Enqueued ${totalQueued} messages`, campaignId };
   }
 
   async triggerCampaign(orgId: string, campaignId: string) {

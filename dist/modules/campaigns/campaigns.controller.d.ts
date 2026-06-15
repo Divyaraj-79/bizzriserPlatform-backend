@@ -40,18 +40,18 @@ export declare class CampaignsController {
         metadata: import("@prisma/client/runtime/library").JsonValue;
         createdAt: Date;
         updatedAt: Date;
-        waMessageId: string | null;
-        whatsappAccountId: string;
         contactId: string;
-        direction: import(".prisma/client").$Enums.MessageDirection;
-        type: import(".prisma/client").$Enums.MessageType;
-        content: import("@prisma/client/runtime/library").JsonValue;
-        conversationId: string | null;
         sentAt: Date | null;
         deliveredAt: Date | null;
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        waMessageId: string | null;
+        whatsappAccountId: string;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
+        content: import("@prisma/client/runtime/library").JsonValue;
+        conversationId: string | null;
     }>;
     cancelBroadcast(req: any, id: string): Promise<{
         success: boolean;
@@ -91,13 +91,13 @@ export declare class CampaignsController {
             id: string;
             status: import(".prisma/client").$Enums.MessageStatus;
             createdAt: Date;
+            campaignId: string;
             contactId: string;
             sentAt: Date | null;
             deliveredAt: Date | null;
             readAt: Date | null;
             failedAt: Date | null;
             failureReason: string | null;
-            campaignId: string;
             firstResponse: string | null;
             firstResponseAt: Date | null;
         })[];
@@ -105,8 +105,8 @@ export declare class CampaignsController {
             id: string;
             metadata: import("@prisma/client/runtime/library").JsonValue;
             createdAt: Date;
-            message: string;
             campaignId: string;
+            message: string;
             level: import(".prisma/client").$Enums.CampaignLogLevel;
         }[];
     } & {

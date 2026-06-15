@@ -384,6 +384,7 @@ model Conversation {
   lastMessageBody   String?
   lastMessageAt     DateTime @default(now())
   unreadCount       Int      @default(0)
+  section           String   @default("PRIMARY")
   metadata          Json     @default("{}")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -395,6 +396,7 @@ model Conversation {
 
   @@unique([organizationId, whatsappAccountId, contactId])
   @@index([organizationId])
+  @@index([organizationId, section, lastMessageAt])
   @@index([whatsappAccountId])
   @@index([contactId])
   @@map("conversations")

@@ -297,7 +297,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], CampaignProcessor.prototype, "handleBuildAudience", null);
 __decorate([
-    (0, bull_1.Process)('send-message'),
+    (0, bull_1.Process)({ name: 'send-message', concurrency: 50 }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [bullmq_1.Job]),
     __metadata("design:returntype", Promise)
