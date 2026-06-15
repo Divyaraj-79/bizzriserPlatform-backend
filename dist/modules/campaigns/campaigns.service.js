@@ -20,17 +20,20 @@ const bullmq_1 = require("bullmq");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const contacts_service_1 = require("../contacts/contacts.service");
 const realtime_gateway_1 = require("../realtime/realtime.gateway");
+const messaging_service_1 = require("../messaging/messaging.service");
 const client_1 = require("@prisma/client");
 let CampaignsService = CampaignsService_1 = class CampaignsService {
     prisma;
     contactsService;
     realtimeGateway;
+    messagingService;
     campaignQueue;
     logger = new common_1.Logger(CampaignsService_1.name);
-    constructor(prisma, contactsService, realtimeGateway, campaignQueue) {
+    constructor(prisma, contactsService, realtimeGateway, messagingService, campaignQueue) {
         this.prisma = prisma;
         this.contactsService = contactsService;
         this.realtimeGateway = realtimeGateway;
+        this.messagingService = messagingService;
         this.campaignQueue = campaignQueue;
     }
     async findAll(orgId, accountContext) {
@@ -215,6 +218,100 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
             'Error': r.failureReason || ''
         }));
     }
+    async sendTestMessage(orgId, data) {
+        const { accountId, phone, templateName, language = 'en_US', components = [] } = data;
+        let contact = await this.prisma.contact.findFirst({
+            where: { organizationId: orgId, phone: phone }
+        });
+        if (!contact) {
+            contact = await this.prisma.contact.create({
+                data: {
+                    organizationId: orgId,
+                    phone: phone,
+                    firstName: 'Test',
+                    lastName: 'Contact',
+                }
+            });
+        }
+        const metaComponents = [];
+        const broadcastParams = components || [];
+        const resolveParamValue = (param, fallbackFieldKey) => {
+            let text = '';
+            const fieldKey = param?.field || fallbackFieldKey;
+            const hasStaticValue = param && (param.field === '__STATIC__' || (param.value !== undefined && param.value !== null && param.field === ''));
+            if (hasStaticValue || param?.field === '__STATIC__') {
+                text = param?.value || '';
+            }
+            else if (fieldKey) {
+                if (fieldKey.startsWith('custom:')) {
+                    const cfKey = fieldKey.replace('custom:', '');
+                    text = contact.customFields?.[cfKey] || '';
+                }
+                else if (fieldKey.startsWith('var:')) {
+                    text = 'TestVar';
+                }
+                else {
+                    text = contact[fieldKey] || contact.customFields?.[fieldKey] || '';
+                }
+            }
+            return text;
+        };
+        const headerParams = broadcastParams.filter(p => p.componentType === 'HEADER');
+        if (headerParams.length > 0) {
+            const headerParameters = [];
+            headerParams.forEach(p => {
+                const resolvedValue = resolveParamValue(p);
+                if (p.mediaType && p.mediaType !== 'TEXT') {
+                    const mediaValue = String(resolvedValue || '').trim();
+                    if (!mediaValue)
+                        return;
+                    const isLink = mediaValue.startsWith('http://') || mediaValue.startsWith('https://');
+                    const mediaObj = isLink ? { link: mediaValue } : { id: mediaValue };
+                    if (p.mediaType === 'IMAGE')
+                        headerParameters.push({ type: 'image', image: mediaObj });
+                    else if (p.mediaType === 'VIDEO')
+                        headerParameters.push({ type: 'video', video: mediaObj });
+                    else if (p.mediaType === 'DOCUMENT')
+                        headerParameters.push({ type: 'document', document: { ...mediaObj, filename: p.filename || 'Document.pdf' } });
+                }
+                else {
+                    headerParameters.push({ type: 'text', text: String(resolvedValue?.trim() || ' ') });
+                }
+            });
+            if (headerParameters.length > 0)
+                metaComponents.push({ type: 'header', parameters: headerParameters });
+        }
+        const bodyParameters = [];
+        const bodyParams = broadcastParams.filter(p => !p.componentType || p.componentType === 'BODY');
+        if (bodyParams.length > 0) {
+            bodyParams.sort((a, b) => parseInt(a.index) - parseInt(b.index)).forEach(p => {
+                const resolvedValue = resolveParamValue(p);
+                bodyParameters.push({ type: 'text', text: String(resolvedValue?.trim() || ' ') });
+            });
+            if (bodyParameters.length > 0)
+                metaComponents.push({ type: 'body', parameters: bodyParameters });
+        }
+        const buttonParams = broadcastParams.filter(p => p.componentType === 'BUTTON');
+        if (buttonParams.length > 0) {
+            const buttonsMap = {};
+            buttonParams.forEach(p => {
+                const btnIdx = typeof p.buttonIndex === 'number' ? p.buttonIndex : parseInt(p.buttonIndex || '0');
+                if (!buttonsMap[btnIdx])
+                    buttonsMap[btnIdx] = [];
+                buttonsMap[btnIdx].push(p);
+            });
+            Object.keys(buttonsMap).forEach(btnIdxStr => {
+                const btnIdx = parseInt(btnIdxStr);
+                const params = buttonsMap[btnIdx];
+                const buttonParameters = params.sort((a, b) => parseInt(a.index) - parseInt(b.index)).map(p => {
+                    const resolvedValue = resolveParamValue(p);
+                    return { type: 'text', text: String(resolvedValue?.trim() || ' ') };
+                });
+                metaComponents.push({ type: 'button', sub_type: 'url', index: String(btnIdx), parameters: buttonParameters });
+            });
+        }
+        return this.messagingService.sendTemplateMessage(orgId, accountId, contact.id, templateName, language, metaComponents, { isTestMessage: true });
+    }
     async log(campaignId, message, level = client_1.CampaignLogLevel.INFO, metadata = {}) {
         return this.prisma.campaignLog.create({
             data: { campaignId, message, level, metadata },
@@ -257,10 +354,11 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
 exports.CampaignsService = CampaignsService;
 exports.CampaignsService = CampaignsService = CampaignsService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(3, (0, bull_1.InjectQueue)('campaign-messages')),
+    __param(4, (0, bull_1.InjectQueue)('campaign-messages')),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         contacts_service_1.ContactsService,
         realtime_gateway_1.RealtimeGateway,
+        messaging_service_1.MessagingService,
         bullmq_1.Queue])
 ], CampaignsService);
 //# sourceMappingURL=campaigns.service.js.map

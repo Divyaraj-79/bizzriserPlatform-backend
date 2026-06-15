@@ -30,7 +30,7 @@ export class CampaignsController {
   @Post('test-message')
   async sendTestMessage(
     @Req() req: any,
-    @Body() data: { accountId: string; phone: string; templateName: string; language?: string; components?: any[] },
+    @Body() data: any,
   ) {
     return this.campaignsService.sendTestMessage(req.user.orgId, data);
   }

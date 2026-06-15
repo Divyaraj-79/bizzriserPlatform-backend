@@ -30,6 +30,9 @@ let CampaignsController = class CampaignsController {
     async createBroadcast(req, data) {
         return this.campaignsService.createBroadcast(req.user.orgId, data);
     }
+    async sendTestMessage(req, data) {
+        return this.campaignsService.sendTestMessage(req.user.orgId, data);
+    }
     async cancelBroadcast(req, id) {
         return this.campaignsService.cancelCampaign(req.user.orgId, id);
     }
@@ -63,6 +66,14 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], CampaignsController.prototype, "createBroadcast", null);
+__decorate([
+    (0, common_1.Post)('test-message'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], CampaignsController.prototype, "sendTestMessage", null);
 __decorate([
     (0, common_1.Post)(':id/cancel'),
     __param(0, (0, common_1.Req)()),

@@ -41,11 +41,14 @@ export declare class AnalyticsController {
         deliveryRate: number;
         readRate: number;
         failureRate: number;
-        organizationId: string;
         id: string;
-        name: string;
-        description: string | null;
+        organizationId: string;
         status: import(".prisma/client").$Enums.CampaignStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        description: string | null;
         templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
         scheduledAt: Date | null;
@@ -57,24 +60,21 @@ export declare class AnalyticsController {
         readCount: number;
         failedCount: number;
         responseCount: number;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
     }[]>;
     getAutomations(req: any, query: AnalyticsQueryDto): Promise<{
         chatbots: {
-            executions: number;
             id: string;
-            name: string;
             status: import(".prisma/client").$Enums.ChatbotStatus;
             updatedAt: Date;
+            name: string;
+            executions: number;
         }[];
         sequences: {
-            executions: number;
             id: string;
-            name: string;
             status: import(".prisma/client").$Enums.SequenceStatus;
             updatedAt: Date;
+            name: string;
+            executions: number;
         }[];
     }>;
     exportData(req: any, query: AnalyticsQueryDto): Promise<{

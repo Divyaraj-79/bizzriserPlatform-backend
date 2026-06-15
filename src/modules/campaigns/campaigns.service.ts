@@ -259,9 +259,6 @@ export class CampaignsService {
     const { accountId, phone, templateName, language = 'en_US', components = [] } = data;
 
     // To make sure it appears in the inbox, we need the contact to exist.
-    // Use an atomic upsert or import to ensure we have a contact ID.
-    // We'll create a basic import payload.
-    await this.contactsService.atomicBulkImport(orgId, [{ phone, firstName: 'Test', lastName: 'User' }]);
     
     // Fetch the newly created/existing contact to get its ID.
     let contact = await this.prisma.contact.findFirst({
@@ -279,6 +276,82 @@ export class CampaignsService {
       });
     }
 
+    // Transform paramMapping to Meta API components
+    const metaComponents: any[] = [];
+    const broadcastParams = components || [];
+
+    const resolveParamValue = (param: any, fallbackFieldKey?: string) => {
+      let text = '';
+      const fieldKey = param?.field || fallbackFieldKey;
+      const hasStaticValue = param && (param.field === '__STATIC__' || (param.value !== undefined && param.value !== null && param.field === ''));
+      
+      if (hasStaticValue || param?.field === '__STATIC__') {
+        text = param?.value || '';
+      } else if (fieldKey) {
+        if (fieldKey.startsWith('custom:')) {
+          const cfKey = fieldKey.replace('custom:', '');
+          text = (contact.customFields as any)?.[cfKey] || '';
+        } else if (fieldKey.startsWith('var:')) {
+           text = 'TestVar';
+        } else {
+          text = (contact as any)[fieldKey] || (contact.customFields as any)?.[fieldKey] || '';
+        }
+      }
+      return text;
+    };
+
+    // 1. Build HEADER parameters
+    const headerParams = broadcastParams.filter(p => p.componentType === 'HEADER');
+    if (headerParams.length > 0) {
+      const headerParameters: any[] = [];
+      headerParams.forEach(p => {
+        const resolvedValue = resolveParamValue(p);
+        if (p.mediaType && p.mediaType !== 'TEXT') {
+          const mediaValue = String(resolvedValue || '').trim();
+          if (!mediaValue) return;
+          const isLink = mediaValue.startsWith('http://') || mediaValue.startsWith('https://');
+          const mediaObj = isLink ? { link: mediaValue } : { id: mediaValue };
+          if (p.mediaType === 'IMAGE') headerParameters.push({ type: 'image', image: mediaObj });
+          else if (p.mediaType === 'VIDEO') headerParameters.push({ type: 'video', video: mediaObj });
+          else if (p.mediaType === 'DOCUMENT') headerParameters.push({ type: 'document', document: { ...mediaObj, filename: p.filename || 'Document.pdf' } });
+        } else {
+          headerParameters.push({ type: 'text', text: String(resolvedValue?.trim() || ' ') });
+        }
+      });
+      if (headerParameters.length > 0) metaComponents.push({ type: 'header', parameters: headerParameters });
+    }
+
+    // 2. Build BODY parameters
+    const bodyParameters: any[] = [];
+    const bodyParams = broadcastParams.filter(p => !p.componentType || p.componentType === 'BODY');
+    if (bodyParams.length > 0) {
+      bodyParams.sort((a, b) => parseInt(a.index) - parseInt(b.index)).forEach(p => {
+        const resolvedValue = resolveParamValue(p);
+        bodyParameters.push({ type: 'text', text: String(resolvedValue?.trim() || ' ') });
+      });
+      if (bodyParameters.length > 0) metaComponents.push({ type: 'body', parameters: bodyParameters });
+    }
+
+    // 3. Build BUTTON parameters
+    const buttonParams = broadcastParams.filter(p => p.componentType === 'BUTTON');
+    if (buttonParams.length > 0) {
+      const buttonsMap: Record<number, any[]> = {};
+      buttonParams.forEach(p => {
+        const btnIdx = typeof p.buttonIndex === 'number' ? p.buttonIndex : parseInt(p.buttonIndex || '0');
+        if (!buttonsMap[btnIdx]) buttonsMap[btnIdx] = [];
+        buttonsMap[btnIdx].push(p);
+      });
+      Object.keys(buttonsMap).forEach(btnIdxStr => {
+        const btnIdx = parseInt(btnIdxStr);
+        const params = buttonsMap[btnIdx];
+        const buttonParameters = params.sort((a, b) => parseInt(a.index) - parseInt(b.index)).map(p => {
+          const resolvedValue = resolveParamValue(p);
+          return { type: 'text', text: String(resolvedValue?.trim() || ' ') };
+        });
+        metaComponents.push({ type: 'button', sub_type: 'url', index: String(btnIdx), parameters: buttonParameters });
+      });
+    }
+
     // Now send the template message via messagingService so it logs to DB and Inbox
     return this.messagingService.sendTemplateMessage(
       orgId,
@@ -286,7 +359,7 @@ export class CampaignsService {
       contact.id,
       templateName,
       language,
-      components,
+      metaComponents,
       { isTestMessage: true }
     );
   }
