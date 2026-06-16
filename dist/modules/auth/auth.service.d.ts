@@ -22,6 +22,7 @@ export declare class AuthService {
     }>;
     refreshToken(refreshToken: string): Promise<{
         access_token: string;
+        refresh_token: string;
     }>;
     getAccountPermissions(userId: string, accountId: string): Promise<string[]>;
 }

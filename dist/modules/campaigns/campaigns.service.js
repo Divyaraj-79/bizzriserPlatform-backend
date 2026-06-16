@@ -334,27 +334,33 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
     async updateCampaignStats(campaignId, oldStatus, newStatus) {
         if (oldStatus === newStatus)
             return;
-        const stats = await this.prisma.campaignRecipient.groupBy({
-            by: ['status'],
-            where: { campaignId },
-            _count: { status: true }
-        });
-        const updateData = { sentCount: 0, deliveredCount: 0, readCount: 0, failedCount: 0 };
-        for (const stat of stats) {
-            const count = stat._count.status;
-            if (stat.status === client_1.MessageStatus.SENT)
-                updateData.sentCount += count;
-            if (stat.status === client_1.MessageStatus.DELIVERED) {
-                updateData.sentCount += count;
-                updateData.deliveredCount += count;
+        const incrementData = {};
+        const decrementData = {};
+        if (oldStatus === client_1.MessageStatus.SENT)
+            decrementData.sentCount = 1;
+        if (oldStatus === client_1.MessageStatus.DELIVERED)
+            decrementData.deliveredCount = 1;
+        if (oldStatus === client_1.MessageStatus.READ)
+            decrementData.readCount = 1;
+        if (oldStatus === client_1.MessageStatus.FAILED)
+            decrementData.failedCount = 1;
+        if (newStatus === client_1.MessageStatus.SENT)
+            incrementData.sentCount = 1;
+        if (newStatus === client_1.MessageStatus.DELIVERED)
+            incrementData.deliveredCount = 1;
+        if (newStatus === client_1.MessageStatus.READ)
+            incrementData.readCount = 1;
+        if (newStatus === client_1.MessageStatus.FAILED)
+            incrementData.failedCount = 1;
+        const updateData = {};
+        const keys = ['sentCount', 'deliveredCount', 'readCount', 'failedCount'];
+        for (const key of keys) {
+            const inc = incrementData[key] || 0;
+            const dec = decrementData[key] || 0;
+            const diff = inc - dec;
+            if (diff !== 0) {
+                updateData[key] = { increment: diff };
             }
-            if (stat.status === client_1.MessageStatus.READ) {
-                updateData.sentCount += count;
-                updateData.deliveredCount += count;
-                updateData.readCount += count;
-            }
-            if (stat.status === client_1.MessageStatus.FAILED)
-                updateData.failedCount += count;
         }
         if (Object.keys(updateData).length > 0) {
             const updatedCampaign = await this.prisma.campaign.update({

@@ -142,8 +142,13 @@ let AuthService = AuthService_1 = class AuthService {
                 lastName: user.lastName,
                 originalOrgId: user.organizationId
             };
+            const refreshTokenPayload = { sub: user.id };
             return {
                 access_token: this.jwtService.sign(accessTokenPayload),
+                refresh_token: this.jwtService.sign(refreshTokenPayload, {
+                    secret: this.configService.get('jwt.refreshSecret'),
+                    expiresIn: this.configService.get('jwt.refreshExpiresIn'),
+                }),
             };
         }
         catch (e) {

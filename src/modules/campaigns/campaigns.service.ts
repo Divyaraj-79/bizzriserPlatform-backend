@@ -391,26 +391,31 @@ export class CampaignsService {
   async updateCampaignStats(campaignId: string, oldStatus: MessageStatus, newStatus: MessageStatus) {
     if (oldStatus === newStatus) return;
 
-    const stats = await this.prisma.campaignRecipient.groupBy({
-      by: ['status'],
-      where: { campaignId },
-      _count: { status: true }
-    });
+    const incrementData: any = {};
+    const decrementData: any = {};
 
-    const updateData = { sentCount: 0, deliveredCount: 0, readCount: 0, failedCount: 0 };
-    for (const stat of stats) {
-       const count = stat._count.status;
-       if (stat.status === MessageStatus.SENT) updateData.sentCount += count;
-       if (stat.status === MessageStatus.DELIVERED) {
-          updateData.sentCount += count;
-          updateData.deliveredCount += count;
-       }
-       if (stat.status === MessageStatus.READ) {
-          updateData.sentCount += count;
-          updateData.deliveredCount += count;
-          updateData.readCount += count;
-       }
-       if (stat.status === MessageStatus.FAILED) updateData.failedCount += count;
+    // Decrement old status count
+    if (oldStatus === MessageStatus.SENT) decrementData.sentCount = 1;
+    if (oldStatus === MessageStatus.DELIVERED) decrementData.deliveredCount = 1;
+    if (oldStatus === MessageStatus.READ) decrementData.readCount = 1;
+    if (oldStatus === MessageStatus.FAILED) decrementData.failedCount = 1;
+
+    // Increment new status count
+    if (newStatus === MessageStatus.SENT) incrementData.sentCount = 1;
+    if (newStatus === MessageStatus.DELIVERED) incrementData.deliveredCount = 1;
+    if (newStatus === MessageStatus.READ) incrementData.readCount = 1;
+    if (newStatus === MessageStatus.FAILED) incrementData.failedCount = 1;
+
+    const updateData: any = {};
+    const keys = ['sentCount', 'deliveredCount', 'readCount', 'failedCount'];
+    
+    for (const key of keys) {
+      const inc = incrementData[key] || 0;
+      const dec = decrementData[key] || 0;
+      const diff = inc - dec;
+      if (diff !== 0) {
+        updateData[key] = { increment: diff };
+      }
     }
 
     if (Object.keys(updateData).length > 0) {

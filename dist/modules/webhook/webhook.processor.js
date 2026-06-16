@@ -240,15 +240,9 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
                         firstResponseAt: new Date(),
                     },
                 });
-                const stats = await this.prisma.campaignRecipient.count({
-                    where: {
-                        campaignId: recipientCampaign.campaignId,
-                        firstResponse: { not: null },
-                    },
-                });
                 const updatedCampaign = await this.prisma.campaign.update({
                     where: { id: recipientCampaign.campaignId },
-                    data: { responseCount: stats },
+                    data: { responseCount: { increment: 1 } },
                 });
                 this.realtimeGateway.emitCampaignUpdate(updatedCampaign.organizationId, updatedCampaign);
                 this.logger.log(`Recorded first response for campaign ${recipientCampaign.campaignId}, contact ${contact.id}: "${textBody}"`);

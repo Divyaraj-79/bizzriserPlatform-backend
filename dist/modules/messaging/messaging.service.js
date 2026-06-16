@@ -30,22 +30,40 @@ let MessagingService = MessagingService_1 = class MessagingService {
         this.contactsService = contactsService;
     }
     async findOrCreateConversation(orgId, accountId, contactId, isBroadcast = false) {
-        return this.prisma.conversation.upsert({
-            where: {
-                organizationId_whatsappAccountId_contactId: {
+        try {
+            return await this.prisma.conversation.upsert({
+                where: {
+                    organizationId_whatsappAccountId_contactId: {
+                        organizationId: orgId,
+                        whatsappAccountId: accountId,
+                        contactId,
+                    },
+                },
+                update: {},
+                create: {
                     organizationId: orgId,
                     whatsappAccountId: accountId,
                     contactId,
+                    section: isBroadcast ? 'BROADCAST' : 'PRIMARY'
                 },
-            },
-            update: {},
-            create: {
-                organizationId: orgId,
-                whatsappAccountId: accountId,
-                contactId,
-                section: isBroadcast ? 'BROADCAST' : 'PRIMARY'
-            },
-        });
+            });
+        }
+        catch (error) {
+            if (error.code === 'P2002') {
+                const existing = await this.prisma.conversation.findUnique({
+                    where: {
+                        organizationId_whatsappAccountId_contactId: {
+                            organizationId: orgId,
+                            whatsappAccountId: accountId,
+                            contactId,
+                        },
+                    },
+                });
+                if (existing)
+                    return existing;
+            }
+            throw error;
+        }
     }
     async createMessage(data) {
         const isBroadcast = !!data.metadata?.campaignId;
@@ -319,34 +337,31 @@ let MessagingService = MessagingService_1 = class MessagingService {
                             where: { id: recipient.id },
                             data: recipientUpdate
                         });
-                        const stats = await this.prisma.campaignRecipient.groupBy({
-                            by: ['status'],
-                            where: { campaignId },
-                            _count: { status: true }
-                        });
-                        const updateData = { sentCount: 0, deliveredCount: 0, readCount: 0, failedCount: 0 };
-                        for (const stat of stats) {
-                            const count = stat._count.status;
-                            if (stat.status === client_1.MessageStatus.SENT)
-                                updateData.sentCount += count;
-                            if (stat.status === client_1.MessageStatus.DELIVERED) {
-                                updateData.sentCount += count;
-                                updateData.deliveredCount += count;
-                            }
-                            if (stat.status === client_1.MessageStatus.READ) {
-                                updateData.sentCount += count;
-                                updateData.deliveredCount += count;
-                                updateData.readCount += count;
-                            }
-                            if (stat.status === client_1.MessageStatus.FAILED)
-                                updateData.failedCount += count;
-                        }
-                        if (oldRecipientStatus !== finalStatus && Object.keys(updateData).length > 0) {
-                            const updatedCampaign = await this.prisma.campaign.update({
-                                where: { id: campaignId },
-                                data: updateData
+                        if (oldRecipientStatus !== finalStatus) {
+                            const getCountContribution = (st) => ({
+                                sent: (st === 'SENT' || st === 'DELIVERED' || st === 'READ') ? 1 : 0,
+                                delivered: (st === 'DELIVERED' || st === 'READ') ? 1 : 0,
+                                read: (st === 'READ') ? 1 : 0,
+                                failed: (st === 'FAILED') ? 1 : 0
                             });
-                            this.realtimeGateway.emitCampaignUpdate(updatedCampaign.organizationId, updatedCampaign);
+                            const oldCont = getCountContribution(oldRecipientStatus);
+                            const newCont = getCountContribution(finalStatus);
+                            const updateData = {};
+                            if (newCont.sent - oldCont.sent !== 0)
+                                updateData.sentCount = { increment: newCont.sent - oldCont.sent };
+                            if (newCont.delivered - oldCont.delivered !== 0)
+                                updateData.deliveredCount = { increment: newCont.delivered - oldCont.delivered };
+                            if (newCont.read - oldCont.read !== 0)
+                                updateData.readCount = { increment: newCont.read - oldCont.read };
+                            if (newCont.failed - oldCont.failed !== 0)
+                                updateData.failedCount = { increment: newCont.failed - oldCont.failed };
+                            if (Object.keys(updateData).length > 0) {
+                                const updatedCampaign = await this.prisma.campaign.update({
+                                    where: { id: campaignId },
+                                    data: updateData
+                                });
+                                this.realtimeGateway.emitCampaignUpdate(updatedCampaign.organizationId, updatedCampaign);
+                            }
                         }
                     }
                 }

@@ -241,17 +241,10 @@ export class WebhookProcessor {
           },
         });
 
-        // Recalculate campaign responseCount
-        const stats = await this.prisma.campaignRecipient.count({
-          where: {
-            campaignId: recipientCampaign.campaignId,
-            firstResponse: { not: null },
-          },
-        });
-
+        // Atomically increment campaign responseCount
         const updatedCampaign = await this.prisma.campaign.update({
           where: { id: recipientCampaign.campaignId },
-          data: { responseCount: stats },
+          data: { responseCount: { increment: 1 } },
         });
 
         // Emit updated campaign stats

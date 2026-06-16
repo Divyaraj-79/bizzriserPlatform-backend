@@ -12,6 +12,7 @@ export declare class AuthController {
     }>;
     refresh(refreshToken: string): Promise<{
         access_token: string;
+        refresh_token: string;
     }>;
     getPermissions(req: any, accountId: string): Promise<{
         permissions: string[];

@@ -105,8 +105,14 @@ export class AuthService {
         originalOrgId: user.organizationId
       };
 
+      const refreshTokenPayload = { sub: user.id };
+
       return {
         access_token: this.jwtService.sign(accessTokenPayload),
+        refresh_token: this.jwtService.sign(refreshTokenPayload, {
+          secret: this.configService.get<string>('jwt.refreshSecret'),
+          expiresIn: this.configService.get<string>('jwt.refreshExpiresIn') as any,
+        }),
       };
     } catch (e) {
       throw new UnauthorizedException('Invalid refresh token');
