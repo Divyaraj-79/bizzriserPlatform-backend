@@ -27,6 +27,7 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
     campaignsService;
     campaignQueue;
     logger = new common_1.Logger(CampaignProcessor_1.name);
+    templateCache = new Map();
     constructor(prisma, messagingService, campaignsService, campaignQueue) {
         this.prisma = prisma;
         this.messagingService = messagingService;
@@ -98,7 +99,7 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
         try {
             const campaign = await this.prisma.campaign.findUnique({
                 where: { id: campaignId },
-                select: { status: true, name: true, totalRecipients: true, sentCount: true, failedCount: true, metadata: true },
+                select: { status: true, metadata: true },
             });
             if (!campaign || campaign.status === 'CANCELLED') {
                 this.logger.warn(`Campaign ${campaignId} is CANCELLED. Skipping message for recipient ${recipientId}.`);
@@ -122,13 +123,20 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
                 return;
             }
             const templateLanguage = campaign.metadata?.templateLanguage;
-            const mappingRecord = await this.prisma.whatsAppTemplate.findFirst({
-                where: {
-                    accountId,
-                    name: templateName,
-                    language: templateLanguage || undefined
+            const cacheKey = `${accountId}_${templateName}_${templateLanguage || 'default'}`;
+            let mappingRecord = this.templateCache.get(cacheKey);
+            if (!mappingRecord) {
+                mappingRecord = await this.prisma.whatsAppTemplate.findFirst({
+                    where: {
+                        accountId,
+                        name: templateName,
+                        language: templateLanguage || undefined
+                    }
+                });
+                if (mappingRecord) {
+                    this.templateCache.set(cacheKey, mappingRecord);
                 }
-            });
+            }
             const resolveParamValue = (param, fallbackFieldKey) => {
                 let text = '';
                 const fieldKey = param?.field || fallbackFieldKey;
@@ -270,28 +278,41 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
                 where: { id: recipientId },
                 data: recipientUpdate,
             });
-            await this.campaignsService.updateCampaignStats(campaignId, oldRecipientStatus, finalStatus);
-            const updatedCampaign = await this.prisma.campaign.findUnique({ where: { id: campaignId } });
-            if (updatedCampaign && updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients) {
-                await this.prisma.campaign.update({
-                    where: { id: campaignId },
+            const updatedCampaign = await this.campaignsService.updateCampaignStats(campaignId, oldRecipientStatus, finalStatus);
+            if (updatedCampaign && updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients && updatedCampaign.status !== client_1.CampaignStatus.COMPLETED) {
+                await this.prisma.campaign.updateMany({
+                    where: { id: campaignId, status: { not: client_1.CampaignStatus.COMPLETED } },
                     data: { status: client_1.CampaignStatus.COMPLETED, completedAt: new Date() },
                 });
                 await this.campaignsService.log(campaignId, 'Broadcast completed successfully', client_1.CampaignLogLevel.INFO);
             }
         }
         catch (error) {
-            this.logger.error(`Failed to process campaign message for recipient ${recipientId}: ${error.message}`);
-            const currentRecipient = await this.prisma.campaignRecipient.findUnique({ where: { id: recipientId } });
-            const currentStatus = currentRecipient?.status || client_1.MessageStatus.PENDING;
-            if (currentStatus !== client_1.MessageStatus.FAILED) {
-                await this.prisma.campaignRecipient.update({
-                    where: { id: recipientId },
-                    data: { status: client_1.MessageStatus.FAILED, failedAt: new Date(), failureReason: `PROCESSOR_V2: ${error.message}` },
-                });
-                await this.campaignsService.updateCampaignStats(campaignId, currentStatus, client_1.MessageStatus.FAILED);
+            const maxAttempts = job.opts.attempts || 1;
+            const isLastAttempt = job.attemptsMade >= maxAttempts - 1;
+            this.logger.error(`Failed to process campaign message for recipient ${recipientId} (Attempt ${job.attemptsMade + 1}/${maxAttempts}): ${error.message}`);
+            if (isLastAttempt) {
+                const currentRecipient = await this.prisma.campaignRecipient.findUnique({ where: { id: recipientId } });
+                const currentStatus = currentRecipient?.status || client_1.MessageStatus.PENDING;
+                if (currentStatus !== client_1.MessageStatus.FAILED) {
+                    await this.prisma.campaignRecipient.update({
+                        where: { id: recipientId },
+                        data: { status: client_1.MessageStatus.FAILED, failedAt: new Date(), failureReason: `PROCESSOR_V2: ${error.message}` },
+                    });
+                    const updatedCampaign = await this.campaignsService.updateCampaignStats(campaignId, currentStatus, client_1.MessageStatus.FAILED);
+                    if (updatedCampaign && updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients && updatedCampaign.status !== client_1.CampaignStatus.COMPLETED) {
+                        await this.prisma.campaign.updateMany({
+                            where: { id: campaignId, status: { not: client_1.CampaignStatus.COMPLETED } },
+                            data: { status: client_1.CampaignStatus.COMPLETED, completedAt: new Date() },
+                        });
+                        await this.campaignsService.log(campaignId, 'Broadcast completed successfully', client_1.CampaignLogLevel.INFO);
+                    }
+                }
+                await this.campaignsService.log(campaignId, `Message permanently failed for recipient ${contactId} after ${maxAttempts} attempts: ${error.message}`, client_1.CampaignLogLevel.ERROR);
             }
-            await this.campaignsService.log(campaignId, `Message failed for recipient ${contactId}: ${error.message}`, client_1.CampaignLogLevel.ERROR);
+            else {
+                this.logger.warn(`Job will be retried (Attempt ${job.attemptsMade + 1}/${maxAttempts})...`);
+            }
             throw error;
         }
     }

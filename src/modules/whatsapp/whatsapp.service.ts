@@ -1798,9 +1798,10 @@ export class WhatsappService {
 
   private handleError(error: any, context: string) {
     const errorData = error.response?.data;
-    const errorMsg = errorData?.error?.message || errorData?.message || error.message;
+    const errorMsg = errorData?.error?.message || errorData?.error?.error_user_msg || errorData?.message || error.message;
     const errorCode = errorData?.error?.code || errorData?.code;
     const errorSubcode = errorData?.error?.error_subcode;
+    const errorDetails = errorData?.error?.error_data?.details || '';
 
     this.logger.error(`${context}: ${errorMsg} (Code: ${errorCode}, Subcode: ${errorSubcode})`);
 
@@ -1813,7 +1814,7 @@ export class WhatsappService {
       throw new HttpException(`${context}: Authentication failed. Please reconnect your WhatsApp account.`, HttpStatus.UNAUTHORIZED);
     }
 
-    const formattedError = `WHATSAPP_SVC_V2: ${errorMsg || 'Unknown WhatsApp API error'}${errorCode ? ` (Code: ${errorCode}${errorSubcode ? `, Subcode: ${errorSubcode}` : ''})` : ''}`;
+    const formattedError = `WHATSAPP_SVC_V2: ${errorMsg || 'Unknown WhatsApp API error'}${errorDetails ? ` - ${errorDetails}` : ''}${errorCode ? ` (Code: ${errorCode}${errorSubcode ? `, Subcode: ${errorSubcode}` : ''})` : ''}`;
 
     throw new HttpException(
       `${context}: ${formattedError}`,

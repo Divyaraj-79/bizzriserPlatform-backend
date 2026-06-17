@@ -8,6 +8,7 @@ export declare class CampaignProcessor {
     private readonly campaignsService;
     private readonly campaignQueue;
     private readonly logger;
+    private templateCache;
     constructor(prisma: PrismaService, messagingService: MessagingService, campaignsService: CampaignsService, campaignQueue: any);
     handleStartCampaign(job: Job<any>): Promise<void>;
     handleBuildAudience(job: Job<any>): Promise<void>;

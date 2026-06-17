@@ -1484,9 +1484,10 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
     }
     handleError(error, context) {
         const errorData = error.response?.data;
-        const errorMsg = errorData?.error?.message || errorData?.message || error.message;
+        const errorMsg = errorData?.error?.message || errorData?.error?.error_user_msg || errorData?.message || error.message;
         const errorCode = errorData?.error?.code || errorData?.code;
         const errorSubcode = errorData?.error?.error_subcode;
+        const errorDetails = errorData?.error?.error_data?.details || '';
         this.logger.error(`${context}: ${errorMsg} (Code: ${errorCode}, Subcode: ${errorSubcode})`);
         if (errorData && !errorData.error) {
             this.logger.error(`${context} Full Response: ${JSON.stringify(errorData)}`);
@@ -1494,7 +1495,7 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         if (error.response?.status === common_1.HttpStatus.UNAUTHORIZED) {
             throw new common_1.HttpException(`${context}: Authentication failed. Please reconnect your WhatsApp account.`, common_1.HttpStatus.UNAUTHORIZED);
         }
-        const formattedError = `WHATSAPP_SVC_V2: ${errorMsg || 'Unknown WhatsApp API error'}${errorCode ? ` (Code: ${errorCode}${errorSubcode ? `, Subcode: ${errorSubcode}` : ''})` : ''}`;
+        const formattedError = `WHATSAPP_SVC_V2: ${errorMsg || 'Unknown WhatsApp API error'}${errorDetails ? ` - ${errorDetails}` : ''}${errorCode ? ` (Code: ${errorCode}${errorSubcode ? `, Subcode: ${errorSubcode}` : ''})` : ''}`;
         throw new common_1.HttpException(`${context}: ${formattedError}`, error.response?.status || common_1.HttpStatus.INTERNAL_SERVER_ERROR);
     }
 };

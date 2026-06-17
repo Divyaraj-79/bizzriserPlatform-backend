@@ -24,6 +24,10 @@ exports.CampaignsModule = CampaignsModule = __decorate([
         imports: [
             bull_1.BullModule.registerQueue({
                 name: 'campaign-messages',
+                limiter: {
+                    max: 50,
+                    duration: 1000,
+                },
             }),
             messaging_module_1.MessagingModule,
             prisma_module_1.PrismaModule,

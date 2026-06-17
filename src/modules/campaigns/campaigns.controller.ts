@@ -51,6 +51,14 @@ export class CampaignsController {
     return this.campaignsService.triggerCampaign(req.user.orgId, id);
   }
 
+  @Post(':id/send-instant')
+  async sendInstantBroadcast(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    return this.campaignsService.sendInstantScheduledCampaign(req.user.orgId, id);
+  }
+
   @Get(':id')
   async getCampaign(
     @Req() req: any,

@@ -13,6 +13,10 @@ import { CampaignsController } from './campaigns.controller';
   imports: [
     BullModule.registerQueue({
       name: 'campaign-messages',
+      limiter: {
+        max: 50,
+        duration: 1000,
+      },
     }),
     MessagingModule,
     PrismaModule,

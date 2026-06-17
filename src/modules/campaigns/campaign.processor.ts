@@ -9,6 +9,9 @@ import { CampaignStatus, MessageStatus, CampaignLogLevel } from '@prisma/client'
 @Processor('campaign-messages')
 export class CampaignProcessor {
   private readonly logger = new Logger(CampaignProcessor.name);
+  
+  // In-memory cache for static data during a broadcast burst
+  private templateCache = new Map<string, any>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -102,9 +105,10 @@ export class CampaignProcessor {
 
     try {
       // 1. Check if campaign is STILL running (and not cancelled)
+      // We only select the minimal required fields to save DB bandwidth
       const campaign = await this.prisma.campaign.findUnique({
         where: { id: campaignId },
-        select: { status: true, name: true, totalRecipients: true, sentCount: true, failedCount: true, metadata: true },
+        select: { status: true, metadata: true },
       });
 
       if (!campaign || campaign.status === ('CANCELLED' as any)) {
@@ -134,13 +138,21 @@ export class CampaignProcessor {
       // 3. Map Parameters using new WhatsAppTemplate mappings
       const templateLanguage = (campaign.metadata as any)?.templateLanguage;
 
-      const mappingRecord = await this.prisma.whatsAppTemplate.findFirst({
-         where: { 
-            accountId, 
-            name: templateName,
-            language: templateLanguage || undefined
-         }
-      });
+      const cacheKey = `${accountId}_${templateName}_${templateLanguage || 'default'}`;
+      let mappingRecord = this.templateCache.get(cacheKey);
+
+      if (!mappingRecord) {
+        mappingRecord = await this.prisma.whatsAppTemplate.findFirst({
+           where: { 
+              accountId, 
+              name: templateName,
+              language: templateLanguage || undefined
+           }
+        });
+        if (mappingRecord) {
+          this.templateCache.set(cacheKey, mappingRecord);
+        }
+      }
 
       const resolveParamValue = (param: any, fallbackFieldKey?: string) => {
         let text = '';
@@ -310,33 +322,50 @@ export class CampaignProcessor {
         where: { id: recipientId },
         data: recipientUpdate,
       });
-      await this.campaignsService.updateCampaignStats(campaignId, oldRecipientStatus, finalStatus);
+      
+      // Atomic increment returns the updated values
+      const updatedCampaign = await this.campaignsService.updateCampaignStats(campaignId, oldRecipientStatus, finalStatus);
 
-      // 6. Completion check
-      const updatedCampaign = await this.prisma.campaign.findUnique({ where: { id: campaignId } });
-      if (updatedCampaign && updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients) {
-        await this.prisma.campaign.update({
-          where: { id: campaignId },
+      // 6. Completion check using exactly atomic values
+      if (updatedCampaign && updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients && updatedCampaign.status !== CampaignStatus.COMPLETED) {
+        await this.prisma.campaign.updateMany({
+          where: { id: campaignId, status: { not: CampaignStatus.COMPLETED } },
           data: { status: CampaignStatus.COMPLETED, completedAt: new Date() },
         });
         await this.campaignsService.log(campaignId, 'Broadcast completed successfully', CampaignLogLevel.INFO);
       }
 
     } catch (error: any) {
-      this.logger.error(`Failed to process campaign message for recipient ${recipientId}: ${error.message}`);
+      const maxAttempts = job.opts.attempts || 1;
+      const isLastAttempt = job.attemptsMade >= maxAttempts - 1;
+
+      this.logger.error(`Failed to process campaign message for recipient ${recipientId} (Attempt ${job.attemptsMade + 1}/${maxAttempts}): ${error.message}`);
       
-      const currentRecipient = await this.prisma.campaignRecipient.findUnique({ where: { id: recipientId } });
-      const currentStatus = currentRecipient?.status || MessageStatus.PENDING;
+      if (isLastAttempt) {
+        const currentRecipient = await this.prisma.campaignRecipient.findUnique({ where: { id: recipientId } });
+        const currentStatus = currentRecipient?.status || MessageStatus.PENDING;
 
-      if (currentStatus !== MessageStatus.FAILED) {
-        await this.prisma.campaignRecipient.update({
-          where: { id: recipientId },
-          data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: `PROCESSOR_V2: ${error.message}` } as any,
-        });
-        await this.campaignsService.updateCampaignStats(campaignId, currentStatus, MessageStatus.FAILED);
+        if (currentStatus !== MessageStatus.FAILED) {
+          await this.prisma.campaignRecipient.update({
+            where: { id: recipientId },
+            data: { status: MessageStatus.FAILED, failedAt: new Date(), failureReason: `PROCESSOR_V2: ${error.message}` } as any,
+          });
+          const updatedCampaign = await this.campaignsService.updateCampaignStats(campaignId, currentStatus, MessageStatus.FAILED);
+
+          if (updatedCampaign && updatedCampaign.sentCount + updatedCampaign.failedCount >= updatedCampaign.totalRecipients && updatedCampaign.status !== CampaignStatus.COMPLETED) {
+            await this.prisma.campaign.updateMany({
+              where: { id: campaignId, status: { not: CampaignStatus.COMPLETED } },
+              data: { status: CampaignStatus.COMPLETED, completedAt: new Date() },
+            });
+            await this.campaignsService.log(campaignId, 'Broadcast completed successfully', CampaignLogLevel.INFO);
+          }
+        }
+
+        await this.campaignsService.log(campaignId, `Message permanently failed for recipient ${contactId} after ${maxAttempts} attempts: ${error.message}`, CampaignLogLevel.ERROR);
+      } else {
+        this.logger.warn(`Job will be retried (Attempt ${job.attemptsMade + 1}/${maxAttempts})...`);
       }
-
-      await this.campaignsService.log(campaignId, `Message failed for recipient ${contactId}: ${error.message}`, CampaignLogLevel.ERROR);
+      
       throw error;
     }
   }

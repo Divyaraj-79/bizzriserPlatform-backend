@@ -60,9 +60,11 @@ export class CampaignsService {
     sendAnyways?: boolean,
     scheduledAt?: string,
     saveAsDraft?: boolean,
-    batches?: { size: number, scheduledAt: string }[]
+    batches?: { size: number, scheduledAt: string }[],
+    targetType?: string,
+    targetName?: any
   }) {
-    let { name, accountId, templateName, templateParams, contactIds, targetTag, targetTags, numbers, tagName, autoSegment, scheduledAt, batches } = data;
+    let { name, accountId, templateName, templateParams, contactIds, targetTag, targetTags, numbers, tagName, autoSegment, scheduledAt, batches, targetType, targetName } = data;
 
 
     const account = await this.prisma.whatsAppAccount.findUnique({ where: { id: accountId, organizationId: orgId } });
@@ -140,7 +142,7 @@ export class CampaignsService {
                status: batchStatus,
                scheduledAt: batchScheduledDate,
                totalRecipients: batchContactIds.length,
-               metadata: { accountId, targetTag, isBatchChild: true, batchIndex: i }
+               metadata: { accountId, targetTag, isBatchChild: true, batchIndex: i, targetType, targetName }
              }
            });
 
@@ -184,7 +186,9 @@ export class CampaignsService {
            leftoverCount: leftoverContactIds.length,
            targetTag,
            messagingLimitCount: (account as any).messagingLimitCount,
-           templateLanguage: (data as any).templateLanguage || 'en_US'
+           templateLanguage: (data as any).templateLanguage || 'en_US',
+           targetType,
+           targetName
         }
       }
     });
@@ -295,6 +299,13 @@ export class CampaignsService {
           templateName: campaign.templateName,
           templateParams: campaign.templateParams,
         },
+        opts: {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
+        },
       }));
 
       await this.campaignQueue.addBulk(jobs);
@@ -315,6 +326,43 @@ export class CampaignsService {
 
     const accountId = (campaign.metadata as any)?.accountId;
     if (!accountId) throw new BadRequestException('Campaign is missing account association');
+
+    if (campaign.scheduledAt && new Date(campaign.scheduledAt).getTime() > Date.now()) {
+        const delay = new Date(campaign.scheduledAt).getTime() - Date.now();
+        await this.prisma.campaign.update({
+          where: { id: campaign.id },
+          data: { status: CampaignStatus.SCHEDULED },
+        });
+        await this.campaignQueue.add('start-campaign', { campaignId: campaign.id, orgId, accountId }, { delay, jobId: `start-${campaign.id}` });
+        return { success: true, message: `Campaign scheduled for ${campaign.scheduledAt.toISOString()}` };
+    }
+
+    return this.startCampaign(orgId, campaign.id, accountId);
+  }
+
+  async sendInstantScheduledCampaign(orgId: string, campaignId: string) {
+    const campaign = await this.prisma.campaign.findUnique({
+      where: { id: campaignId, organizationId: orgId }
+    });
+
+    if (!campaign) throw new NotFoundException('Campaign not found');
+    if (campaign.status !== CampaignStatus.SCHEDULED) throw new BadRequestException('Only scheduled campaigns can be sent instantly');
+
+    const accountId = (campaign.metadata as any)?.accountId;
+    if (!accountId) throw new BadRequestException('Campaign is missing account association');
+
+    // Remove the delayed job from BullMQ
+    const jobId = `start-${campaign.id}`;
+    const job = await this.campaignQueue.getJob(jobId);
+    if (job) {
+      await job.remove();
+    }
+
+    // Update scheduledAt to now
+    await this.prisma.campaign.update({
+      where: { id: campaign.id },
+      data: { scheduledAt: new Date() }
+    });
 
     return this.startCampaign(orgId, campaign.id, accountId);
   }
@@ -531,6 +579,9 @@ export class CampaignsService {
         data: updateData
       });
       this.realtimeGateway.emitCampaignUpdate(updatedCampaign.organizationId, updatedCampaign);
+      return updatedCampaign;
     }
+
+    return this.prisma.campaign.findUnique({ where: { id: campaignId } });
   }
 }
