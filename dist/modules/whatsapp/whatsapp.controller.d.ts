@@ -59,7 +59,11 @@ export declare class WhatsappController {
         filename: string;
     }>;
     updateTemplate(req: any, id: string, templateId: string, data: any): Promise<any>;
-    deleteTemplate(req: any, id: string, templateName: string): Promise<any>;
+    deleteTemplate(req: any, id: string, templateName: string): Promise<{
+        success: boolean;
+        message: string;
+        metaData: any;
+    } | undefined>;
     syncAccount(req: any, id: string): Promise<{
         id: string;
         phoneNumber: string;

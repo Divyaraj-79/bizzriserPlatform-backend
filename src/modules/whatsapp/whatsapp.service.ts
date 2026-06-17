@@ -1147,13 +1147,36 @@ export class WhatsappService {
 
     try {
       this.logger.log(`Deleting WhatsApp template ${templateName} for org ${orgId}`);
-      const response = await axios.delete(url, {
-        params: { name: templateName },
-        headers: {
-          Authorization: `Bearer ${validatedToken}`,
-        },
+      let metaResponse;
+      let warningMessage = null;
+
+      try {
+        metaResponse = await axios.delete(url, {
+          params: { name: templateName },
+          headers: {
+            Authorization: `Bearer ${validatedToken}`,
+          },
+        });
+      } catch (metaError: any) {
+        // Code 100: "Need permission on either WhatsApp Business Account or owner/shared business."
+        if (axios.isAxiosError(metaError) && metaError.response?.data?.error?.code === 100) {
+          this.logger.warn(`Meta API permission error (Code 100). Proceeding to delete template '${templateName}' locally.`);
+          warningMessage = 'Template deleted locally, but could not be deleted from Facebook due to missing Business Manager permissions. You may need to delete it directly in your Facebook Business Manager.';
+        } else {
+          throw metaError;
+        }
+      }
+      
+      // Delete from local database as well
+      await this.prisma.whatsAppTemplate.deleteMany({
+        where: {
+          name: templateName,
+          accountId: account.id,
+          organizationId: orgId
+        }
       });
-      return response.data;
+      
+      return { success: true, message: warningMessage || 'Template deleted successfully', metaData: metaResponse?.data };
     } catch (error) {
       this.handleError(error, `Failed to delete template ${templateName}`);
     }
@@ -1274,44 +1297,7 @@ export class WhatsappService {
    */
   private async getValidToken(account: any): Promise<{ token: string; wasUpdated: boolean }> {
     const storedToken = this.securityService.decrypt(account.accessToken);
-    const globalToken = this.configService.get<string>('whatsapp.accessToken');
-
-    try {
-      // 1. Test the stored token via debug endpoint
-      // Note: input_token needs to be checked against a system token for best results
-      await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
-        params: { input_token: storedToken },
-        headers: { Authorization: `Bearer ${storedToken}` },
-      });
-      return { token: storedToken, wasUpdated: false };
-    } catch (error: any) {
-      const errorMsg = error.response?.data?.error?.message || error.message;
-      this.logger.warn(`Token validation failed for ${account.id}: ${errorMsg}`);
-
-      // 2. Fallback to global System Token if the stored one failed (e.g. expired or restricted)
-      if (globalToken && globalToken !== storedToken) {
-        this.logger.log(`Attempting global token fallback for account ${account.id}...`);
-        try {
-          await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
-            params: { input_token: globalToken },
-            headers: { Authorization: `Bearer ${globalToken}` },
-          });
-
-          await this.prisma.whatsAppAccount.update({
-            where: { id: account.id },
-            data: { accessToken: this.securityService.encrypt(globalToken) },
-          });
-
-          return { token: globalToken, wasUpdated: true };
-        } catch (globalErr) {
-          this.logger.error(`CRITICAL: Global system token is also invalid.`);
-          throw error;
-        }
-      }
-
-      // If no fallback available, throw clear error
-      throw new HttpException(`WhatsApp authentication failed: ${errorMsg}. Your token may have expired.`, HttpStatus.UNAUTHORIZED);
-    }
+    return { token: storedToken, wasUpdated: false };
   }
 
   /**

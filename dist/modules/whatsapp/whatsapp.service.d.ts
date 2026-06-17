@@ -97,7 +97,11 @@ export declare class WhatsappService {
     }[] | undefined>;
     createTemplate(orgId: string, accountId: string, data: any): Promise<any>;
     updateTemplate(orgId: string, accountId: string, templateId: string, data: any): Promise<any>;
-    deleteTemplate(orgId: string, accountId: string, templateName: string): Promise<any>;
+    deleteTemplate(orgId: string, accountId: string, templateName: string): Promise<{
+        success: boolean;
+        message: string;
+        metaData: any;
+    } | undefined>;
     syncAccount(orgId: string, accountId: string): Promise<{
         id: string;
         phoneNumber: string;

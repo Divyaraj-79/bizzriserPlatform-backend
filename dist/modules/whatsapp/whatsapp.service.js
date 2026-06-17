@@ -928,13 +928,33 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;
         try {
             this.logger.log(`Deleting WhatsApp template ${templateName} for org ${orgId}`);
-            const response = await axios_1.default.delete(url, {
-                params: { name: templateName },
-                headers: {
-                    Authorization: `Bearer ${validatedToken}`,
-                },
+            let metaResponse;
+            let warningMessage = null;
+            try {
+                metaResponse = await axios_1.default.delete(url, {
+                    params: { name: templateName },
+                    headers: {
+                        Authorization: `Bearer ${validatedToken}`,
+                    },
+                });
+            }
+            catch (metaError) {
+                if (axios_1.default.isAxiosError(metaError) && metaError.response?.data?.error?.code === 100) {
+                    this.logger.warn(`Meta API permission error (Code 100). Proceeding to delete template '${templateName}' locally.`);
+                    warningMessage = 'Template deleted locally, but could not be deleted from Facebook due to missing Business Manager permissions. You may need to delete it directly in your Facebook Business Manager.';
+                }
+                else {
+                    throw metaError;
+                }
+            }
+            await this.prisma.whatsAppTemplate.deleteMany({
+                where: {
+                    name: templateName,
+                    accountId: account.id,
+                    organizationId: orgId
+                }
             });
-            return response.data;
+            return { success: true, message: warningMessage || 'Template deleted successfully', metaData: metaResponse?.data };
         }
         catch (error) {
             this.handleError(error, `Failed to delete template ${templateName}`);
@@ -1030,37 +1050,7 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
     }
     async getValidToken(account) {
         const storedToken = this.securityService.decrypt(account.accessToken);
-        const globalToken = this.configService.get('whatsapp.accessToken');
-        try {
-            await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
-                params: { input_token: storedToken },
-                headers: { Authorization: `Bearer ${storedToken}` },
-            });
-            return { token: storedToken, wasUpdated: false };
-        }
-        catch (error) {
-            const errorMsg = error.response?.data?.error?.message || error.message;
-            this.logger.warn(`Token validation failed for ${account.id}: ${errorMsg}`);
-            if (globalToken && globalToken !== storedToken) {
-                this.logger.log(`Attempting global token fallback for account ${account.id}...`);
-                try {
-                    await axios_1.default.get(`${this.graphBaseUrl}/${this.apiVersion}/debug_token`, {
-                        params: { input_token: globalToken },
-                        headers: { Authorization: `Bearer ${globalToken}` },
-                    });
-                    await this.prisma.whatsAppAccount.update({
-                        where: { id: account.id },
-                        data: { accessToken: this.securityService.encrypt(globalToken) },
-                    });
-                    return { token: globalToken, wasUpdated: true };
-                }
-                catch (globalErr) {
-                    this.logger.error(`CRITICAL: Global system token is also invalid.`);
-                    throw error;
-                }
-            }
-            throw new common_1.HttpException(`WhatsApp authentication failed: ${errorMsg}. Your token may have expired.`, common_1.HttpStatus.UNAUTHORIZED);
-        }
+        return { token: storedToken, wasUpdated: false };
     }
     async registerPhoneNumber(orgId, accountId, force = false) {
         const account = await this.prisma.whatsAppAccount.findUnique({
