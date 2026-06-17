@@ -24,12 +24,25 @@ export class CampaignsService {
   async findAll(orgId: string, accountContext?: string | string[]) {
     // Note: accountId is stored inside metadata JSON, not as a top-level column on Campaign.
     // We return all campaigns for the org; filtering by account would require JSON path queries.
-    return this.prisma.campaign.findMany({
+    const campaigns = await this.prisma.campaign.findMany({
       where: { organizationId: orgId },
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { recipients: true } }
       }
+    });
+
+    return campaigns.map(c => {
+      const readCount = Math.max(0, c.readCount);
+      const deliveredCount = Math.max(0, c.deliveredCount, readCount);
+      const sentCount = Math.max(0, c.sentCount, deliveredCount);
+      
+      return {
+        ...c,
+        readCount,
+        deliveredCount,
+        sentCount
+      };
     });
   }
 
@@ -46,9 +59,10 @@ export class CampaignsService {
     autoSegment?: boolean,
     sendAnyways?: boolean,
     scheduledAt?: string,
-    saveAsDraft?: boolean
+    saveAsDraft?: boolean,
+    batches?: { size: number, scheduledAt: string }[]
   }) {
-    let { name, accountId, templateName, templateParams, contactIds, targetTag, targetTags, numbers, tagName, autoSegment, scheduledAt } = data;
+    let { name, accountId, templateName, templateParams, contactIds, targetTag, targetTags, numbers, tagName, autoSegment, scheduledAt, batches } = data;
 
 
     const account = await this.prisma.whatsAppAccount.findUnique({ where: { id: accountId, organizationId: orgId } });
@@ -102,10 +116,54 @@ export class CampaignsService {
        }
     }
 
+    // 3. Batch Splitting Logic
+    if (batches && batches.length > 0) {
+       let startIndex = 0;
+       for (let i = 0; i < batches.length; i++) {
+           const batch = batches[i];
+           const batchContactIds = finalContactIds.slice(startIndex, startIndex + batch.size);
+           startIndex += batch.size;
+           
+           if (batchContactIds.length === 0) break;
+
+           const batchScheduledDate = new Date(batch.scheduledAt);
+           const isBatchScheduled = batchScheduledDate.getTime() > Date.now();
+           let batchStatus: CampaignStatus = isBatchScheduled ? CampaignStatus.SCHEDULED : CampaignStatus.RUNNING;
+           if (data.saveAsDraft) batchStatus = CampaignStatus.DRAFT;
+
+           const childCampaign = await this.prisma.campaign.create({
+             data: {
+               name: `${name} (Batch ${i+1}/${batches.length})`,
+               organizationId: orgId,
+               templateName,
+               templateParams: templateParams || [],
+               status: batchStatus,
+               scheduledAt: batchScheduledDate,
+               totalRecipients: batchContactIds.length,
+               metadata: { accountId, targetTag, isBatchChild: true, batchIndex: i }
+             }
+           });
+
+           await this.campaignQueue.add('build-audience', {
+              campaignId: childCampaign.id,
+              orgId,
+              accountId,
+              finalContactIds: batchContactIds,
+              leftoverContactIds: [], // handled by limit logic at parent level
+              targetTag: undefined, // pass empty so processor relies on finalContactIds
+              autoSegment: false,
+              isScheduled: isBatchScheduled,
+              scheduledAt: batchScheduledDate,
+              saveAsDraft: data.saveAsDraft
+           });
+       }
+       return { success: true, message: `Broadcast split into ${batches.length} batches and initiated.` };
+    }
+
     const scheduledDate = scheduledAt ? new Date(scheduledAt) : null;
     const isScheduled = scheduledDate && scheduledDate.getTime() > Date.now();
 
-    // 3. Create Campaign
+    // 4. Single Campaign Creation
     let campaignStatus: CampaignStatus = isScheduled ? CampaignStatus.SCHEDULED : CampaignStatus.RUNNING;
     if (data.saveAsDraft) {
       campaignStatus = CampaignStatus.DRAFT;
@@ -131,7 +189,7 @@ export class CampaignsService {
       }
     });
 
-    // 4. Delegate heavy array mapping, retagging and inserts to the Bull Queue
+    // 5. Delegate heavy array mapping, retagging and inserts to the Bull Queue
     await this.campaignQueue.add('build-audience', {
        campaignId: campaign.id,
        orgId,
@@ -145,7 +203,7 @@ export class CampaignsService {
        saveAsDraft: data.saveAsDraft
     });
 
-    // 5. Instant Response
+    // 6. Instant Response
     if (data.saveAsDraft) {
        return { success: true, message: 'Broadcast saved as draft (building audience)', campaignId: campaign.id, segmentedCount: leftoverContactIds.length };
     } else if (isScheduled) {
@@ -153,6 +211,41 @@ export class CampaignsService {
     } else {
        return { success: true, message: 'Broadcast initiated', campaignId: campaign.id, segmentedCount: leftoverContactIds.length };
     }
+  }
+
+  async updateCampaign(orgId: string, campaignId: string, data: { name?: string, scheduledAt?: string }) {
+     const campaign = await this.prisma.campaign.findUnique({
+        where: { id: campaignId, organizationId: orgId }
+     });
+     if (!campaign) throw new NotFoundException('Campaign not found');
+
+     const updates: any = {};
+     if (data.name) updates.name = data.name;
+     if (data.scheduledAt) updates.scheduledAt = new Date(data.scheduledAt);
+
+     const updatedCampaign = await this.prisma.campaign.update({
+        where: { id: campaignId },
+        data: updates
+     });
+
+     // Reschedule BullMQ Job
+     if (data.scheduledAt && campaign.status === 'SCHEDULED') {
+        const jobId = `start-${campaignId}`;
+        const existingJob = await this.campaignQueue.getJob(jobId);
+        if (existingJob) {
+           await existingJob.remove();
+           this.logger.debug(`Removed old scheduled job ${jobId}`);
+        }
+        
+        const newDelay = new Date(data.scheduledAt).getTime() - Date.now();
+        const accountId = (campaign.metadata as any)?.accountId;
+        if (accountId) {
+           await this.campaignQueue.add('start-campaign', { campaignId, orgId, accountId }, { delay: newDelay > 0 ? newDelay : 0, jobId });
+           this.logger.log(`Re-queued campaign ${campaignId} with delay ${newDelay}ms`);
+        }
+     }
+
+     return { success: true, message: 'Campaign updated successfully', campaign: updatedCampaign };
   }
 
   // Robust tag management for auto-segmentation
@@ -243,13 +336,27 @@ export class CampaignsService {
   }
 
   async getCampaign(orgId: string, campaignId: string) {
-    return this.prisma.campaign.findUnique({
+    const campaign = await this.prisma.campaign.findUnique({
       where: { id: campaignId, organizationId: orgId },
       include: {
         recipients: { include: { contact: true }, take: 500 },
         logs: { orderBy: { createdAt: 'desc' }, take: 20 }
       }
     });
+
+    if (campaign) {
+      const readCount = Math.max(0, campaign.readCount);
+      const deliveredCount = Math.max(0, campaign.deliveredCount, readCount);
+      const sentCount = Math.max(0, campaign.sentCount, deliveredCount);
+      
+      return {
+        ...campaign,
+        readCount,
+        deliveredCount,
+        sentCount
+      };
+    }
+    return null;
   }
 
   async getExportData(orgId: string, campaignId: string) {

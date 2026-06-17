@@ -42,6 +42,9 @@ let CampaignsController = class CampaignsController {
     async getCampaign(req, id) {
         return this.campaignsService.getCampaign(req.user.orgId, id);
     }
+    async updateCampaign(req, id, body) {
+        return this.campaignsService.updateCampaign(req.user.orgId, id, body);
+    }
     async deleteCampaign(req, id) {
         return this.campaignsService.deleteCampaign(req.user.orgId, id);
     }
@@ -98,6 +101,15 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], CampaignsController.prototype, "getCampaign", null);
+__decorate([
+    (0, common_1.Put)(':id'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], CampaignsController.prototype, "updateCampaign", null);
 __decorate([
     (0, common_1.Delete)(':id'),
     __param(0, (0, common_1.Req)()),

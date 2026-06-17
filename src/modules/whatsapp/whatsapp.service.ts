@@ -915,24 +915,24 @@ export class WhatsappService {
           });
         } else {
           // Check if data actually changed to prevent overwriting `updatedAt` unnecessarily
+          const _ = require('lodash');
           const hasChanged = 
             existing.status !== (mt.status || 'APPROVED') ||
             existing.category !== mt.category ||
-            JSON.stringify(existing.qualityScore) !== JSON.stringify(mt.quality_score || null) ||
-            JSON.stringify(existing.components) !== JSON.stringify(mt.components) ||
+            !_.isEqual(existing.qualityScore, mt.quality_score || null) ||
+            !_.isEqual(existing.components, mt.components) ||
             !existing.isActive;
 
           if (hasChanged) {
-            await this.prisma.whatsAppTemplate.update({
-              where: { id: existing.id },
-              data: {
-                category: mt.category,
-                status: mt.status || 'APPROVED',
-                qualityScore: mt.quality_score || null,
-                components: mt.components,
-                isActive: true
-              }
-            });
+            await this.prisma.$executeRaw`
+              UPDATE "whatsapp_templates"
+              SET "category" = ${mt.category},
+                  "status" = ${mt.status || 'APPROVED'},
+                  "qualityScore" = ${mt.quality_score ? JSON.stringify(mt.quality_score) : null}::jsonb,
+                  "components" = ${JSON.stringify(mt.components)}::jsonb,
+                  "isActive" = true
+              WHERE id = ${existing.id}
+            `;
           }
         }
       }

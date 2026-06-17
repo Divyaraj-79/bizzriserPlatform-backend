@@ -37,16 +37,27 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         this.campaignQueue = campaignQueue;
     }
     async findAll(orgId, accountContext) {
-        return this.prisma.campaign.findMany({
+        const campaigns = await this.prisma.campaign.findMany({
             where: { organizationId: orgId },
             orderBy: { createdAt: 'desc' },
             include: {
                 _count: { select: { recipients: true } }
             }
         });
+        return campaigns.map(c => {
+            const readCount = Math.max(0, c.readCount);
+            const deliveredCount = Math.max(0, c.deliveredCount, readCount);
+            const sentCount = Math.max(0, c.sentCount, deliveredCount);
+            return {
+                ...c,
+                readCount,
+                deliveredCount,
+                sentCount
+            };
+        });
     }
     async createBroadcast(orgId, data) {
-        let { name, accountId, templateName, templateParams, contactIds, targetTag, targetTags, numbers, tagName, autoSegment, scheduledAt } = data;
+        let { name, accountId, templateName, templateParams, contactIds, targetTag, targetTags, numbers, tagName, autoSegment, scheduledAt, batches } = data;
         const account = await this.prisma.whatsAppAccount.findUnique({ where: { id: accountId, organizationId: orgId } });
         if (!account)
             throw new common_1.NotFoundException('Account not found');
@@ -83,6 +94,46 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
             else if (!data.saveAsDraft && !data.sendAnyways) {
                 throw new common_1.BadRequestException(`Target audience (${finalContactIds.length}) exceeds your daily messaging limit (${account.messagingLimitCount}). Please select a smaller audience or enable Auto-Segmentation.`);
             }
+        }
+        if (batches && batches.length > 0) {
+            let startIndex = 0;
+            for (let i = 0; i < batches.length; i++) {
+                const batch = batches[i];
+                const batchContactIds = finalContactIds.slice(startIndex, startIndex + batch.size);
+                startIndex += batch.size;
+                if (batchContactIds.length === 0)
+                    break;
+                const batchScheduledDate = new Date(batch.scheduledAt);
+                const isBatchScheduled = batchScheduledDate.getTime() > Date.now();
+                let batchStatus = isBatchScheduled ? client_1.CampaignStatus.SCHEDULED : client_1.CampaignStatus.RUNNING;
+                if (data.saveAsDraft)
+                    batchStatus = client_1.CampaignStatus.DRAFT;
+                const childCampaign = await this.prisma.campaign.create({
+                    data: {
+                        name: `${name} (Batch ${i + 1}/${batches.length})`,
+                        organizationId: orgId,
+                        templateName,
+                        templateParams: templateParams || [],
+                        status: batchStatus,
+                        scheduledAt: batchScheduledDate,
+                        totalRecipients: batchContactIds.length,
+                        metadata: { accountId, targetTag, isBatchChild: true, batchIndex: i }
+                    }
+                });
+                await this.campaignQueue.add('build-audience', {
+                    campaignId: childCampaign.id,
+                    orgId,
+                    accountId,
+                    finalContactIds: batchContactIds,
+                    leftoverContactIds: [],
+                    targetTag: undefined,
+                    autoSegment: false,
+                    isScheduled: isBatchScheduled,
+                    scheduledAt: batchScheduledDate,
+                    saveAsDraft: data.saveAsDraft
+                });
+            }
+            return { success: true, message: `Broadcast split into ${batches.length} batches and initiated.` };
         }
         const scheduledDate = scheduledAt ? new Date(scheduledAt) : null;
         const isScheduled = scheduledDate && scheduledDate.getTime() > Date.now();
@@ -130,6 +181,37 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         else {
             return { success: true, message: 'Broadcast initiated', campaignId: campaign.id, segmentedCount: leftoverContactIds.length };
         }
+    }
+    async updateCampaign(orgId, campaignId, data) {
+        const campaign = await this.prisma.campaign.findUnique({
+            where: { id: campaignId, organizationId: orgId }
+        });
+        if (!campaign)
+            throw new common_1.NotFoundException('Campaign not found');
+        const updates = {};
+        if (data.name)
+            updates.name = data.name;
+        if (data.scheduledAt)
+            updates.scheduledAt = new Date(data.scheduledAt);
+        const updatedCampaign = await this.prisma.campaign.update({
+            where: { id: campaignId },
+            data: updates
+        });
+        if (data.scheduledAt && campaign.status === 'SCHEDULED') {
+            const jobId = `start-${campaignId}`;
+            const existingJob = await this.campaignQueue.getJob(jobId);
+            if (existingJob) {
+                await existingJob.remove();
+                this.logger.debug(`Removed old scheduled job ${jobId}`);
+            }
+            const newDelay = new Date(data.scheduledAt).getTime() - Date.now();
+            const accountId = campaign.metadata?.accountId;
+            if (accountId) {
+                await this.campaignQueue.add('start-campaign', { campaignId, orgId, accountId }, { delay: newDelay > 0 ? newDelay : 0, jobId });
+                this.logger.log(`Re-queued campaign ${campaignId} with delay ${newDelay}ms`);
+            }
+        }
+        return { success: true, message: 'Campaign updated successfully', campaign: updatedCampaign };
     }
     async getUpdatedTagsForLeftovers(ids, oldTag, newTag) {
         return [];
@@ -204,13 +286,25 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         ]);
     }
     async getCampaign(orgId, campaignId) {
-        return this.prisma.campaign.findUnique({
+        const campaign = await this.prisma.campaign.findUnique({
             where: { id: campaignId, organizationId: orgId },
             include: {
                 recipients: { include: { contact: true }, take: 500 },
                 logs: { orderBy: { createdAt: 'desc' }, take: 20 }
             }
         });
+        if (campaign) {
+            const readCount = Math.max(0, campaign.readCount);
+            const deliveredCount = Math.max(0, campaign.deliveredCount, readCount);
+            const sentCount = Math.max(0, campaign.sentCount, deliveredCount);
+            return {
+                ...campaign,
+                readCount,
+                deliveredCount,
+                sentCount
+            };
+        }
+        return null;
     }
     async getExportData(orgId, campaignId) {
         const campaign = await this.prisma.campaign.findUnique({

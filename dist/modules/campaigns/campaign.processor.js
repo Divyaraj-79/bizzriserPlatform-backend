@@ -80,7 +80,10 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
             }
             else if (!saveAsDraft && isScheduled && scheduledAt) {
                 const delay = new Date(scheduledAt).getTime() - Date.now();
-                await this.campaignQueue.add('start-campaign', { campaignId, orgId, accountId }, { delay: delay > 0 ? delay : 0 });
+                await this.campaignQueue.add('start-campaign', { campaignId, orgId, accountId }, {
+                    delay: delay > 0 ? delay : 0,
+                    jobId: `start-${campaignId}`
+                });
                 this.logger.log(`Queued scheduled campaign ${campaignId} with delay ${delay}ms`);
             }
         }
@@ -108,6 +111,16 @@ let CampaignProcessor = CampaignProcessor_1 = class CampaignProcessor {
             const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
             if (!contact)
                 throw new Error('Contact not found');
+            const phoneDigits = contact.phone.replace(/\D/g, '');
+            if (phoneDigits.length < 4 || phoneDigits.length > 15) {
+                this.logger.warn(`Campaign ${campaignId} skipping recipient ${recipientId} due to invalid phone length: ${contact.phone}`);
+                await this.prisma.campaignRecipient.update({
+                    where: { id: recipientId },
+                    data: { status: client_1.MessageStatus.FAILED, failureReason: `Invalid phone length (${phoneDigits.length} digits)` }
+                });
+                await this.campaignsService.updateCampaignStats(campaignId, oldStatus, client_1.MessageStatus.FAILED);
+                return;
+            }
             const templateLanguage = campaign.metadata?.templateLanguage;
             const mappingRecord = await this.prisma.whatsAppTemplate.findFirst({
                 where: {
