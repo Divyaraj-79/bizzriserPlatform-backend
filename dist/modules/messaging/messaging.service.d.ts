@@ -42,7 +42,6 @@ export declare class MessagingService {
         updatedAt: Date;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         whatsappAccountId: string;
-        contactId: string;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
@@ -52,6 +51,7 @@ export declare class MessagingService {
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        contactId: string;
         conversationId: string | null;
     }>;
     sendTextMessage(orgId: string, accountId: string, contactId: string, text: string): Promise<{
@@ -62,7 +62,6 @@ export declare class MessagingService {
         updatedAt: Date;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         whatsappAccountId: string;
-        contactId: string;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
@@ -72,6 +71,7 @@ export declare class MessagingService {
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        contactId: string;
         conversationId: string | null;
     }>;
     sendMediaMessage(orgId: string, accountId: string, contactId: string, file: any, caption?: string): Promise<{
@@ -82,7 +82,6 @@ export declare class MessagingService {
         updatedAt: Date;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         whatsappAccountId: string;
-        contactId: string;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
@@ -92,6 +91,7 @@ export declare class MessagingService {
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        contactId: string;
         conversationId: string | null;
     }>;
     sendTemplateMessage(orgId: string, accountId: string, contactId: string, templateName: string, language?: string, components?: any[], metadata?: any): Promise<{
@@ -102,7 +102,6 @@ export declare class MessagingService {
         updatedAt: Date;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         whatsappAccountId: string;
-        contactId: string;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
@@ -112,6 +111,7 @@ export declare class MessagingService {
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        contactId: string;
         conversationId: string | null;
     }>;
     startNewConversation(orgId: string, accountId: string, phone: string, data: {
@@ -136,9 +136,9 @@ export declare class MessagingService {
         organizationId: string;
         status: import(".prisma/client").$Enums.MessageStatus;
         metadata: import("@prisma/client/runtime/library").JsonValue;
-        contactId: string;
         deliveredAt: Date | null;
         readAt: Date | null;
+        contactId: string;
     } | null>;
     emitMessageStatus(orgId: string, message: any): void;
     getConversationMessages(conversationId: string, search?: string): Promise<{
@@ -149,7 +149,6 @@ export declare class MessagingService {
         updatedAt: Date;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         whatsappAccountId: string;
-        contactId: string;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
@@ -159,6 +158,7 @@ export declare class MessagingService {
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        contactId: string;
         conversationId: string | null;
     }[]>;
     clearConversationMessages(orgId: string, conversationId: string): Promise<{
@@ -173,16 +173,16 @@ export declare class MessagingService {
                 isInWindow: boolean;
                 windowExpiresAt: Date | null;
                 id: string;
-                createdAt: Date;
-                phone: string;
                 firstName: string | null;
                 lastName: string | null;
                 avatarUrl: string | null;
+                createdAt: Date;
+                phone: string;
             };
             whatsappAccount: {
                 id: string;
-                phoneNumber: string;
                 displayName: string;
+                phoneNumber: string;
             };
             id: string;
             organizationId: string;

@@ -21,9 +21,12 @@ export declare class CampaignsService {
         };
         id: string;
         organizationId: string;
-        name: string;
-        description: string | null;
         status: import(".prisma/client").$Enums.CampaignStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        description: string | null;
         templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
         scheduledAt: Date | null;
@@ -32,9 +35,6 @@ export declare class CampaignsService {
         totalRecipients: number;
         failedCount: number;
         responseCount: number;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
     }[]>;
     createBroadcast(orgId: string, data: {
         name: string;
@@ -76,9 +76,12 @@ export declare class CampaignsService {
         campaign: {
             id: string;
             organizationId: string;
-            name: string;
-            description: string | null;
             status: import(".prisma/client").$Enums.CampaignStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+            metadata: import("@prisma/client/runtime/library").JsonValue;
+            description: string | null;
             templateName: string | null;
             templateParams: import("@prisma/client/runtime/library").JsonValue;
             scheduledAt: Date | null;
@@ -90,9 +93,6 @@ export declare class CampaignsService {
             readCount: number;
             failedCount: number;
             responseCount: number;
-            metadata: import("@prisma/client/runtime/library").JsonValue;
-            createdAt: Date;
-            updatedAt: Date;
         };
     }>;
     private getUpdatedTagsForLeftovers;
@@ -130,9 +130,12 @@ export declare class CampaignsService {
     deleteCampaign(orgId: string, campaignId: string): Promise<[import(".prisma/client").Prisma.BatchPayload, import(".prisma/client").Prisma.BatchPayload, {
         id: string;
         organizationId: string;
-        name: string;
-        description: string | null;
         status: import(".prisma/client").$Enums.CampaignStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        description: string | null;
         templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
         scheduledAt: Date | null;
@@ -144,29 +147,34 @@ export declare class CampaignsService {
         readCount: number;
         failedCount: number;
         responseCount: number;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
     }]>;
     getCampaign(orgId: string, campaignId: string): Promise<{
         readCount: number;
         deliveredCount: number;
         sentCount: number;
+        logs: {
+            message: string;
+            id: string;
+            createdAt: Date;
+            metadata: import("@prisma/client/runtime/library").JsonValue;
+            campaignId: string;
+            level: import(".prisma/client").$Enums.CampaignLogLevel;
+        }[];
         recipients: ({
             contact: {
                 id: string;
                 organizationId: string;
-                status: import(".prisma/client").$Enums.ContactStatus;
-                createdAt: Date;
-                updatedAt: Date;
-                whatsappId: string | null;
-                phone: string;
+                email: string | null;
                 firstName: string | null;
                 lastName: string | null;
-                email: string | null;
+                status: import(".prisma/client").$Enums.ContactStatus;
                 avatarUrl: string | null;
-                tags: string[];
+                createdAt: Date;
+                updatedAt: Date;
                 customFields: import("@prisma/client/runtime/library").JsonValue;
+                whatsappId: string | null;
+                phone: string;
+                tags: string[];
                 agentId: string | null;
                 optedInAt: Date | null;
                 optedOutAt: Date | null;
@@ -176,29 +184,24 @@ export declare class CampaignsService {
             id: string;
             status: import(".prisma/client").$Enums.MessageStatus;
             createdAt: Date;
-            campaignId: string;
-            contactId: string;
             sentAt: Date | null;
             deliveredAt: Date | null;
             readAt: Date | null;
             failedAt: Date | null;
             failureReason: string | null;
+            contactId: string;
+            campaignId: string;
             firstResponse: string | null;
             firstResponseAt: Date | null;
         })[];
-        logs: {
-            id: string;
-            metadata: import("@prisma/client/runtime/library").JsonValue;
-            createdAt: Date;
-            campaignId: string;
-            message: string;
-            level: import(".prisma/client").$Enums.CampaignLogLevel;
-        }[];
         id: string;
         organizationId: string;
-        name: string;
-        description: string | null;
         status: import(".prisma/client").$Enums.CampaignStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        description: string | null;
         templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
         scheduledAt: Date | null;
@@ -207,9 +210,6 @@ export declare class CampaignsService {
         totalRecipients: number;
         failedCount: number;
         responseCount: number;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
     } | null>;
     getExportData(orgId: string, campaignId: string): Promise<{
         Contact: string;
@@ -233,36 +233,39 @@ export declare class CampaignsService {
         id: string;
         organizationId: string;
         status: import(".prisma/client").$Enums.MessageStatus;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
         createdAt: Date;
         updatedAt: Date;
-        contactId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        whatsappAccountId: string;
+        waMessageId: string | null;
+        direction: import(".prisma/client").$Enums.MessageDirection;
+        type: import(".prisma/client").$Enums.MessageType;
+        content: import("@prisma/client/runtime/library").JsonValue;
         sentAt: Date | null;
         deliveredAt: Date | null;
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
-        waMessageId: string | null;
-        whatsappAccountId: string;
-        direction: import(".prisma/client").$Enums.MessageDirection;
-        type: import(".prisma/client").$Enums.MessageType;
-        content: import("@prisma/client/runtime/library").JsonValue;
+        contactId: string;
         conversationId: string | null;
     }>;
     log(campaignId: string, message: string, level?: CampaignLogLevel, metadata?: any): Promise<{
-        id: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        campaignId: string;
         message: string;
+        id: string;
+        createdAt: Date;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        campaignId: string;
         level: import(".prisma/client").$Enums.CampaignLogLevel;
     }>;
     updateCampaignStats(campaignId: string, oldStatus: MessageStatus, newStatus: MessageStatus): Promise<{
         id: string;
         organizationId: string;
-        name: string;
-        description: string | null;
         status: import(".prisma/client").$Enums.CampaignStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        description: string | null;
         templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
         scheduledAt: Date | null;
@@ -274,8 +277,5 @@ export declare class CampaignsService {
         readCount: number;
         failedCount: number;
         responseCount: number;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
-        createdAt: Date;
-        updatedAt: Date;
     } | null | undefined>;
 }

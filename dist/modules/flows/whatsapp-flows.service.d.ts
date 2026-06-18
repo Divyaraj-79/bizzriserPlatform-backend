@@ -17,8 +17,8 @@ export declare class WhatsAppFlowsService {
         createdAt: Date;
         updatedAt: Date;
         name: string;
-        description: string | null;
         version: number;
+        description: string | null;
         flowId: string | null;
         definition: import("@prisma/client/runtime/library").JsonValue;
         categories: string[];
@@ -39,8 +39,8 @@ export declare class WhatsAppFlowsService {
         createdAt: Date;
         updatedAt: Date;
         name: string;
-        description: string | null;
         version: number;
+        description: string | null;
         flowId: string | null;
         definition: import("@prisma/client/runtime/library").JsonValue;
         categories: string[];
@@ -52,8 +52,8 @@ export declare class WhatsAppFlowsService {
         createdAt: Date;
         updatedAt: Date;
         name: string;
-        description: string | null;
         version: number;
+        description: string | null;
         flowId: string | null;
         definition: import("@prisma/client/runtime/library").JsonValue;
         categories: string[];
@@ -69,8 +69,8 @@ export declare class WhatsAppFlowsService {
         createdAt: Date;
         updatedAt: Date;
         name: string;
-        description: string | null;
         version: number;
+        description: string | null;
         flowId: string | null;
         definition: import("@prisma/client/runtime/library").JsonValue;
         categories: string[];
@@ -82,8 +82,8 @@ export declare class WhatsAppFlowsService {
         createdAt: Date;
         updatedAt: Date;
         name: string;
-        description: string | null;
         version: number;
+        description: string | null;
         flowId: string | null;
         definition: import("@prisma/client/runtime/library").JsonValue;
         categories: string[];
@@ -95,17 +95,17 @@ export declare class WhatsAppFlowsService {
         createdAt: Date;
         updatedAt: Date;
         name: string;
-        description: string | null;
         version: number;
+        description: string | null;
         flowId: string | null;
         definition: import("@prisma/client/runtime/library").JsonValue;
         categories: string[];
     }>;
     getSubmissions(orgId: string, flowId: string): Promise<({
         contact: {
-            phone: string;
             firstName: string | null;
             lastName: string | null;
+            phone: string;
         };
     } & {
         id: string;

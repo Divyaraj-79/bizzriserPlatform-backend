@@ -15,7 +15,6 @@ export declare class MessagingController {
         updatedAt: Date;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         whatsappAccountId: string;
-        contactId: string;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
@@ -25,6 +24,7 @@ export declare class MessagingController {
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        contactId: string;
         conversationId: string | null;
     }>;
     sendMedia(req: any, body: {
@@ -39,7 +39,6 @@ export declare class MessagingController {
         updatedAt: Date;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         whatsappAccountId: string;
-        contactId: string;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
@@ -49,6 +48,7 @@ export declare class MessagingController {
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        contactId: string;
         conversationId: string | null;
     }>;
     sendTemplate(req: any, body: {
@@ -65,7 +65,6 @@ export declare class MessagingController {
         updatedAt: Date;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         whatsappAccountId: string;
-        contactId: string;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
@@ -75,6 +74,7 @@ export declare class MessagingController {
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        contactId: string;
         conversationId: string | null;
     }>;
     getConversations(req: any, section?: string, page?: string, limit?: string): Promise<{
@@ -83,16 +83,16 @@ export declare class MessagingController {
                 isInWindow: boolean;
                 windowExpiresAt: Date | null;
                 id: string;
-                createdAt: Date;
-                phone: string;
                 firstName: string | null;
                 lastName: string | null;
                 avatarUrl: string | null;
+                createdAt: Date;
+                phone: string;
             };
             whatsappAccount: {
                 id: string;
-                phoneNumber: string;
                 displayName: string;
+                phoneNumber: string;
             };
             id: string;
             organizationId: string;
@@ -136,7 +136,6 @@ export declare class MessagingController {
         updatedAt: Date;
         metadata: import("@prisma/client/runtime/library").JsonValue;
         whatsappAccountId: string;
-        contactId: string;
         waMessageId: string | null;
         direction: import(".prisma/client").$Enums.MessageDirection;
         type: import(".prisma/client").$Enums.MessageType;
@@ -146,6 +145,7 @@ export declare class MessagingController {
         readAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        contactId: string;
         conversationId: string | null;
     }[]>;
     clearMessages(id: string, req: any): Promise<{

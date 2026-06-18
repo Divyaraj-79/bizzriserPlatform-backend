@@ -29,6 +29,7 @@ export declare class FlowExecutorService {
     executeNode(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any): Promise<void>;
     private sendBotMessageAndTrack;
     private handleSendText;
+    private handleSendData;
     private handleSendContact;
     private handleSendLocation;
     private handleSendCarousel;

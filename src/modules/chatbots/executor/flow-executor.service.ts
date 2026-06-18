@@ -509,6 +509,7 @@ export class FlowExecutorService {
     this.logger.debug(`Executing node type=${node.type} id=${node.id}`);
     try {
       switch (node.type) {
+        case 'sendData':       return await this.handleSendData(session, node, edges, allNodes, contact, messageData);
         case 'sendText':       return await this.handleSendText(session, node, edges, allNodes, contact, messageData);
         case 'sendContact':    return await this.handleSendContact(session, node, edges, allNodes, contact, messageData);
         case 'sendLocation':   return await this.handleSendLocation(session, node, edges, allNodes, contact, messageData);
@@ -638,6 +639,149 @@ export class FlowExecutorService {
         });
       }
     }
+    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+  }
+
+  private async handleSendData(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const dataType = config.dataType || 'TEXT';
+
+    try {
+      if (dataType === 'TEXT') {
+        const text = await this.resolveVariables(config.text || '', session, contact, messageData);
+        if (text) {
+          await this.sendBotMessageAndTrack(
+            session, contact, 'TEXT' as any, { body: text },
+            () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, text)
+          );
+        }
+      } else if (['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].includes(dataType)) {
+        let mediaUrl = config.mediaUrl;
+        if (config.uploadMethod === 'VARIABLE' && config.mediaVariable) {
+          mediaUrl = await this.resolveVariables(config.mediaVariable, session, contact, messageData);
+        }
+        
+        if (mediaUrl) {
+          let type: MessageType = 'IMAGE' as any;
+          if (dataType === 'VIDEO') type = 'VIDEO' as any;
+          if (dataType === 'AUDIO') type = 'AUDIO' as any;
+          if (dataType === 'DOCUMENT') type = 'DOCUMENT' as any;
+          
+          await this.prisma.message.create({
+            data: {
+              organizationId: session.organizationId,
+              whatsappAccountId: session.accountId,
+              contactId: contact.id,
+              direction: 'OUTBOUND' as any,
+              type: 'TEXT' as any,
+              status: 'SENT' as any,
+              content: { body: `DEBUG LOG: Type=${type}, mediaUrl=${mediaUrl}` }
+            }
+          });
+
+          await this.sendBotMessageAndTrack(
+            session, contact, type, { link: mediaUrl },
+            () => this.whatsappService.sendMediaByUrl(
+              session.organizationId, 
+              session.accountId, 
+              contact.phone, 
+              type.toLowerCase() as 'image' | 'video' | 'audio' | 'document', 
+              mediaUrl, 
+              config.caption || '',
+              config.mediaFilename || ''
+            )
+          );
+        }
+      } else if (dataType === 'LOCATION') {
+        const locationData = {
+          latitude: parseFloat(await this.resolveVariables(config.latitude || '0', session, contact, messageData)),
+          longitude: parseFloat(await this.resolveVariables(config.longitude || '0', session, contact, messageData)),
+          name: config.locationName ? await this.resolveVariables(config.locationName, session, contact, messageData) : undefined,
+          address: config.address ? await this.resolveVariables(config.address, session, contact, messageData) : undefined,
+        };
+        if (locationData.latitude && locationData.longitude) {
+          await this.sendBotMessageAndTrack(
+            session, contact, 'LOCATION' as any, locationData,
+            () => this.whatsappService.sendLocationMessage(session.organizationId, session.accountId, contact.phone, locationData)
+          );
+        }
+      } else if (dataType === 'CONTACT') {
+         const contactData = {
+           firstName: await this.resolveVariables(config.contactFirstName || '', session, contact, messageData),
+           lastName: await this.resolveVariables(config.contactLastName || '', session, contact, messageData),
+           phone: await this.resolveVariables(config.contactPhone || '', session, contact, messageData),
+           email: await this.resolveVariables(config.contactEmail || '', session, contact, messageData),
+           organization: await this.resolveVariables(config.contactOrg || '', session, contact, messageData),
+           website: await this.resolveVariables(config.contactWebsite || '', session, contact, messageData),
+         };
+         if (contactData.firstName && contactData.phone) {
+           await this.sendBotMessageAndTrack(
+             session, contact, 'CONTACT' as any, { contacts: [contactData] },
+             () => this.whatsappService.sendContactMessage(session.organizationId, session.accountId, contact.phone, [contactData])
+           );
+         }
+      } else if (dataType === 'CAROUSEL') {
+         const body = await this.resolveVariables(config.carouselBody || '', session, contact, messageData);
+         const cards: any[] = [];
+         if (config.cards?.length) {
+           for (const c of config.cards) {
+             const cardBody = c.bodyText ? await this.resolveVariables(c.bodyText, session, contact, messageData) : undefined;
+             let mediaUrl = c.mediaUrl;
+             if (c.mediaMethod === 'VARIABLE' && c.mediaVariable) {
+                mediaUrl = await this.resolveVariables(c.mediaVariable, session, contact, messageData);
+             }
+             const buttons = [{
+               type: config.carouselButtonType === 'URL' ? 'url' : 'reply',
+               label: await this.resolveVariables(c.buttonLabel || 'Action', session, contact, messageData),
+               url: config.carouselButtonType === 'URL' ? await this.resolveVariables(c.buttonValue || '', session, contact, messageData) : undefined,
+               id: config.carouselButtonType !== 'URL' ? c.buttonValue : undefined
+             }];
+             cards.push({ headerType: c.headerType?.toLowerCase() || 'image', headerUrl: mediaUrl, body: cardBody, buttons });
+           }
+           await this.sendBotMessageAndTrack(
+             session, contact, 'INTERACTIVE' as any, { body, cards },
+             () => this.whatsappService.sendCarouselMessage(session.organizationId, session.accountId, contact.phone, { body, cards })
+           );
+         }
+      }
+    } catch (err: any) {
+      this.logger.error(`SendData error [${dataType}]: ${err.message}`);
+      await this.prisma.message.create({
+        data: {
+          organizationId: session.organizationId,
+          whatsappAccountId: session.accountId,
+          contactId: contact.id,
+          direction: 'OUTBOUND' as any,
+          type: 'TEXT' as any,
+          status: 'FAILED' as any,
+          content: { body: `DEBUG CATCH ERROR: ${err.message}\nStack: ${err.stack}` }
+        }
+      });
+    }
+
+    // Handle Delay if any
+    let totalDelayMs = 0;
+    if (config.delayHours) totalDelayMs += config.delayHours * 60 * 60 * 1000;
+    if (config.delayMinutes) totalDelayMs += config.delayMinutes * 60 * 1000;
+    if (config.delaySeconds) totalDelayMs += config.delaySeconds * 1000;
+
+    if (totalDelayMs > 0) {
+      await this.prisma.chatbotSession.update({
+        where: { id: session.id },
+        data: { status: ChatbotSessionStatus.ACTIVE },
+      });
+      await this.delayQueue.add('resume-flow', {
+        sessionId: session.id,
+        contactId: contact.id,
+        nodeId: node.id,
+        edges,
+        allNodes,
+        messageData,
+        routeHandle: 'output',
+      }, { delay: totalDelayMs });
+      return;
+    }
+
     await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
   }
 
