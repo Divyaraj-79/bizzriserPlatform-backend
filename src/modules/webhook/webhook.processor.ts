@@ -95,7 +95,7 @@ export class WebhookProcessor {
     }
   }
 
-  private async handleIncomingMessage(accountId: string, organizationId: string, data: any) {
+  public async handleIncomingMessage(accountId: string, organizationId: string, data: any) {
     const messageData = data.messages[0];
     const waMessageId = messageData.id;
     const from = messageData.from; // sender phone

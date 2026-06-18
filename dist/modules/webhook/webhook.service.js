@@ -54,15 +54,18 @@ const bullmq_1 = require("bullmq");
 const crypto = __importStar(require("crypto"));
 const prisma_service_1 = require("../../prisma/prisma.service");
 const client_1 = require("@prisma/client");
+const webhook_processor_1 = require("./webhook.processor");
 let WebhookService = WebhookService_1 = class WebhookService {
     config;
     prisma;
     webhookQueue;
+    webhookProcessor;
     logger = new common_1.Logger(WebhookService_1.name);
-    constructor(config, prisma, webhookQueue) {
+    constructor(config, prisma, webhookQueue, webhookProcessor) {
         this.config = config;
         this.prisma = prisma;
         this.webhookQueue = webhookQueue;
+        this.webhookProcessor = webhookProcessor;
     }
     verifyWebhook(mode, token, challenge) {
         const verifyToken = this.config.get('whatsapp.verifyToken');
@@ -162,20 +165,49 @@ let WebhookService = WebhookService_1 = class WebhookService {
                 payload: value,
             },
         });
-        await this.webhookQueue.add('process-message', {
-            eventId: event.id,
-            accountId: account.id,
-            organizationId: account.organizationId,
-            data: value,
-        });
+        const hasMessages = value.messages && value.messages.length > 0;
+        const hasStatuses = value.statuses && value.statuses.length > 0;
+        if (hasMessages) {
+            this.logger.log(`[DIRECT] Processing inbound message for account ${account.id} (skipping queue)`);
+            try {
+                await this.webhookProcessor.handleIncomingMessage(account.id, account.organizationId, value);
+                await this.prisma.webhookEvent.update({
+                    where: { id: event.id },
+                    data: { processed: true, processedAt: new Date() },
+                });
+            }
+            catch (err) {
+                this.logger.error(`[DIRECT] Error processing inbound message: ${err.message}`);
+                await this.prisma.webhookEvent.update({
+                    where: { id: event.id },
+                    data: { error: err.message, retryCount: { increment: 1 } },
+                });
+            }
+        }
+        else if (hasStatuses) {
+            await this.webhookQueue.add('process-message', {
+                eventId: event.id,
+                accountId: account.id,
+                organizationId: account.organizationId,
+                data: value,
+            });
+        }
+        else {
+            await this.prisma.webhookEvent.update({
+                where: { id: event.id },
+                data: { processed: true, processedAt: new Date() },
+            });
+        }
     }
 };
 exports.WebhookService = WebhookService;
 exports.WebhookService = WebhookService = WebhookService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(2, (0, bull_1.InjectQueue)('webhooks')),
+    __param(3, (0, common_1.Inject)((0, common_1.forwardRef)(() => webhook_processor_1.WebhookProcessor))),
     __metadata("design:paramtypes", [config_1.ConfigService,
         prisma_service_1.PrismaService,
-        bullmq_1.Queue])
+        bullmq_1.Queue,
+        webhook_processor_1.WebhookProcessor])
 ], WebhookService);
 //# sourceMappingURL=webhook.service.js.map

@@ -16,6 +16,6 @@ export declare class WebhookProcessor {
     constructor(prisma: PrismaService, contactsService: ContactsService, messagingService: MessagingService, flowExecutor: FlowExecutorService, whatsappService: WhatsappService, realtimeGateway: RealtimeGateway);
     handleProcessMessage(job: Job<any>): Promise<void>;
     private handleStatusUpdate;
-    private handleIncomingMessage;
+    handleIncomingMessage(accountId: string, organizationId: string, data: any): Promise<void>;
     handlePaymentUpdate(job: Job<any>): Promise<void>;
 }

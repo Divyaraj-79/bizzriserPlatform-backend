@@ -79,7 +79,8 @@ let MessagingService = MessagingService_1 = class MessagingService {
             body = data.content.body;
         else if (data.type === client_1.MessageType.TEMPLATE)
             body = `Template: ${data.content.templateName}`;
-        const window = await this.calculateWindow(data.contactId);
+        const isBotMessage = !!data.metadata?.isChatbot;
+        const window = isBotMessage ? { isInWindow: true, windowExpiresAt: null } : await this.calculateWindow(data.contactId);
         const isManualOutbound = !isBroadcast && data.direction === client_1.MessageDirection.OUTBOUND;
         const isInbound = data.direction === client_1.MessageDirection.INBOUND;
         let updateData = {

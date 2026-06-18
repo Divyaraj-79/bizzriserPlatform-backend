@@ -1,10 +1,11 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WebhookEventType } from '@prisma/client';
+import { WebhookProcessor } from './webhook.processor';
 
 @Injectable()
 export class WebhookService {
@@ -14,6 +15,7 @@ export class WebhookService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     @InjectQueue('webhooks') private readonly webhookQueue: Queue,
+    @Inject(forwardRef(() => WebhookProcessor)) private readonly webhookProcessor: WebhookProcessor,
   ) {}
 
   /**
@@ -124,7 +126,11 @@ export class WebhookService {
   }
 
   /**
-   * Process message-related events and enqueue them.
+   * Process message-related events.
+   *
+   * PERFORMANCE: Inbound messages are processed DIRECTLY (no queue) to eliminate
+   * the 1–3 second Bull polling delay that was causing slow bot replies.
+   * Status updates (delivered/read) go through the queue since they're less latency-sensitive.
    */
   private async processMessageEvent(wabaId: string, value: any) {
     const phoneNumberId = value.metadata?.phone_number_id;
@@ -150,12 +156,39 @@ export class WebhookService {
       },
     });
 
-    // Enqueue for background processing
-    await this.webhookQueue.add('process-message', {
-      eventId: event.id,
-      accountId: account.id,
-      organizationId: account.organizationId,
-      data: value,
-    });
+    const hasMessages = value.messages && value.messages.length > 0;
+    const hasStatuses = value.statuses && value.statuses.length > 0;
+
+    if (hasMessages) {
+      // DIRECT: Process inbound messages immediately without queue delay
+      this.logger.log(`[DIRECT] Processing inbound message for account ${account.id} (skipping queue)`);
+      try {
+        await this.webhookProcessor.handleIncomingMessage(account.id, account.organizationId, value);
+        await this.prisma.webhookEvent.update({
+          where: { id: event.id },
+          data: { processed: true, processedAt: new Date() },
+        });
+      } catch (err: any) {
+        this.logger.error(`[DIRECT] Error processing inbound message: ${err.message}`);
+        await this.prisma.webhookEvent.update({
+          where: { id: event.id },
+          data: { error: err.message, retryCount: { increment: 1 } },
+        });
+      }
+    } else if (hasStatuses) {
+      // QUEUED: Status updates go through Bull (non-latency-sensitive)
+      await this.webhookQueue.add('process-message', {
+        eventId: event.id,
+        accountId: account.id,
+        organizationId: account.organizationId,
+        data: value,
+      });
+    } else {
+      // Other events (no messages, no statuses) — mark processed immediately
+      await this.prisma.webhookEvent.update({
+        where: { id: event.id },
+        data: { processed: true, processedAt: new Date() },
+      });
+    }
   }
 }

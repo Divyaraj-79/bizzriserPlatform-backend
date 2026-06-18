@@ -87,7 +87,10 @@ export class MessagingService {
     if (data.type === MessageType.TEXT) body = data.content.body;
     else if (data.type === MessageType.TEMPLATE) body = `Template: ${data.content.templateName}`;
 
-    const window = await this.calculateWindow(data.contactId);
+    // Skip calculateWindow() for chatbot-sent messages — it's only needed by the UI
+    // and adds an extra DB round-trip per bot message on remote/cloud databases.
+    const isBotMessage = !!(data.metadata as any)?.isChatbot;
+    const window = isBotMessage ? { isInWindow: true, windowExpiresAt: null } : await this.calculateWindow(data.contactId);
 
     const isManualOutbound = !isBroadcast && data.direction === MessageDirection.OUTBOUND;
     const isInbound = data.direction === MessageDirection.INBOUND;

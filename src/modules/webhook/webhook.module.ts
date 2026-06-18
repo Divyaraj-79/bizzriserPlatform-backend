@@ -13,6 +13,12 @@ import { RealtimeModule } from '../realtime/realtime.module';
   imports: [
     BullModule.registerQueue({
       name: 'webhooks',
+      settings: {
+        stalledInterval: 5000,   // Check for stalled jobs every 5s (default: 30s)
+        lockDuration: 15000,     // Keep job locked for 15s max (default: 30s)
+        lockRenewTime: 7500,     // Renew lock at half-duration
+        maxStalledCount: 1,      // Fail fast on stall rather than retrying forever
+      },
     }),
     ContactsModule,
     MessagingModule,

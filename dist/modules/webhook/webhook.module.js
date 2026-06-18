@@ -25,6 +25,12 @@ exports.WebhookModule = WebhookModule = __decorate([
         imports: [
             bull_1.BullModule.registerQueue({
                 name: 'webhooks',
+                settings: {
+                    stalledInterval: 5000,
+                    lockDuration: 15000,
+                    lockRenewTime: 7500,
+                    maxStalledCount: 1,
+                },
             }),
             contacts_module_1.ContactsModule,
             messaging_module_1.MessagingModule,
