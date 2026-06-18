@@ -622,17 +622,6 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
                         type = 'AUDIO';
                     if (dataType === 'DOCUMENT')
                         type = 'DOCUMENT';
-                    await this.prisma.message.create({
-                        data: {
-                            organizationId: session.organizationId,
-                            whatsappAccountId: session.accountId,
-                            contactId: contact.id,
-                            direction: 'OUTBOUND',
-                            type: 'TEXT',
-                            status: 'SENT',
-                            content: { body: `DEBUG LOG: Type=${type}, mediaUrl=${mediaUrl}` }
-                        }
-                    });
                     await this.sendBotMessageAndTrack(session, contact, type, { link: mediaUrl }, () => this.whatsappService.sendMediaByUrl(session.organizationId, session.accountId, contact.phone, type.toLowerCase(), mediaUrl, config.caption || '', config.mediaFilename || ''));
                 }
             }
@@ -683,18 +672,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
             }
         }
         catch (err) {
-            this.logger.error(`SendData error [${dataType}]: ${err.message}`);
-            await this.prisma.message.create({
-                data: {
-                    organizationId: session.organizationId,
-                    whatsappAccountId: session.accountId,
-                    contactId: contact.id,
-                    direction: 'OUTBOUND',
-                    type: 'TEXT',
-                    status: 'FAILED',
-                    content: { body: `DEBUG CATCH ERROR: ${err.message}\nStack: ${err.stack}` }
-                }
-            });
+            this.logger.error(`SendData error [${dataType}]: ${err.message}`, err.stack);
         }
         let totalDelayMs = 0;
         if (config.delayHours)

@@ -1247,18 +1247,23 @@ export class WhatsappService {
 
       this.logger.log(`[SYNC] Updating account ${accountId} with tier: ${tier} (${limitLabel})`);
 
+      // Only set to ACTIVE if verified. Never downgrade to INACTIVE during sync —
+      // an INACTIVE account stops receiving Meta webhooks, which breaks the chatbot.
+      // Registration is triggered below to fix unverified accounts.
+      const newStatus = phoneInfo.code_verification_status === 'VERIFIED' ? 'ACTIVE' : account.status;
+
       const updatedAccount = await this.prisma.whatsAppAccount.update({
         where: { id: accountId },
         data: {
           displayName: phoneInfo.verified_name || account.displayName,
-          status: phoneInfo.code_verification_status === 'VERIFIED' ? 'ACTIVE' : 'INACTIVE',
+          status: newStatus,
           messagingLimitTier: tier,
           messagingLimitCount: parseInt(limitLabel.replace(/\D/g, '')) * (limitLabel.includes('K') ? 1000 : 1) || 1000,
           businessProfile,
         },
       });
 
-      // NEW: If the account is still not verified, trigger a smart registration attempt
+      // If the account is still not verified, trigger a smart registration attempt
       if (phoneInfo.code_verification_status !== 'VERIFIED') {
         this.logger.log(`[SYNC] Account ${accountId} is not VERIFIED (Status: ${phoneInfo.code_verification_status}). Triggering smart registration...`);
         // Use force=true during manual sync to bypass the 12-hour cooldown

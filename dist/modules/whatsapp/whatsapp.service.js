@@ -1012,11 +1012,12 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                 };
             }
             this.logger.log(`[SYNC] Updating account ${accountId} with tier: ${tier} (${limitLabel})`);
+            const newStatus = phoneInfo.code_verification_status === 'VERIFIED' ? 'ACTIVE' : account.status;
             const updatedAccount = await this.prisma.whatsAppAccount.update({
                 where: { id: accountId },
                 data: {
                     displayName: phoneInfo.verified_name || account.displayName,
-                    status: phoneInfo.code_verification_status === 'VERIFIED' ? 'ACTIVE' : 'INACTIVE',
+                    status: newStatus,
                     messagingLimitTier: tier,
                     messagingLimitCount: parseInt(limitLabel.replace(/\D/g, '')) * (limitLabel.includes('K') ? 1000 : 1) || 1000,
                     businessProfile,
