@@ -57,7 +57,7 @@ export class FlowExecutorService {
       },
     });
 
-    await this.advanceFromNode(session, triggerNode, flowData.edges || [], flowData.nodes, contact, messageData);
+    await this.executeNode(session, triggerNode, flowData.edges || [], flowData.nodes, contact, messageData);
   }
 
   async resumeSession(session: ChatbotSession, contact: Contact, messageData: any) {
@@ -106,20 +106,32 @@ export class FlowExecutorService {
       const userInput = messageData.text?.body || '';
       const attemptLimit = config.attemptLimit || 3;
       const currentAttempt = ((session.metadata as any)?.currentAttempt || 0) + 1;
-      const fieldName = config.saveToVar;
+      const varName = config.variableName || config.saveToVar;
 
       // Basic Validation (for text, we just check if it's not empty)
       const isValid = userInput.trim().length > 0;
 
       if (isValid) {
-        if (fieldName) {
-          const currentFields = ((contact as any).customFields as Record<string, any>) || {};
-          await this.prisma.contact.update({
-            where: { id: contact.id },
-            data: { customFields: { ...currentFields, [fieldName]: userInput } },
-          });
-          variables = { ...variables, [`custom.${fieldName}`]: userInput };
-          await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+        if (varName) {
+           const match = varName.match(/^\{\{(custom|var|contact)\.(.+)\}\}$/);
+           if (match) {
+             const [_, type, field] = match;
+             if (type === 'custom') {
+               const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+               await this.prisma.contact.update({ where: { id: contact.id }, data: { customFields: { ...currentFields, [field]: userInput } } });
+               variables = { ...variables, [`custom.${field}`]: userInput };
+             } else if (type === 'var') {
+               variables = { ...variables, [`var.${field}`]: userInput };
+             } else if (type === 'contact') {
+               await this.prisma.contact.update({ where: { id: contact.id }, data: { [field]: userInput } });
+             }
+           } else {
+             // Legacy fallback
+             const currentFields = ((contact as any).customFields as Record<string, any>) || {};
+             await this.prisma.contact.update({ where: { id: contact.id }, data: { customFields: { ...currentFields, [varName]: userInput } } });
+             variables = { ...variables, [`custom.${varName}`]: userInput };
+           }
+           await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
         }
         routeHandle = 'submitted';
       } else {
@@ -521,6 +533,9 @@ export class FlowExecutorService {
   public async executeNode(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
     this.logger.debug(`Executing node type=${node.type} id=${node.id}`);
     try {
+      // Execute generic node actions BEFORE executing the node's main logic
+      await this.executeNodeActions(contact, node);
+
       switch (node.type) {
         case 'sendData':       return await this.handleSendData(session, node, edges, allNodes, contact, messageData);
         case 'sendText':       return await this.handleSendText(session, node, edges, allNodes, contact, messageData);
@@ -564,6 +579,15 @@ export class FlowExecutorService {
         case 'detectCountry':  return await this.handleDetectCountry(session, node, edges, allNodes, contact, messageData);
         case 'aiResponse':     return await this.handleAiResponse(session, node, edges, allNodes, contact, messageData);
         case 'workingHours':   return await this.handleWorkingHours(session, node, edges, allNodes, contact, messageData);
+        case 'inputFlow': {
+          const inputType = node.data?.config?.inputType || 'TEXT';
+          if (inputType === 'NUMBER') return await this.handleAskNumber(session, node, edges, allNodes, contact, messageData);
+          if (inputType === 'DATE') return await this.handleAskDate(session, node, edges, allNodes, contact, messageData);
+          if (inputType === 'IMAGE') return await this.handleAskImage(session, node, edges, allNodes, contact, messageData);
+          if (inputType === 'FILE') return await this.handleAskFile(session, node, edges, allNodes, contact, messageData);
+          if (inputType === 'LOCATION') return await this.handleAskLocation(session, node, edges, allNodes, contact, messageData);
+          return await this.handleAskText(session, node, edges, allNodes, contact, messageData);
+        }
         case 'triggerNode':
         default:
           // Structural / unknown nodes — just advance
@@ -573,6 +597,56 @@ export class FlowExecutorService {
       this.logger.error(`Node execution error [${node.type}:${node.id}]: ${err.message}`);
       // On error, try to advance so the flow doesn't get stuck
       await this.advanceFromNode(session, node, edges, allNodes, contact, messageData);
+    }
+  }
+
+  // ─── Universal Node Actions ──────────────────────────────────────────────
+  
+  private async executeNodeActions(contact: Contact, node: FlowNode) {
+    const nodeActions = node.data?.config?.nodeActions;
+    if (!nodeActions) return;
+
+    let updateData: any = {};
+    let shouldUpdate = false;
+
+    // 1. Tags / Labels
+    const currentTags = contact.tags || [];
+    let newTags = [...currentTags];
+    
+    if (nodeActions.addTags?.length) {
+      for (const tag of nodeActions.addTags) {
+        if (!newTags.includes(tag)) newTags.push(tag);
+      }
+    }
+    
+    if (nodeActions.removeTags?.length) {
+      newTags = newTags.filter(tag => !nodeActions.removeTags.includes(tag));
+    }
+
+    if (newTags.length !== currentTags.length || !newTags.every((val, index) => val === currentTags[index])) {
+      updateData.tags = newTags;
+      shouldUpdate = true;
+    }
+
+    // 2. Assign Team Member
+    if (nodeActions.assignTo && nodeActions.assignTo !== contact.agentId) {
+      updateData.agentId = nodeActions.assignTo;
+      shouldUpdate = true;
+    }
+
+    if (shouldUpdate) {
+      try {
+        await this.prisma.contact.update({
+          where: { id: contact.id },
+          data: updateData
+        });
+        // Mutate the local contact object so downstream functions have the latest state
+        if (updateData.tags) contact.tags = updateData.tags;
+        if (updateData.agentId) contact.agentId = updateData.agentId;
+        this.logger.debug(`Executed nodeActions for node ${node.id} on contact ${contact.id}`);
+      } catch (err: any) {
+        this.logger.error(`Failed to execute nodeActions on contact ${contact.id}: ${err.message}`);
+      }
     }
   }
 
@@ -802,7 +876,7 @@ export class FlowExecutorService {
     if (intType === 'BUTTONS') {
       const buttons = await Promise.all((config.buttons || []).map(async (b: any) => ({
         type: 'reply',
-        reply: { id: b.id, title: await this.resolveVariables(b.text || '', session, contact, messageData) }
+        reply: { id: b.postbackId || b.id, title: await this.resolveVariables(b.text || '', session, contact, messageData) }
       })));
       payload = { type: 'button', body: { text: bodyText }, action: { buttons } };
       if (footerText) payload.footer = { text: footerText };
@@ -1398,7 +1472,7 @@ export class FlowExecutorService {
     const headerText = config.header ? await this.resolveVariables(config.header, session, contact, messageData) : undefined;
     const footerText = config.footer ? await this.resolveVariables(config.footer, session, contact, messageData) : undefined;
     const buttons: Array<{ id: string; title: string }> = (config.buttons || []).slice(0, 3).map((b: any) => ({
-      id: b.id || b.payload || b.title,
+      id: b.postbackId || b.id || b.payload || b.title,
       title: b.title || b.label,
     }));
 
