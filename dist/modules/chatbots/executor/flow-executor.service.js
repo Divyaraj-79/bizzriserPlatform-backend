@@ -66,7 +66,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
         const flowData = (await this.prisma.chatbot.findUnique({ where: { id: session.chatbotId } }))?.flowData;
         if (!flowData)
             return;
-        const currentNode = flowData.nodes.find((n) => n.id === session.currentNodeId);
+        let currentNode = flowData.nodes.find((n) => n.id === session.currentNodeId);
         if (!currentNode) {
             await this.markCompleted(session.id);
             return;
@@ -284,7 +284,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
             }
             routeHandle = listId ? `list_${listId}` : 'output';
             if (listId) {
-                const targetRowNode = allNodes.find(n => n.type === 'listRow' && (n.data?.config?.rowId === listId || n.id === listId));
+                const targetRowNode = flowData.nodes.find((n) => n.type === 'listRow' && (n.data?.config?.rowId === listId || n.id === listId));
                 if (targetRowNode) {
                     currentNode = targetRowNode;
                     await this.prisma.chatbotSession.update({
