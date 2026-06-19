@@ -566,7 +566,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
             direction: 'OUTBOUND',
             type: type,
             content,
-            metadata: { isChatbot: true },
+            metadata: { isChatbot: true, chatbotId: session.chatbotId },
             sentAt: new Date(),
         });
         try {
@@ -818,7 +818,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
         }
         if (payload) {
             try {
-                await this.whatsappService.sendInteractiveMessage(session.organizationId, session.accountId, contact.phone, payload);
+                await this.sendBotMessageAndTrack(session, contact, 'INTERACTIVE', { body: bodyText }, () => this.whatsappService.sendInteractiveMessage(session.organizationId, session.accountId, contact.phone, payload));
             }
             catch (err) {
                 this.logger.error(`handleInteractive Error: ${err.message}`);

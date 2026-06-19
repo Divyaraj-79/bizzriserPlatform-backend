@@ -597,7 +597,7 @@ export class FlowExecutorService {
       direction: 'OUTBOUND' as any,
       type: type as any,
       content,
-      metadata: { isChatbot: true },
+      metadata: { isChatbot: true, chatbotId: session.chatbotId },
       sentAt: new Date(),
     });
 
@@ -888,7 +888,10 @@ export class FlowExecutorService {
 
     if (payload) {
       try {
-        await this.whatsappService.sendInteractiveMessage(session.organizationId, session.accountId, contact.phone, payload);
+        await this.sendBotMessageAndTrack(
+          session, contact, 'INTERACTIVE' as any, { body: bodyText },
+          () => this.whatsappService.sendInteractiveMessage(session.organizationId, session.accountId, contact.phone, payload)
+        );
       } catch (err: any) {
         this.logger.error(`handleInteractive Error: ${err.message}`);
       }
