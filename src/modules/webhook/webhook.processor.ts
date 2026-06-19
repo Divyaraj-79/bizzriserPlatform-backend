@@ -263,19 +263,30 @@ export class WebhookProcessor {
 
       if (isButtonClick) {
         let attachedChatbotId: string | null = null;
+        let isReplyToTemplate = false;
 
         // Try finding the original sent message that this button click is replying to
         if (messageData.context?.id) {
           const originalMessage = await this.prisma.message.findUnique({
             where: { waMessageId: messageData.context.id }
           });
-          if (originalMessage && (originalMessage.metadata as any)?.chatbotId) {
-            attachedChatbotId = (originalMessage.metadata as any).chatbotId;
+          
+          if (originalMessage) {
+            if (originalMessage.type === MessageType.TEMPLATE) {
+              isReplyToTemplate = true;
+              if ((originalMessage.metadata as any)?.chatbotId) {
+                attachedChatbotId = (originalMessage.metadata as any).chatbotId;
+              }
+            } else {
+              // If it's a reply to an Interactive message, we explicitly do NOT want to start a new template session
+              // We want to fall through to the WAITING_REPLY session logic below.
+              isReplyToTemplate = false;
+            }
           }
         }
 
-        // Fallback: Find the last sent template message to this contact in the last 24 hours that has a chatbotId in its metadata
-        if (!attachedChatbotId) {
+        // Fallback: Only run fallback if we couldn't find the context at all, or if we are sure it's not a reply to an Interactive message.
+        if (!attachedChatbotId && messageData.context?.id === undefined) {
           const lastSentTemplate = await this.prisma.message.findFirst({
             where: {
               contactId: contact.id,
@@ -287,10 +298,11 @@ export class WebhookProcessor {
           });
           if (lastSentTemplate && (lastSentTemplate.metadata as any)?.chatbotId) {
             attachedChatbotId = (lastSentTemplate.metadata as any).chatbotId;
+            isReplyToTemplate = true;
           }
         }
 
-        if (attachedChatbotId) {
+        if (attachedChatbotId && isReplyToTemplate) {
           const attachedBot = await this.prisma.chatbot.findFirst({
             where: { id: attachedChatbotId, organizationId, status: 'ACTIVE' }
           });

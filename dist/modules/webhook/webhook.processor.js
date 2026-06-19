@@ -256,15 +256,24 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
                 (messageData.type === 'interactive' && messageData.interactive?.type === 'button_reply');
             if (isButtonClick) {
                 let attachedChatbotId = null;
+                let isReplyToTemplate = false;
                 if (messageData.context?.id) {
                     const originalMessage = await this.prisma.message.findUnique({
                         where: { waMessageId: messageData.context.id }
                     });
-                    if (originalMessage && originalMessage.metadata?.chatbotId) {
-                        attachedChatbotId = originalMessage.metadata.chatbotId;
+                    if (originalMessage) {
+                        if (originalMessage.type === client_1.MessageType.TEMPLATE) {
+                            isReplyToTemplate = true;
+                            if (originalMessage.metadata?.chatbotId) {
+                                attachedChatbotId = originalMessage.metadata.chatbotId;
+                            }
+                        }
+                        else {
+                            isReplyToTemplate = false;
+                        }
                     }
                 }
-                if (!attachedChatbotId) {
+                if (!attachedChatbotId && messageData.context?.id === undefined) {
                     const lastSentTemplate = await this.prisma.message.findFirst({
                         where: {
                             contactId: contact.id,
@@ -276,9 +285,10 @@ let WebhookProcessor = WebhookProcessor_1 = class WebhookProcessor {
                     });
                     if (lastSentTemplate && lastSentTemplate.metadata?.chatbotId) {
                         attachedChatbotId = lastSentTemplate.metadata.chatbotId;
+                        isReplyToTemplate = true;
                     }
                 }
-                if (attachedChatbotId) {
+                if (attachedChatbotId && isReplyToTemplate) {
                     const attachedBot = await this.prisma.chatbot.findFirst({
                         where: { id: attachedChatbotId, organizationId, status: 'ACTIVE' }
                     });
