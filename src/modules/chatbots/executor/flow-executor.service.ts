@@ -286,6 +286,19 @@ export class FlowExecutorService {
         await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
       }
       routeHandle = listId ? `list_${listId}` : 'output';
+
+      // Advanced Tree Routing: In modular list trees, we resume from the specific listRow node
+      if (listId) {
+        const targetRowNode = allNodes.find(n => n.type === 'listRow' && (n.data?.config?.rowId === listId || n.id === listId));
+        if (targetRowNode) {
+          currentNode = targetRowNode;
+          await this.prisma.chatbotSession.update({
+            where: { id: session.id },
+            data: { currentNodeId: targetRowNode.id }
+          });
+          routeHandle = 'output'; // listRow nodes use the default 'output' handle
+        }
+      }
     } else if (waitingType === 'askLocation') {
       const config = currentNode.data?.config || {};
       const location = messageData.location;
@@ -523,6 +536,7 @@ export class FlowExecutorService {
         case 'sendMedia':      return await this.handleSendMedia(session, node, edges, allNodes, contact, messageData);
         case 'sendTemplate':   return await this.handleSendTemplate(session, node, edges, allNodes, contact, messageData);
         case 'sendPayment':    return await this.handleSendPayment(session, node, edges, allNodes, contact, messageData);
+        case 'interactive':    return await this.handleInteractive(session, node, edges, allNodes, contact, messageData);
         case 'productSearch':  return await this.handleProductSearch(session, node, edges, allNodes, contact, messageData);
         case 'productCategorization': return await this.handleProductCategorization(session, node, edges, allNodes, contact, messageData);
         case 'askText':        return await this.handleAskText(session, node, edges, allNodes, contact, messageData);
@@ -669,14 +683,14 @@ export class FlowExecutorService {
 
           await this.sendBotMessageAndTrack(
             session, contact, type, { link: mediaUrl },
-            () => this.whatsappService.sendMediaByUrl(
+            async () => this.whatsappService.sendMediaByUrl(
               session.organizationId, 
               session.accountId, 
               contact.phone, 
               type.toLowerCase() as 'image' | 'video' | 'audio' | 'document', 
-              mediaUrl, 
-              config.caption || '',
-              config.mediaFilename || ''
+              mediaUrl as string, 
+              await this.resolveVariables(config.caption || '', session, contact, messageData),
+              await this.resolveVariables(config.mediaFilename || '', session, contact, messageData)
             )
           );
         }
@@ -743,19 +757,175 @@ export class FlowExecutorService {
     if (config.delaySeconds) totalDelayMs += config.delaySeconds * 1000;
 
     if (totalDelayMs > 0) {
+      let outEdges = edges.filter(e => e.source === node.id);
+      const specific = outEdges.filter(e => e.sourceHandle === 'output');
+      outEdges = specific.length > 0 ? specific : outEdges.filter(e => !e.sourceHandle);
+      
+      if (outEdges.length > 0) {
+        const nextNodeId = outEdges[0].target;
+        await this.prisma.chatbotSession.update({
+          where: { id: session.id },
+          data: { 
+            status: ChatbotSessionStatus.WAITING_REPLY,
+            waitingForInput: false,
+            currentNodeId: node.id,
+            expiresAt: new Date(Date.now() + totalDelayMs)
+          },
+        });
+        await this.delayQueue.add('resume-after-delay', {
+          sessionId: session.id,
+          nextNodeId,
+          organizationId: session.organizationId,
+          accountId: session.accountId,
+          contactId: contact.id
+        }, { delay: totalDelayMs });
+      } else {
+        await this.markCompleted(session.id);
+      }
+      return;
+    }
+
+    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'output');
+  }
+
+  private async handleInteractive(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    const intType = config.interactiveType || 'BUTTONS';
+    
+    // Resolve basic variables
+    const headerContent = config.headerContent ? await this.resolveVariables(config.headerContent, session, contact, messageData) : undefined;
+    const bodyText = config.bodyText ? await this.resolveVariables(config.bodyText, session, contact, messageData) : '';
+    const footerText = config.footerText ? await this.resolveVariables(config.footerText, session, contact, messageData) : undefined;
+
+    let payload: any = null;
+
+    if (intType === 'BUTTONS') {
+      const buttons = await Promise.all((config.buttons || []).map(async (b: any) => ({
+        type: 'reply',
+        reply: { id: b.id, title: await this.resolveVariables(b.text || '', session, contact, messageData) }
+      })));
+      payload = { type: 'button', body: { text: bodyText }, action: { buttons } };
+      if (footerText) payload.footer = { text: footerText };
+      if (config.headerType && config.headerType !== 'NONE') {
+        payload.header = { type: config.headerType.toLowerCase() };
+        payload.header[config.headerType.toLowerCase()] = { [config.headerType === 'TEXT' ? 'text' : 'link']: headerContent };
+      }
+    } else if (intType === 'LIST') {
+      const buttonText = await this.resolveVariables(config.listButtonText || 'Menu', session, contact, messageData);
+      
+      // Graph Traversal for List Sections and Rows
+      const sections: any[] = [];
+      const outEdges = edges.filter(e => e.source === node.id);
+      
+      for (const edge of outEdges) {
+        const targetNode = allNodes.find(n => n.id === edge.target);
+        if (targetNode && targetNode.type === 'listSection') {
+          const sectionTitle = await this.resolveVariables(targetNode.data?.config?.sectionTitle || 'Section', session, contact, messageData);
+          const rows: any[] = [];
+          
+          const sectionOutEdges = edges.filter(e => e.source === targetNode.id);
+          for (const secEdge of sectionOutEdges) {
+            const rowNode = allNodes.find(n => n.id === secEdge.target);
+            if (rowNode && rowNode.type === 'listRow') {
+               const rConfig = rowNode.data?.config || {};
+               rows.push({
+                 id: rConfig.rowId || rowNode.id,
+                 title: await this.resolveVariables(rConfig.rowTitle || 'Row', session, contact, messageData),
+                 description: rConfig.rowDescription ? await this.resolveVariables(rConfig.rowDescription, session, contact, messageData) : undefined
+               });
+            }
+          }
+          
+          if (rows.length > 0) {
+            sections.push({ title: sectionTitle, rows: rows.slice(0, 10) }); // Max 10 rows per section
+          }
+        }
+      }
+
+      payload = { type: 'list', body: { text: bodyText }, action: { button: buttonText, sections: sections.slice(0, 10) } }; // Max 10 sections
+      if (footerText) payload.footer = { text: footerText };
+      if (config.headerType === 'TEXT' && headerContent) payload.header = { type: 'text', text: headerContent };
+    } else if (intType === 'CTA') {
+      const b = (config.ctaButtons || [])[0];
+      if (b) {
+        const label = await this.resolveVariables(b.label || '', session, contact, messageData);
+        const value = await this.resolveVariables(b.value || '', session, contact, messageData);
+        
+        let actionName = 'cta_url';
+        let parameters: any = { display_text: label, url: value };
+        
+        if (b.type === 'COPY') {
+          actionName = 'copy_code';
+          parameters = { display_text: label, coupon_code: value };
+        } else if (b.type === 'PHONE') {
+          actionName = 'cta_call';
+          parameters = { display_text: label, phone_number: value };
+        }
+
+        // Meta requires the interactive type to match the action name (e.g. cta_url)
+        payload = { 
+          type: actionName, 
+          body: { text: bodyText }, 
+          action: { name: actionName, parameters } 
+        };
+
+        if (footerText) payload.footer = { text: footerText };
+        if (config.headerType && config.headerType !== 'NONE') {
+          payload.header = { type: config.headerType.toLowerCase() };
+          payload.header[config.headerType.toLowerCase()] = { [config.headerType === 'TEXT' ? 'text' : 'link']: headerContent };
+        }
+      }
+    } else if (intType === 'LOCATION') {
+      payload = { type: 'location_request_message', body: { text: bodyText }, action: { name: 'send_location' } };
+    } else if (intType === 'CATALOG') {
+      if (config.catalogType === 'MULTI') {
+         payload = { type: 'catalog_message', body: { text: bodyText }, action: { name: 'catalog_message', parameters: { thumbnail_product_retailer_id: config.productIds?.[0] } } };
+      } else {
+         payload = { type: 'product', body: { text: bodyText }, action: { catalog_id: config.catalogId, product_retailer_id: config.productIds?.[0] } };
+      }
+      if (footerText) payload.footer = { text: footerText };
+    }
+
+    if (payload) {
+      try {
+        await this.whatsappService.sendInteractiveMessage(session.organizationId, session.accountId, contact.phone, payload);
+      } catch (err: any) {
+        this.logger.error(`handleInteractive Error: ${err.message}`);
+      }
+    }
+
+    // If the interactive type requires a user response, we must pause execution here.
+    if (intType === 'BUTTONS' || intType === 'LIST' || intType === 'LOCATION') {
+      const waitingNodeType = intType === 'BUTTONS' ? 'button' : intType === 'LIST' ? 'list' : 'askLocation';
       await this.prisma.chatbotSession.update({
         where: { id: session.id },
-        data: { status: ChatbotSessionStatus.ACTIVE },
+        data: {
+          status: ChatbotSessionStatus.WAITING_REPLY,
+          waitingForInput: true,
+          waitingNodeType: waitingNodeType,
+          currentNodeId: node.id,
+        },
       });
-      await this.delayQueue.add('resume-flow', {
-        sessionId: session.id,
-        contactId: contact.id,
-        nodeId: node.id,
-        edges,
-        allNodes,
-        messageData,
-        routeHandle: 'output',
-      }, { delay: totalDelayMs });
+      return; // Stop execution; handleIncomingMessage will resume via handles (e.g. btn_XYZ)
+    }
+
+    // For non-blocking interactive types (like CTA URLs or Catalogs), apply standard delay and advance
+    const delayHours = config.delayHours || 0;
+    const delayMinutes = config.delayMinutes || 0;
+    const delaySeconds = config.delaySeconds || 0;
+    const totalDelayMs = (delayHours * 3600 + delayMinutes * 60 + delaySeconds) * 1000;
+    const outEdges = edges.filter(e => e.source === node.id);
+
+    if (totalDelayMs > 0) {
+      if (outEdges.length > 0) {
+        await this.prisma.chatbotSession.update({
+          where: { id: session.id },
+          data: { status: ChatbotSessionStatus.WAITING_REPLY, waitingForInput: false, currentNodeId: node.id, expiresAt: new Date(Date.now() + totalDelayMs) },
+        });
+        await this.delayQueue.add('resume-after-delay', { sessionId: session.id, nextNodeId: outEdges[0].target, organizationId: session.organizationId, accountId: session.accountId, contactId: contact.id }, { delay: totalDelayMs });
+      } else {
+        await this.markCompleted(session.id);
+      }
       return;
     }
 

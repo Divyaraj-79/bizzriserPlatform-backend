@@ -351,6 +351,29 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             this.logger.error(`[uploadMedia] No file buffer received. File: ${JSON.stringify({ name: file?.originalname, size: file?.size })}`);
             throw new common_1.HttpException('No file buffer received. Ensure the request uses multipart/form-data.', common_1.HttpStatus.BAD_REQUEST);
         }
+        const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+        const MAX_VIDEO_SIZE = 16 * 1024 * 1024;
+        const MAX_AUDIO_SIZE = 16 * 1024 * 1024;
+        const MAX_DOC_SIZE = 100 * 1024 * 1024;
+        let limit = MAX_DOC_SIZE;
+        let typeName = 'Document';
+        if (file.mimetype.startsWith('image/')) {
+            limit = MAX_IMAGE_SIZE;
+            typeName = 'Image';
+        }
+        else if (file.mimetype.startsWith('video/')) {
+            limit = MAX_VIDEO_SIZE;
+            typeName = 'Video';
+        }
+        else if (file.mimetype.startsWith('audio/')) {
+            limit = MAX_AUDIO_SIZE;
+            typeName = 'Audio';
+        }
+        if (file.size > limit) {
+            const errorMsg = `File size exceeds WhatsApp limit for ${typeName}s (${limit / (1024 * 1024)}MB). Your file is ${(file.size / (1024 * 1024)).toFixed(2)}MB.`;
+            this.logger.error(`[uploadMedia] ${errorMsg}`);
+            throw new common_1.HttpException(errorMsg, common_1.HttpStatus.PAYLOAD_TOO_LARGE);
+        }
         try {
             const fs = require('fs');
             const path = require('path');
@@ -588,6 +611,35 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
         }
         catch (error) {
             this.handleError(error, `Failed to send interactive buttons via account ${accountId}`);
+        }
+    }
+    async sendInteractiveMessage(orgId, accountId, to, interactivePayload) {
+        const account = await this.prisma.whatsAppAccount.findUnique({
+            where: { id: accountId, organizationId: orgId },
+        });
+        if (!account)
+            throw new common_1.ConflictException('Account not found');
+        const { token: validatedToken } = await this.getValidToken(account);
+        const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.phoneNumberId}/messages`;
+        const payload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: 'interactive',
+            interactive: interactivePayload,
+        };
+        try {
+            this.logger.log(`Sending Generic Interactive Message to ${to}`);
+            const response = await axios_1.default.post(url, payload, {
+                headers: {
+                    Authorization: `Bearer ${validatedToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.handleError(error, `Failed to send generic interactive message via account ${accountId}`);
         }
     }
     async sendInteractiveList(orgId, accountId, to, bodyText, buttonText, sections, headerText, footerText) {

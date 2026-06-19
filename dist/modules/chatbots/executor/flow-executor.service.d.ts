@@ -30,6 +30,7 @@ export declare class FlowExecutorService {
     private sendBotMessageAndTrack;
     private handleSendText;
     private handleSendData;
+    private handleInteractive;
     private handleSendContact;
     private handleSendLocation;
     private handleSendCarousel;

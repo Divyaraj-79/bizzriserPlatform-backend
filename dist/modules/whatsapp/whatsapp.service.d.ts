@@ -54,6 +54,7 @@ export declare class WhatsappService {
         id: string;
         title: string;
     }>, headerText?: string, footerText?: string): Promise<any>;
+    sendInteractiveMessage(orgId: string, accountId: string, to: string, interactivePayload: any): Promise<any>;
     sendInteractiveList(orgId: string, accountId: string, to: string, bodyText: string, buttonText: string, sections: Array<{
         title: string;
         rows: Array<{
