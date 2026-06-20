@@ -10,7 +10,9 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ChatbotsService } from './chatbots.service';
 import { CreateChatbotDto } from './dto/create-chatbot.dto';
 import { UpdateChatbotDto } from './dto/update-chatbot.dto';
@@ -77,5 +79,19 @@ export class ChatbotsController {
   @Permissions('chatbots:edit')
   testRequest(@Body() dto: TestRequestDto) {
     return this.chatbotsService.executeTestRequest(dto);
+  }
+
+  @Get(':id/export')
+  @Permissions('chatbots:view')
+  async exportChatbotData(@Req() req: any, @Param('id') id: string, @Res() res: Response) {
+    const buffer = await this.chatbotsService.exportChatbotData(req.user.orgId, id);
+    
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="chatbot_data_${id}.xlsx"`,
+      'Content-Length': buffer.length,
+    });
+
+    res.send(buffer);
   }
 }

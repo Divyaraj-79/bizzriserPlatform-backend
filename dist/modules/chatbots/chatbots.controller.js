@@ -53,6 +53,15 @@ let ChatbotsController = class ChatbotsController {
     testRequest(dto) {
         return this.chatbotsService.executeTestRequest(dto);
     }
+    async exportChatbotData(req, id, res) {
+        const buffer = await this.chatbotsService.exportChatbotData(req.user.orgId, id);
+        res.set({
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': `attachment; filename="chatbot_data_${id}.xlsx"`,
+            'Content-Length': buffer.length,
+        });
+        res.send(buffer);
+    }
 };
 exports.ChatbotsController = ChatbotsController;
 __decorate([
@@ -136,6 +145,16 @@ __decorate([
     __metadata("design:paramtypes", [test_request_dto_1.TestRequestDto]),
     __metadata("design:returntype", void 0)
 ], ChatbotsController.prototype, "testRequest", null);
+__decorate([
+    (0, common_1.Get)(':id/export'),
+    (0, permissions_decorator_1.Permissions)('chatbots:view'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], ChatbotsController.prototype, "exportChatbotData", null);
 exports.ChatbotsController = ChatbotsController = __decorate([
     (0, common_1.Controller)('chatbots'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),

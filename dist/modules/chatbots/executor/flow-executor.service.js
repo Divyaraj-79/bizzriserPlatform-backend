@@ -258,6 +258,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
         }
         else if (waitingType === 'button') {
             const buttonId = messageData.interactive?.button_reply?.id ?? messageData.button?.payload ?? '';
+            const buttonTitle = messageData.interactive?.button_reply?.title ?? messageData.button?.text ?? buttonId;
             const varName = currentNode.data?.config?.saveToVariable;
             if (varName) {
                 if (varName.startsWith('custom.')) {
@@ -265,20 +266,23 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
                     const currentFields = contact.customFields || {};
                     await this.prisma.contact.update({
                         where: { id: contact.id },
-                        data: { customFields: { ...currentFields, [fieldName]: buttonId } },
+                        data: { customFields: { ...currentFields, [fieldName]: buttonTitle } },
                     });
-                    variables = { ...variables, [varName]: buttonId };
+                    variables = { ...variables, [varName]: buttonTitle };
                 }
                 else {
                     const name = varName.startsWith('var.') ? varName.replace('var.', '') : varName;
-                    variables = { ...variables, [name]: buttonId };
+                    variables = { ...variables, [name]: buttonTitle };
                 }
-                await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
             }
+            const nodeLabel = currentNode.data?.label || 'Interactive';
+            variables[`Interaction: ${nodeLabel}`] = buttonTitle;
+            await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
             routeHandle = buttonId ? `btn_${buttonId}` : 'output';
         }
         else if (waitingType === 'list') {
             const listId = messageData.interactive?.list_reply?.id ?? '';
+            const listTitle = messageData.interactive?.list_reply?.title ?? listId;
             const varName = currentNode.data?.config?.saveToVariable;
             if (varName) {
                 if (varName.startsWith('custom.')) {
@@ -286,16 +290,18 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
                     const currentFields = contact.customFields || {};
                     await this.prisma.contact.update({
                         where: { id: contact.id },
-                        data: { customFields: { ...currentFields, [fieldName]: listId } },
+                        data: { customFields: { ...currentFields, [fieldName]: listTitle } },
                     });
-                    variables = { ...variables, [varName]: listId };
+                    variables = { ...variables, [varName]: listTitle };
                 }
                 else {
                     const name = varName.startsWith('var.') ? varName.replace('var.', '') : varName;
-                    variables = { ...variables, [name]: listId };
+                    variables = { ...variables, [name]: listTitle };
                 }
-                await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
             }
+            const nodeLabel = currentNode.data?.label || 'List';
+            variables[`List Selection: ${nodeLabel}`] = listTitle;
+            await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
             routeHandle = listId ? `list_${listId}` : 'output';
             if (listId) {
                 const targetRowNode = flowData.nodes.find((n) => n.type === 'listRow' && (n.data?.config?.rowId === listId || n.id === listId));

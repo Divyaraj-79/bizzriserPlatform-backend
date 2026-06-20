@@ -262,41 +262,55 @@ export class FlowExecutorService {
     } else if (waitingType === 'button') {
       // Route by button ID — each button's ID maps to a sourceHandle like "btn_BUTTONID"
       const buttonId = messageData.interactive?.button_reply?.id ?? messageData.button?.payload ?? '';
+      const buttonTitle = messageData.interactive?.button_reply?.title ?? messageData.button?.text ?? buttonId;
       const varName = currentNode.data?.config?.saveToVariable;
+      
       if (varName) {
         if (varName.startsWith('custom.')) {
           const fieldName = varName.replace('custom.', '');
           const currentFields = ((contact as any).customFields as Record<string, any>) || {};
           await this.prisma.contact.update({
             where: { id: contact.id },
-            data: { customFields: { ...currentFields, [fieldName]: buttonId } },
+            data: { customFields: { ...currentFields, [fieldName]: buttonTitle } },
           });
-          variables = { ...variables, [varName]: buttonId };
+          variables = { ...variables, [varName]: buttonTitle };
         } else {
           const name = varName.startsWith('var.') ? varName.replace('var.', '') : varName;
-          variables = { ...variables, [name]: buttonId };
+          variables = { ...variables, [name]: buttonTitle };
         }
-        await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
       }
+
+      // Automatically track the interaction path for analytics and Excel export
+      const nodeLabel = currentNode.data?.label || 'Interactive';
+      variables[`Interaction: ${nodeLabel}`] = buttonTitle;
+      await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+
       routeHandle = buttonId ? `btn_${buttonId}` : 'output';
     } else if (waitingType === 'list') {
       const listId = messageData.interactive?.list_reply?.id ?? '';
+      const listTitle = messageData.interactive?.list_reply?.title ?? listId;
       const varName = currentNode.data?.config?.saveToVariable;
+      
       if (varName) {
         if (varName.startsWith('custom.')) {
           const fieldName = varName.replace('custom.', '');
           const currentFields = ((contact as any).customFields as Record<string, any>) || {};
           await this.prisma.contact.update({
             where: { id: contact.id },
-            data: { customFields: { ...currentFields, [fieldName]: listId } },
+            data: { customFields: { ...currentFields, [fieldName]: listTitle } },
           });
-          variables = { ...variables, [varName]: listId };
+          variables = { ...variables, [varName]: listTitle };
         } else {
           const name = varName.startsWith('var.') ? varName.replace('var.', '') : varName;
-          variables = { ...variables, [name]: listId };
+          variables = { ...variables, [name]: listTitle };
         }
-        await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
       }
+
+      // Automatically track the list selection for analytics and Excel export
+      const nodeLabel = currentNode.data?.label || 'List';
+      variables[`List Selection: ${nodeLabel}`] = listTitle;
+      await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { variables } });
+
       routeHandle = listId ? `list_${listId}` : 'output';
 
       // Advanced Tree Routing: In modular list trees, we resume from the specific listRow node

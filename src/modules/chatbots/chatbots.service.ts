@@ -4,6 +4,7 @@ import { CreateChatbotDto } from './dto/create-chatbot.dto';
 import { UpdateChatbotDto } from './dto/update-chatbot.dto';
 import { ChatbotStatus } from '@prisma/client';
 import axios from 'axios';
+import * as ExcelJS from 'exceljs';
 import { TestRequestDto } from './dto/test-request.dto';
 
 @Injectable()
@@ -153,5 +154,78 @@ export class ChatbotsService {
         headers: error.response?.headers || {},
       };
     }
+  }
+
+  async exportChatbotData(orgId: string, id: string): Promise<Buffer> {
+    await this.findOne(orgId, id);
+
+    const sessions = await this.prisma.chatbotSession.findMany({
+      where: { chatbotId: id, organizationId: orgId },
+      include: { contact: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'BizzRiser';
+    workbook.created = new Date();
+    
+    const worksheet = workbook.addWorksheet('Chatbot Data');
+
+    // Extract all unique variable keys across all sessions
+    const variableKeys = new Set<string>();
+    for (const session of sessions) {
+      const vars = session.variables as Record<string, any>;
+      if (vars) {
+        Object.keys(vars).forEach(key => variableKeys.add(key));
+      }
+    }
+    const dynamicColumns = Array.from(variableKeys).sort();
+
+    // Define standard columns
+    const columns = [
+      { header: 'Session ID', key: 'id', width: 36 },
+      { header: 'Contact Name', key: 'contactName', width: 25 },
+      { header: 'Contact Phone', key: 'contactPhone', width: 20 },
+      { header: 'Status', key: 'status', width: 15 },
+      { header: 'Created At', key: 'createdAt', width: 25 },
+    ];
+
+    // Append dynamic columns
+    dynamicColumns.forEach(col => {
+      columns.push({ header: col, key: col, width: 25 });
+    });
+
+    worksheet.columns = columns;
+
+    // Make header row bold
+    worksheet.getRow(1).font = { bold: true };
+
+    // Add rows
+    sessions.forEach(session => {
+      const contactFullName = session.contact ? `${session.contact.firstName || ''} ${session.contact.lastName || ''}`.trim() : '';
+
+      const rowData: any = {
+        id: session.id,
+        contactName: contactFullName || 'Unknown',
+        contactPhone: session.contact?.phone || 'Unknown',
+        status: session.status,
+        createdAt: session.createdAt.toLocaleString(),
+      };
+
+      const vars = session.variables as Record<string, any>;
+      if (vars) {
+        dynamicColumns.forEach(key => {
+          // Flatten objects/arrays into strings for Excel if needed
+          const val = vars[key];
+          rowData[key] = typeof val === 'object' ? JSON.stringify(val) : val;
+        });
+      }
+
+      worksheet.addRow(rowData);
+    });
+
+    // Return buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 }
