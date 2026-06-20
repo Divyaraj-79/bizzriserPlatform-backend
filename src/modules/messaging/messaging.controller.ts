@@ -98,6 +98,19 @@ export class MessagingController {
     return this.messagingService.getConversationMessages(conversationId, search);
   }
 
+  @Get('conversations/:id/export')
+  async exportChat(
+    @Param('id') conversationId: string,
+    @Req() req: any,
+    @Res() res: express.Response,
+  ) {
+    const textData = await this.messagingService.exportConversationChat(req.user.orgId, conversationId);
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', `attachment; filename="chat-export-${conversationId.substring(0, 8)}.txt"`);
+    res.send(textData);
+  }
+
   @Delete('conversations/:id/messages')
   async clearMessages(@Param('id') id: string, @Req() req: any) {
     return this.messagingService.clearConversationMessages(req.user.orgId, id);

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { validationSchema, appConfig, databaseConfig, redisConfig, jwtConfig, whatsappConfig, encryptionConfig, corsConfig } from './config';
 
@@ -36,6 +37,7 @@ import { ClientsModule } from './modules/clients/clients.module';
         abortEarly: true,
       },
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],

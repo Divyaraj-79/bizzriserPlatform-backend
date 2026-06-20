@@ -148,6 +148,7 @@ export declare class MessagingController {
         contactId: string;
         conversationId: string | null;
     }[]>;
+    exportChat(conversationId: string, req: any, res: express.Response): Promise<void>;
     clearMessages(id: string, req: any): Promise<{
         success: boolean;
     }>;

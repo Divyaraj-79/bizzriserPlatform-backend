@@ -993,7 +993,7 @@ export class FlowExecutorService {
     if (payload) {
       try {
         await this.sendBotMessageAndTrack(
-          session, contact, 'INTERACTIVE' as any, { body: bodyText },
+          session, contact, 'INTERACTIVE' as any, { body: bodyText, interactive: payload },
           () => this.whatsappService.sendInteractiveMessage(session.organizationId, session.accountId, contact.phone, payload)
         );
       } catch (err: any) {

@@ -161,6 +161,7 @@ export declare class MessagingService {
         contactId: string;
         conversationId: string | null;
     }[]>;
+    exportConversationChat(orgId: string, conversationId: string): Promise<string>;
     clearConversationMessages(orgId: string, conversationId: string): Promise<{
         success: boolean;
     }>;

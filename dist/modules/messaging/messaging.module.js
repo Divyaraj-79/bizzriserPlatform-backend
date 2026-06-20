@@ -10,6 +10,7 @@ exports.MessagingModule = void 0;
 const common_1 = require("@nestjs/common");
 const messaging_service_1 = require("./messaging.service");
 const messaging_controller_1 = require("./messaging.controller");
+const data_retention_service_1 = require("./data-retention.service");
 const whatsapp_module_1 = require("../whatsapp/whatsapp.module");
 const prisma_module_1 = require("../../prisma/prisma.module");
 const realtime_module_1 = require("../realtime/realtime.module");
@@ -21,7 +22,7 @@ exports.MessagingModule = MessagingModule = __decorate([
     (0, common_1.Module)({
         imports: [whatsapp_module_1.WhatsappModule, prisma_module_1.PrismaModule, realtime_module_1.RealtimeModule, contacts_module_1.ContactsModule],
         controllers: [messaging_controller_1.MessagingController],
-        providers: [messaging_service_1.MessagingService],
+        providers: [messaging_service_1.MessagingService, data_retention_service_1.DataRetentionService],
         exports: [messaging_service_1.MessagingService],
     })
 ], MessagingModule);

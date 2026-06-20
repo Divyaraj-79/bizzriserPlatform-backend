@@ -911,7 +911,7 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
         }
         if (payload) {
             try {
-                await this.sendBotMessageAndTrack(session, contact, 'INTERACTIVE', { body: bodyText }, () => this.whatsappService.sendInteractiveMessage(session.organizationId, session.accountId, contact.phone, payload));
+                await this.sendBotMessageAndTrack(session, contact, 'INTERACTIVE', { body: bodyText, interactive: payload }, () => this.whatsappService.sendInteractiveMessage(session.organizationId, session.accountId, contact.phone, payload));
             }
             catch (err) {
                 this.logger.error(`handleInteractive Error: ${err.message}`);

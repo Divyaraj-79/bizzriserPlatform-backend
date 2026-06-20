@@ -10,6 +10,7 @@ exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const bull_1 = require("@nestjs/bull");
+const schedule_1 = require("@nestjs/schedule");
 const prisma_module_1 = require("./prisma/prisma.module");
 const config_2 = require("./config");
 const auth_module_1 = require("./modules/auth/auth.module");
@@ -45,6 +46,7 @@ exports.AppModule = AppModule = __decorate([
                     abortEarly: true,
                 },
             }),
+            schedule_1.ScheduleModule.forRoot(),
             prisma_module_1.PrismaModule,
             bull_1.BullModule.forRootAsync({
                 imports: [config_1.ConfigModule],

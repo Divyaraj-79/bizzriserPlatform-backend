@@ -77,6 +77,12 @@ let MessagingController = class MessagingController {
     async getMessages(conversationId, req, search) {
         return this.messagingService.getConversationMessages(conversationId, search);
     }
+    async exportChat(conversationId, req, res) {
+        const textData = await this.messagingService.exportConversationChat(req.user.orgId, conversationId);
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Content-Disposition', `attachment; filename="chat-export-${conversationId.substring(0, 8)}.txt"`);
+        res.send(textData);
+    }
     async clearMessages(id, req) {
         return this.messagingService.clearConversationMessages(req.user.orgId, id);
     }
@@ -147,6 +153,15 @@ __decorate([
     __metadata("design:paramtypes", [String, Object, String]),
     __metadata("design:returntype", Promise)
 ], MessagingController.prototype, "getMessages", null);
+__decorate([
+    (0, common_1.Get)('conversations/:id/export'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], MessagingController.prototype, "exportChat", null);
 __decorate([
     (0, common_1.Delete)('conversations/:id/messages'),
     __param(0, (0, common_1.Param)('id')),

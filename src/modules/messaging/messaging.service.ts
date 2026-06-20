@@ -443,9 +443,13 @@ export class MessagingService {
    * REST API: Fetch live chat history.
    */
   async getConversationMessages(conversationId: string, search?: string) {
-    return this.prisma.message.findMany({
+    const fortyFiveDaysAgo = new Date();
+    fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
+
+    const messages = await this.prisma.message.findMany({
       where: {
         conversationId,
+        createdAt: { gte: fortyFiveDaysAgo },
         ...(search ? {
           content: {
             path: ['body'],
@@ -453,9 +457,71 @@ export class MessagingService {
           }
         } : {})
       },
-      orderBy: { createdAt: 'asc' },
-      take: 100,
+      orderBy: { createdAt: 'desc' },
     });
+    return messages.reverse();
+  }
+
+  /**
+   * Export Chat functionality (up to 90 days)
+   */
+  async exportConversationChat(orgId: string, conversationId: string): Promise<string> {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        contact: { select: { firstName: true, lastName: true, phone: true } },
+      }
+    });
+
+    if (!conversation || conversation.organizationId !== orgId) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+    const messages = await this.prisma.message.findMany({
+      where: {
+        conversationId,
+        createdAt: { gte: ninetyDaysAgo },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const contactName = conversation.contact.firstName || conversation.contact.lastName 
+      ? `${conversation.contact.firstName || ''} ${conversation.contact.lastName || ''}`.trim()
+      : conversation.contact.phone;
+
+    let exportText = `WhatsApp Chat Export - ${contactName}\n`;
+    exportText += `Exported on: ${new Date().toLocaleString()}\n`;
+    exportText += `=================================================\n\n`;
+
+    for (const msg of messages) {
+      const dateStr = `[${new Date(msg.createdAt).toLocaleString()}]`;
+      const sender = msg.direction === 'INBOUND' ? contactName : 'Me';
+      let bodyText = '';
+      
+      const content = msg.content as any;
+      if (msg.type === 'TEXT') {
+        bodyText = content?.body || '';
+      } else if (msg.type === 'TEMPLATE') {
+        bodyText = `[Template: ${content?.templateName || ''}]`;
+      } else if (msg.type === 'IMAGE') {
+        bodyText = `[Image] ${content?.caption || ''}`.trim();
+      } else if (msg.type === 'VIDEO') {
+        bodyText = `[Video] ${content?.caption || ''}`.trim();
+      } else if (msg.type === 'DOCUMENT') {
+        bodyText = `[Document] ${content?.filename || ''}`.trim();
+      } else if (msg.type === 'AUDIO') {
+        bodyText = `[Audio]`;
+      } else {
+        bodyText = content?.body || `[${msg.type}]`;
+      }
+
+      exportText += `${dateStr} ${sender}: ${bodyText}\n`;
+    }
+
+    return exportText;
   }
 
   async clearConversationMessages(orgId: string, conversationId: string) {
