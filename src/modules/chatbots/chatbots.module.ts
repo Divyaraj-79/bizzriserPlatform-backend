@@ -8,6 +8,7 @@ import { FlowDelayProcessor } from './executor/flow-delay.processor';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { FlowsModule } from '../flows/flows.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { FlowsModule } from '../flows/flows.module';
     WhatsappModule,
     MessagingModule,
     FlowsModule,
+    RealtimeModule,
     BullModule.registerQueue({ name: 'flow-delays' }),
   ],
   controllers: [ChatbotsController],

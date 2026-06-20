@@ -10,16 +10,16 @@ export declare class ChatbotsController {
         chatbots: {
             id: string;
             organizationId: string;
+            status: import(".prisma/client").$Enums.ChatbotStatus;
+            createdAt: Date;
+            updatedAt: Date;
             name: string;
             description: string | null;
             channel: import(".prisma/client").$Enums.ChatbotChannel;
             triggerType: import(".prisma/client").$Enums.ChatbotTriggerType;
-            status: import(".prisma/client").$Enums.ChatbotStatus;
             keywords: string[];
             flowData: import("@prisma/client/runtime/library").JsonValue;
             executions: number;
-            createdAt: Date;
-            updatedAt: Date;
         }[];
         stats: {
             total: number;
@@ -30,44 +30,44 @@ export declare class ChatbotsController {
     create(req: any, dto: CreateChatbotDto): Promise<{
         id: string;
         organizationId: string;
+        status: import(".prisma/client").$Enums.ChatbotStatus;
+        createdAt: Date;
+        updatedAt: Date;
         name: string;
         description: string | null;
         channel: import(".prisma/client").$Enums.ChatbotChannel;
         triggerType: import(".prisma/client").$Enums.ChatbotTriggerType;
-        status: import(".prisma/client").$Enums.ChatbotStatus;
         keywords: string[];
         flowData: import("@prisma/client/runtime/library").JsonValue;
         executions: number;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     findOne(req: any, id: string): Promise<{
         id: string;
         organizationId: string;
+        status: import(".prisma/client").$Enums.ChatbotStatus;
+        createdAt: Date;
+        updatedAt: Date;
         name: string;
         description: string | null;
         channel: import(".prisma/client").$Enums.ChatbotChannel;
         triggerType: import(".prisma/client").$Enums.ChatbotTriggerType;
-        status: import(".prisma/client").$Enums.ChatbotStatus;
         keywords: string[];
         flowData: import("@prisma/client/runtime/library").JsonValue;
         executions: number;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     update(req: any, id: string, dto: UpdateChatbotDto): Promise<{
         id: string;
         organizationId: string;
+        status: import(".prisma/client").$Enums.ChatbotStatus;
+        createdAt: Date;
+        updatedAt: Date;
         name: string;
         description: string | null;
         channel: import(".prisma/client").$Enums.ChatbotChannel;
         triggerType: import(".prisma/client").$Enums.ChatbotTriggerType;
-        status: import(".prisma/client").$Enums.ChatbotStatus;
         keywords: string[];
         flowData: import("@prisma/client/runtime/library").JsonValue;
         executions: number;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     remove(req: any, id: string): Promise<{
         message: string;
@@ -75,44 +75,44 @@ export declare class ChatbotsController {
     activate(req: any, id: string): Promise<{
         id: string;
         organizationId: string;
+        status: import(".prisma/client").$Enums.ChatbotStatus;
+        createdAt: Date;
+        updatedAt: Date;
         name: string;
         description: string | null;
         channel: import(".prisma/client").$Enums.ChatbotChannel;
         triggerType: import(".prisma/client").$Enums.ChatbotTriggerType;
-        status: import(".prisma/client").$Enums.ChatbotStatus;
         keywords: string[];
         flowData: import("@prisma/client/runtime/library").JsonValue;
         executions: number;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     deactivate(req: any, id: string): Promise<{
         id: string;
         organizationId: string;
+        status: import(".prisma/client").$Enums.ChatbotStatus;
+        createdAt: Date;
+        updatedAt: Date;
         name: string;
         description: string | null;
         channel: import(".prisma/client").$Enums.ChatbotChannel;
         triggerType: import(".prisma/client").$Enums.ChatbotTriggerType;
-        status: import(".prisma/client").$Enums.ChatbotStatus;
         keywords: string[];
         flowData: import("@prisma/client/runtime/library").JsonValue;
         executions: number;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     clone(req: any, id: string): Promise<{
         id: string;
         organizationId: string;
+        status: import(".prisma/client").$Enums.ChatbotStatus;
+        createdAt: Date;
+        updatedAt: Date;
         name: string;
         description: string | null;
         channel: import(".prisma/client").$Enums.ChatbotChannel;
         triggerType: import(".prisma/client").$Enums.ChatbotTriggerType;
-        status: import(".prisma/client").$Enums.ChatbotStatus;
         keywords: string[];
         flowData: import("@prisma/client/runtime/library").JsonValue;
         executions: number;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     testRequest(dto: TestRequestDto): Promise<{
         status: any;

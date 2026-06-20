@@ -9,6 +9,7 @@ import axios from 'axios';
 import { parsePhoneNumber, getCountryCallingCode } from 'libphonenumber-js';
 import { v4 as uuidv4 } from 'uuid';
 import { WhatsAppFlowsService } from '../../flows/whatsapp-flows.service';
+import { RealtimeGateway } from '../../realtime/realtime.gateway';
 
 interface FlowNode {
   id: string;
@@ -33,6 +34,7 @@ export class FlowExecutorService {
     private whatsappService: WhatsappService,
     private messagingService: MessagingService,
     private flowsService: WhatsAppFlowsService,
+    private realtimeGateway: RealtimeGateway,
     @InjectQueue('flow-delays') private delayQueue: Queue,
   ) {}
 
@@ -56,6 +58,20 @@ export class FlowExecutorService {
         variables: {},
       },
     });
+
+    // Increment execution count and emit real-time update
+    try {
+      const updatedChatbot = await this.prisma.chatbot.update({
+        where: { id: chatbot.id },
+        data: { executions: { increment: 1 } },
+      });
+      this.realtimeGateway.emitChatbotUpdate(orgId, {
+        id: chatbot.id,
+        executions: updatedChatbot.executions,
+      });
+    } catch (e) {
+      this.logger.error(`Failed to increment executions for chatbot ${chatbot.id}: ${e.message}`);
+    }
 
     await this.executeNode(session, triggerNode, flowData.edges || [], flowData.nodes, contact, messageData);
   }

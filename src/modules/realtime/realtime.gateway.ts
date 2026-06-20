@@ -124,6 +124,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
   }
 
+  /**
+   * Emits chatbot updates to instantly refresh execution counts.
+   */
+  emitChatbotUpdate(orgId: string, chatbot: any) {
+    if (this.server) {
+      this.server.to(`org_${orgId}`).emit('chatbot:update', chatbot);
+    }
+  }
+
 
   @SubscribeMessage('subscribe:conversation')
   handleJoinConversation(socket: Socket, conversationId: string) {

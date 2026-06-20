@@ -28,18 +28,21 @@ const axios_1 = __importDefault(require("axios"));
 const libphonenumber_js_1 = require("libphonenumber-js");
 const uuid_1 = require("uuid");
 const whatsapp_flows_service_1 = require("../../flows/whatsapp-flows.service");
+const realtime_gateway_1 = require("../../realtime/realtime.gateway");
 let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
     prisma;
     whatsappService;
     messagingService;
     flowsService;
+    realtimeGateway;
     delayQueue;
     logger = new common_1.Logger(FlowExecutorService_1.name);
-    constructor(prisma, whatsappService, messagingService, flowsService, delayQueue) {
+    constructor(prisma, whatsappService, messagingService, flowsService, realtimeGateway, delayQueue) {
         this.prisma = prisma;
         this.whatsappService = whatsappService;
         this.messagingService = messagingService;
         this.flowsService = flowsService;
+        this.realtimeGateway = realtimeGateway;
         this.delayQueue = delayQueue;
     }
     async startSession(orgId, accountId, chatbot, contact, messageData) {
@@ -59,6 +62,19 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
                 variables: {},
             },
         });
+        try {
+            const updatedChatbot = await this.prisma.chatbot.update({
+                where: { id: chatbot.id },
+                data: { executions: { increment: 1 } },
+            });
+            this.realtimeGateway.emitChatbotUpdate(orgId, {
+                id: chatbot.id,
+                executions: updatedChatbot.executions,
+            });
+        }
+        catch (e) {
+            this.logger.error(`Failed to increment executions for chatbot ${chatbot.id}: ${e.message}`);
+        }
         await this.executeNode(session, triggerNode, flowData.edges || [], flowData.nodes, contact, messageData);
     }
     async resumeSession(session, contact, messageData) {
@@ -2143,11 +2159,12 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
 exports.FlowExecutorService = FlowExecutorService;
 exports.FlowExecutorService = FlowExecutorService = FlowExecutorService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(4, (0, bull_1.InjectQueue)('flow-delays')),
+    __param(5, (0, bull_1.InjectQueue)('flow-delays')),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         whatsapp_service_1.WhatsappService,
         messaging_service_1.MessagingService,
         whatsapp_flows_service_1.WhatsAppFlowsService,
+        realtime_gateway_1.RealtimeGateway,
         bullmq_1.Queue])
 ], FlowExecutorService);
 //# sourceMappingURL=flow-executor.service.js.map

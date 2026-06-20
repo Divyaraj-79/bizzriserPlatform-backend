@@ -87,6 +87,11 @@ let RealtimeGateway = RealtimeGateway_1 = class RealtimeGateway {
             this.server.to(`org_${orgId}`).emit(eventName, contact);
         }
     }
+    emitChatbotUpdate(orgId, chatbot) {
+        if (this.server) {
+            this.server.to(`org_${orgId}`).emit('chatbot:update', chatbot);
+        }
+    }
     handleJoinConversation(socket, conversationId) {
         socket.join(`conversation_${conversationId}`);
         return { status: 'subscribed', conversationId };
