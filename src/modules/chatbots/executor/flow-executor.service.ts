@@ -1259,7 +1259,10 @@ export class FlowExecutorService {
     const question = await this.resolveVariables(config.question || 'Please enter your text:', session, contact, messageData);
     
     if (question) {
-      await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+      await this.sendBotMessageAndTrack(
+        session, contact, 'TEXT' as any, { body: question },
+        () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question)
+      );
     }
     
     await this.prisma.chatbotSession.update({
@@ -1360,7 +1363,10 @@ export class FlowExecutorService {
     const question = await this.resolveVariables(config.question || 'Please share your location:', session, contact, messageData);
     
     if (question) {
-      await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+      await this.sendBotMessageAndTrack(
+        session, contact, 'TEXT' as any, { body: question },
+        () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question)
+      );
     }
     
     await this.prisma.chatbotSession.update({
@@ -1382,7 +1388,10 @@ export class FlowExecutorService {
     const config = node.data?.config || {};
     const bodyText = await this.resolveVariables(config.question || config.text || 'Please provide your address:', session, contact, messageData);
     
-    await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, bodyText);
+    await this.sendBotMessageAndTrack(
+      session, contact, 'TEXT' as any, { body: bodyText },
+      () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, bodyText)
+    );
     
     await this.prisma.chatbotSession.update({
       where: { id: session.id },
@@ -1399,7 +1408,10 @@ export class FlowExecutorService {
     const config = node.data?.config || {};
     const question = await this.resolveVariables(config.question || config.text || 'Please upload an image:', session, contact, messageData);
     
-    await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    await this.sendBotMessageAndTrack(
+      session, contact, 'TEXT' as any, { body: question },
+      () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question)
+    );
     
     await this.prisma.chatbotSession.update({
       where: { id: session.id },
@@ -1420,7 +1432,10 @@ export class FlowExecutorService {
     const config = node.data?.config || {};
     const question = await this.resolveVariables(config.question || config.text || 'Please upload a video:', session, contact, messageData);
     
-    await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    await this.sendBotMessageAndTrack(
+      session, contact, 'TEXT' as any, { body: question },
+      () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question)
+    );
     
     await this.prisma.chatbotSession.update({
       where: { id: session.id },
@@ -1441,7 +1456,10 @@ export class FlowExecutorService {
     const config = node.data?.config || {};
     const question = await this.resolveVariables(config.question || config.text || 'Please send your voice message:', session, contact, messageData);
     
-    await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    await this.sendBotMessageAndTrack(
+      session, contact, 'TEXT' as any, { body: question },
+      () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question)
+    );
     
     await this.prisma.chatbotSession.update({
       where: { id: session.id },
@@ -1462,7 +1480,10 @@ export class FlowExecutorService {
     const config = node.data?.config || {};
     const question = await this.resolveVariables(config.question || config.text || 'Please upload the requested file:', session, contact, messageData);
     
-    await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+    await this.sendBotMessageAndTrack(
+      session, contact, 'TEXT' as any, { body: question },
+      () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question)
+    );
     
     await this.prisma.chatbotSession.update({
       where: { id: session.id },
@@ -1483,7 +1504,10 @@ export class FlowExecutorService {
     const config = node.data?.config || {};
     const question = await this.resolveVariables(config.question || config.text || '', session, contact, messageData);
     if (question) {
-      await this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question);
+      await this.sendBotMessageAndTrack(
+        session, contact, 'TEXT' as any, { body: question },
+        () => this.whatsappService.sendTextMessage(session.organizationId, session.accountId, contact.phone, question)
+      );
     }
     await this.prisma.chatbotSession.update({
       where: { id: session.id },
