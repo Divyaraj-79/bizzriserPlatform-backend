@@ -2056,9 +2056,16 @@ export class FlowExecutorService {
     const results = await Promise.all(conditions.map(c => this.evaluateCondition(c, session, contact, messageData)));
 
     const passed = logicType === 'AND' ? results.every(Boolean) : results.some(Boolean);
-    const handle = passed ? 'success' : 'fail';
+    
+    // Try primary handle ('true'/'false'), but allow fallback to legacy 'success'/'fail'
+    const handle = passed ? 'true' : 'false';
+    const legacyHandle = passed ? 'success' : 'fail';
 
-    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, handle);
+    // We'll peek at the edges. If 'true'/'false' doesn't exist but 'success'/'fail' does, use the legacy one.
+    const hasPrimaryEdge = edges.some(e => e.source === node.id && e.sourceHandle === handle);
+    const finalHandle = hasPrimaryEdge ? handle : legacyHandle;
+
+    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, finalHandle);
   }
 
   private async evaluateCondition(condition: any, session: ChatbotSession, contact: Contact, messageData: any): Promise<boolean> {

@@ -1691,8 +1691,11 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
         const logicType = config.logicType || 'AND';
         const results = await Promise.all(conditions.map(c => this.evaluateCondition(c, session, contact, messageData)));
         const passed = logicType === 'AND' ? results.every(Boolean) : results.some(Boolean);
-        const handle = passed ? 'success' : 'fail';
-        await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, handle);
+        const handle = passed ? 'true' : 'false';
+        const legacyHandle = passed ? 'success' : 'fail';
+        const hasPrimaryEdge = edges.some(e => e.source === node.id && e.sourceHandle === handle);
+        const finalHandle = hasPrimaryEdge ? handle : legacyHandle;
+        await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, finalHandle);
     }
     async evaluateCondition(condition, session, contact, messageData) {
         const { source, operator, value, valueType } = condition;
