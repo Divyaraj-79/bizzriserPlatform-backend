@@ -553,7 +553,8 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
             where: { id: session.id },
             data: { status: client_1.ChatbotSessionStatus.ACTIVE, waitingForInput: false, waitingNodeType: null },
         });
-        await this.advanceFromNode({ ...updatedSession, variables }, currentNode, flowData.edges || [], flowData.nodes, contact, messageData, routeHandle);
+        const refreshedContact = await this.prisma.contact.findUnique({ where: { id: contact.id } });
+        await this.advanceFromNode({ ...updatedSession, variables }, currentNode, flowData.edges || [], flowData.nodes, refreshedContact || contact, messageData, routeHandle);
     }
     async executeNode(session, node, edges, allNodes, contact, messageData) {
         this.logger.debug(`Executing node type=${node.type} id=${node.id}`);

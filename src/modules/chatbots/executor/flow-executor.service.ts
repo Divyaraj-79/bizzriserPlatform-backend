@@ -561,12 +561,15 @@ export class FlowExecutorService {
       data: { status: ChatbotSessionStatus.ACTIVE, waitingForInput: false, waitingNodeType: null },
     });
 
+    // Refresh contact to ensure any customFields updated during this step are available to the next node
+    const refreshedContact = await this.prisma.contact.findUnique({ where: { id: contact.id } });
+
     await this.advanceFromNode(
       { ...updatedSession, variables } as any,
       currentNode,
       flowData.edges || [],
       flowData.nodes,
-      contact,
+      refreshedContact || contact,
       messageData,
       routeHandle,
     );
