@@ -95,21 +95,38 @@ let FlowExecutorService = FlowExecutorService_1 = class FlowExecutorService {
             const varName = config.variableName || config.saveToVariable;
             if (varName) {
                 const userInput = messageData.text?.body ?? messageData.interactive?.button_reply?.title ?? messageData.interactive?.list_reply?.title ?? '';
-                if (varName.startsWith('custom.')) {
-                    const fieldName = varName.replace('custom.', '');
-                    const currentFields = contact.customFields || {};
-                    await this.prisma.contact.update({
-                        where: { id: contact.id },
-                        data: { customFields: { ...currentFields, [fieldName]: userInput } },
-                    });
-                    variables = { ...variables, [varName]: userInput };
-                }
-                else if (varName.startsWith('var.')) {
-                    const name = varName.replace('var.', '');
-                    variables = { ...variables, [name]: userInput };
+                const match = varName.match(/^\{\{(custom|var|contact)\.(.+)\}\}$/);
+                if (match) {
+                    const [_, type, field] = match;
+                    if (type === 'custom') {
+                        const currentFields = contact.customFields || {};
+                        await this.prisma.contact.update({ where: { id: contact.id }, data: { customFields: { ...currentFields, [field]: userInput } } });
+                        variables = { ...variables, [`custom.${field}`]: userInput };
+                    }
+                    else if (type === 'var') {
+                        variables = { ...variables, [`var.${field}`]: userInput };
+                    }
+                    else if (type === 'contact') {
+                        await this.prisma.contact.update({ where: { id: contact.id }, data: { [field]: userInput } });
+                    }
                 }
                 else {
-                    variables = { ...variables, [varName]: userInput };
+                    if (varName.startsWith('custom.')) {
+                        const fieldName = varName.replace('custom.', '');
+                        const currentFields = contact.customFields || {};
+                        await this.prisma.contact.update({
+                            where: { id: contact.id },
+                            data: { customFields: { ...currentFields, [fieldName]: userInput } },
+                        });
+                        variables = { ...variables, [varName]: userInput };
+                    }
+                    else if (varName.startsWith('var.')) {
+                        const name = varName.replace('var.', '');
+                        variables = { ...variables, [name]: userInput };
+                    }
+                    else {
+                        variables = { ...variables, [varName]: userInput };
+                    }
                 }
                 await this.prisma.chatbotSession.update({
                     where: { id: session.id },
