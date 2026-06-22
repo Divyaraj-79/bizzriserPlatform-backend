@@ -2580,7 +2580,16 @@ export class FlowExecutorService {
 
     if (sourceHandle) {
       const specific = outEdges.filter(e => e.sourceHandle === sourceHandle);
-      outEdges = specific.length > 0 ? specific : outEdges.filter(e => !e.sourceHandle);
+      if (specific.length > 0) {
+        outEdges = specific;
+      } else {
+        if (sourceHandle === 'submitted') {
+          const fallback = outEdges.filter(e => e.sourceHandle === 'output');
+          outEdges = fallback.length > 0 ? fallback : outEdges.filter(e => !e.sourceHandle);
+        } else {
+          outEdges = outEdges.filter(e => !e.sourceHandle);
+        }
+      }
     }
 
     if (outEdges.length === 0) {
