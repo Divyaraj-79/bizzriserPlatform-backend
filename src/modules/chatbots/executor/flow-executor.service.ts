@@ -613,7 +613,13 @@ export class FlowExecutorService {
         case 'askFile':        return await this.handleAskFile(session, node, edges, allNodes, contact, messageData);
         case 'askQuestion':    return await this.handleAskQuestion(session, node, edges, allNodes, contact, messageData);
         case 'delay':          return await this.handleDelay(session, node, edges, allNodes, contact, messageData);
-        case 'condition':      return await this.handleCondition(session, node, edges, allNodes, contact, messageData);
+        case 'condition': {
+          const mode = node.data?.config?.mode || 'condition';
+          if (mode === 'workingHours') return await this.handleWorkingHours(session, node, edges, allNodes, contact, messageData);
+          if (mode === 'jumpTo') return await this.handleJumpTo(session, node, edges, allNodes, contact, messageData);
+          if (mode === 'switchBot') return await this.handleSwitchBot(session, node, edges, allNodes, contact, messageData);
+          return await this.handleCondition(session, node, edges, allNodes, contact, messageData);
+        }
         case 'jumpTo':         return await this.handleJumpTo(session, node, edges, allNodes, contact, messageData);
         case 'updateField':    return await this.handleUpdateField(session, node, edges, allNodes, contact, messageData);
         case 'updateLabel':    return await this.handleUpdateLabel(session, node, edges, allNodes, contact, messageData);
@@ -2050,22 +2056,44 @@ export class FlowExecutorService {
 
   private async handleCondition(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
     const config = node.data?.config || {};
-    const conditions: any[] = config.conditions || [];
-    const logicType: 'AND' | 'OR' = config.logicType || 'AND';
-
-    const results = await Promise.all(conditions.map(c => this.evaluateCondition(c, session, contact, messageData)));
-
-    const passed = logicType === 'AND' ? results.every(Boolean) : results.some(Boolean);
     
-    // Try primary handle ('true'/'false'), but allow fallback to legacy 'success'/'fail'
-    const handle = passed ? 'true' : 'false';
-    const legacyHandle = passed ? 'success' : 'fail';
+    if (config.channel === 'multi') {
+      const branches = config.branches || [];
+      let matchedHandle: string | null = null;
+      
+      for (const branch of branches) {
+        const conditions = branch.conditions || [];
+        const logicType = branch.logicType || 'AND';
+        if (conditions.length === 0) continue;
+        
+        const results = await Promise.all(conditions.map((c: any) => this.evaluateCondition(c, session, contact, messageData)));
+        const passed = logicType === 'AND' ? results.every(Boolean) : results.some(Boolean);
+        
+        if (passed) {
+          matchedHandle = branch.id;
+          break;
+        }
+      }
+      
+      const finalHandle = matchedHandle || 'fallback';
+      await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, finalHandle);
+    } else {
+      const conditions: any[] = config.conditions || [];
+      const logicType: 'AND' | 'OR' = config.logicType || 'AND';
 
-    // We'll peek at the edges. If 'true'/'false' doesn't exist but 'success'/'fail' does, use the legacy one.
-    const hasPrimaryEdge = edges.some(e => e.source === node.id && e.sourceHandle === handle);
-    const finalHandle = hasPrimaryEdge ? handle : legacyHandle;
+      const results = await Promise.all(conditions.map((c: any) => this.evaluateCondition(c, session, contact, messageData)));
+      const passed = logicType === 'AND' ? results.every(Boolean) : results.some(Boolean);
+      
+      // Try primary handle ('true'/'false'), but allow fallback to legacy 'success'/'fail'
+      const handle = passed ? 'true' : 'false';
+      const legacyHandle = passed ? 'success' : 'fail';
 
-    await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, finalHandle);
+      // We'll peek at the edges. If 'true'/'false' doesn't exist but 'success'/'fail' does, use the legacy one.
+      const hasPrimaryEdge = edges.some(e => e.source === node.id && e.sourceHandle === handle);
+      const finalHandle = hasPrimaryEdge ? handle : legacyHandle;
+
+      await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, finalHandle);
+    }
   }
 
   private async evaluateCondition(condition: any, session: ChatbotSession, contact: Contact, messageData: any): Promise<boolean> {
@@ -2127,6 +2155,18 @@ export class FlowExecutorService {
 
   private async handleJumpTo(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
     const config = node.data?.config || {};
+    
+    if (config.isConditional) {
+      const conditions: any[] = config.conditions || [];
+      const logicType: 'AND' | 'OR' = config.logicType || 'AND';
+      const results = await Promise.all(conditions.map((c: any) => this.evaluateCondition(c, session, contact, messageData)));
+      const passed = logicType === 'AND' ? results.every(Boolean) : results.some(Boolean);
+      
+      if (!passed) {
+        return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'false');
+      }
+    }
+
     const targetNodeId = config.targetNodeId;
     if (!targetNodeId) return await this.markCompleted(session.id);
 
@@ -2135,6 +2175,46 @@ export class FlowExecutorService {
 
     await this.prisma.chatbotSession.update({ where: { id: session.id }, data: { currentNodeId: targetNodeId } });
     await this.executeNode({ ...session, currentNodeId: targetNodeId }, targetNode, edges, allNodes, contact, messageData);
+  }
+
+  private async handleSwitchBot(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
+    const config = node.data?.config || {};
+    
+    if (config.isConditional) {
+      const conditions: any[] = config.conditions || [];
+      const logicType: 'AND' | 'OR' = config.logicType || 'AND';
+      const results = await Promise.all(conditions.map((c: any) => this.evaluateCondition(c, session, contact, messageData)));
+      const passed = logicType === 'AND' ? results.every(Boolean) : results.some(Boolean);
+      
+      if (!passed) {
+        return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'false');
+      }
+    }
+
+    const targetBotId = config.targetBotId;
+    if (!targetBotId) return await this.markCompleted(session.id);
+
+    const targetBot = await this.prisma.chatbot.findUnique({
+      where: { id: targetBotId },
+      select: { flowData: true }
+    });
+
+    if (!targetBot || !targetBot.flowData) return await this.markCompleted(session.id);
+
+    const flowData: any = targetBot.flowData;
+    const triggerNode = (flowData.nodes || []).find((n: any) => n.type === 'triggerNode' || n.data?.isTrigger);
+
+    if (!triggerNode) return await this.markCompleted(session.id);
+
+    await this.prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        chatbotId: targetBotId,
+        currentNodeId: triggerNode.id
+      }
+    });
+
+    await this.executeNode({ ...session, chatbotId: targetBotId, currentNodeId: triggerNode.id }, triggerNode, flowData.edges || [], flowData.nodes || [], contact, messageData);
   }
 
   private async handleUpdateField(session: ChatbotSession, node: FlowNode, edges: FlowEdge[], allNodes: FlowNode[], contact: Contact, messageData: any) {
@@ -2366,23 +2446,35 @@ export class FlowExecutorService {
 
       // 2. Check Weekly Schedule
       if (!weekday) return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
-      const dayConfig = (schedule as any)[weekday];
-      if (!dayConfig || !dayConfig.enabled) {
-        return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
-      }
+      
+      if (config.schedule) {
+        // Advanced Mode
+        const dayConfig = config.schedule[weekday];
+        if (!dayConfig || !dayConfig.enabled || !dayConfig.slots || dayConfig.slots.length === 0) {
+          return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
+        }
 
-      const { open, close, breakStart, breakEnd } = dayConfig;
+        const isWithinHours = dayConfig.slots.some((slot: any) => {
+          return timeStr >= (slot.start || '00:00') && timeStr <= (slot.end || '23:59');
+        });
 
-      // Check Open/Close (String comparison works for HH:mm)
-      const isWithinHours = timeStr >= (open || '00:00') && timeStr <= (close || '23:59');
-      if (!isWithinHours) {
-        return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
-      }
+        if (!isWithinHours) {
+          return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
+        }
+      } else {
+        // Legacy Mode
+        const workingDays = config.workingDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+        const isWorkingDay = workingDays.map((d: string) => d.toLowerCase().substring(0, 3)).includes(weekday.substring(0, 3));
+        
+        if (!isWorkingDay) {
+          return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
+        }
 
-      // Check Break (Optional)
-      if (breakStart && breakEnd) {
-        const isWithinBreak = timeStr >= breakStart && timeStr <= breakEnd;
-        if (isWithinBreak) {
+        const open = config.startTime || '09:00';
+        const close = config.endTime || '17:00';
+
+        const isWithinHours = timeStr >= open && timeStr <= close;
+        if (!isWithinHours) {
           return await this.advanceFromNode(session, node, edges, allNodes, contact, messageData, 'closed');
         }
       }

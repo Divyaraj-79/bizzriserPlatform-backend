@@ -64,6 +64,7 @@ export declare class FlowExecutorService {
     private handleCondition;
     private evaluateCondition;
     private handleJumpTo;
+    private handleSwitchBot;
     private handleUpdateField;
     private handleUpdateLabel;
     private handleUpdateSubscription;
