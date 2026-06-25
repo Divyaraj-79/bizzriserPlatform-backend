@@ -332,7 +332,7 @@ let ContactsService = ContactsService_1 = class ContactsService {
                 { email: { contains: query, mode: 'insensitive' } },
             ];
         }
-        const [data, total, activeCount, blockedCount] = await Promise.all([
+        const [data, total, statusGroups] = await Promise.all([
             this.prisma.contact.findMany({
                 where,
                 skip,
@@ -340,9 +340,20 @@ let ContactsService = ContactsService_1 = class ContactsService {
                 orderBy: { updatedAt: 'desc' },
             }),
             this.prisma.contact.count({ where }),
-            this.prisma.contact.count({ where: { organizationId: orgId, status: 'ACTIVE' } }),
-            this.prisma.contact.count({ where: { organizationId: orgId, status: 'BLOCKED' } }),
+            this.prisma.contact.groupBy({
+                by: ['status'],
+                where: { organizationId: orgId },
+                _count: { id: true },
+            }),
         ]);
+        let activeCount = 0;
+        let blockedCount = 0;
+        statusGroups.forEach((g) => {
+            if (g.status === 'ACTIVE')
+                activeCount = g._count.id || 0;
+            if (g.status === 'BLOCKED')
+                blockedCount = g._count.id || 0;
+        });
         return {
             data,
             total,

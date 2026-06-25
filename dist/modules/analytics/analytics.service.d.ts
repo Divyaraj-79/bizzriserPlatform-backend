@@ -44,10 +44,10 @@ export declare class AnalyticsService {
         id: string;
         organizationId: string;
         status: import(".prisma/client").$Enums.CampaignStatus;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
         createdAt: Date;
         updatedAt: Date;
         name: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
         description: string | null;
         templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
