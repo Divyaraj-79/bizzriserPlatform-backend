@@ -7,12 +7,31 @@ import axios, { AxiosInstance } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import FormData from 'form-data';
 
+// ── Simple in-memory TTL cache ────────────────────────────────────────────────
+interface WaCacheEntry { value: any; expiresAt: number; }
+class WaTtlCache {
+  private store = new Map<string, WaCacheEntry>();
+  get(key: string): any | null {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) { this.store.delete(key); return null; }
+    return entry.value;
+  }
+  set(key: string, value: any, ttlMs: number) {
+    this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+  }
+  invalidate(prefix: string) {
+    for (const key of this.store.keys()) { if (key.startsWith(prefix)) this.store.delete(key); }
+  }
+}
+
 @Injectable()
 export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name);
   private readonly apiVersion: string;
   private readonly graphBaseUrl: string;
   private readonly http: AxiosInstance;
+  private readonly cache = new WaTtlCache();
 
   constructor(
     private readonly configService: ConfigService,
@@ -861,8 +880,11 @@ export class WhatsappService {
    */
   async listAccounts(orgId: string, user: { role: string; sub: string }) {
     const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN';
+    const cacheKey = `accounts:${orgId}:${user.sub}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) return cached;
 
-    return this.prisma.whatsAppAccount.findMany({
+    const result = await this.prisma.whatsAppAccount.findMany({
       where: {
         organizationId: orgId,
         ...(isAdmin ? {} : {
@@ -882,6 +904,8 @@ export class WhatsappService {
         createdAt: true,
       },
     });
+    this.cache.set(cacheKey, result, 30_000); // 30s TTL — accounts change rarely
+    return result;
   }
 
   /**
@@ -889,6 +913,12 @@ export class WhatsappService {
    * By default, returns locally cached templates. If forceSync is true, fetches from Meta.
    */
   async getTemplates(orgId: string, accountId: string, forceSync = false) {
+    if (!forceSync) {
+      const cacheKey = `templates:${orgId}:${accountId}`;
+      const cached = this.cache.get(cacheKey);
+      if (cached) { this.logger.debug('[Templates] Cache HIT'); return cached; }
+    }
+
     const account = await this.prisma.whatsAppAccount.findUnique({
       where: { id: accountId, organizationId: orgId },
     });
@@ -913,7 +943,7 @@ export class WhatsappService {
 
       const statsMap = new Map(campaignStats.map(s => [s.templateName, s._sum]));
 
-      return templates.map(t => {
+      const result = templates.map(t => {
         const rawSent = statsMap.get(t.name)?.sentCount || 0;
         const rawDelivered = statsMap.get(t.name)?.deliveredCount || 0;
         const rawRead = statsMap.get(t.name)?.readCount || 0;
@@ -936,6 +966,8 @@ export class WhatsappService {
           readRate
         };
       });
+      this.cache.set(`templates:${orgId}:${accountId}`, result, 120_000); // 2 min TTL
+      return result;
     }
 
     // 2. Otherwise, fetch from Meta Graph API (SLOW)

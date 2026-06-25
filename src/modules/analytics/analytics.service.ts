@@ -1,14 +1,40 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
+// ── Simple in-memory TTL cache ────────────────────────────────────────────────
+// Avoids hammering Neon DB on every page load/refresh.
+// Each Neon round-trip costs ~300-500ms; cached hits return in <5ms.
+interface CacheEntry { value: any; expiresAt: number; }
+class TtlCache {
+  private store = new Map<string, CacheEntry>();
+  get(key: string): any | null {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) { this.store.delete(key); return null; }
+    return entry.value;
+  }
+  set(key: string, value: any, ttlMs: number) {
+    this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+  }
+  invalidate(prefix: string) {
+    for (const key of this.store.keys()) { if (key.startsWith(prefix)) this.store.delete(key); }
+  }
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
+  private readonly cache = new TtlCache();
 
   constructor(private readonly prisma: PrismaService) {}
 
   async getOverview(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string) {
     try {
+      // ── Cache check (45s TTL) ─────────────────────────────────────────────────
+      const cacheKey = `overview:${orgId}:${Array.isArray(accountContext) ? accountContext.join(',') : accountContext}:${startDate}:${endDate}`;
+      const cached = this.cache.get(cacheKey);
+      if (cached) { this.logger.debug('[Analytics] Cache HIT for overview'); return cached; }
+
       // 1. Sanitize IDs to avoid Prisma crashes
       const isInvalid = (val: any) => 
         typeof val === 'string' && 
@@ -187,7 +213,7 @@ export class AnalyticsService {
         };
       });
 
-      return {
+      const result = {
         overview: {
           totalMessages: totalOutbound + inboundCount,
           deliveryRate: parseFloat(deliveryRate.toFixed(2)) || 0,
@@ -215,6 +241,8 @@ export class AnalyticsService {
         },
         chartData,
       };
+      this.cache.set(cacheKey, result, 45_000); // 45s TTL
+      return result;
     } catch (error) {
       this.logger.error(`Failed to get analytics overview: ${error.message}`, error.stack);
       throw error;
@@ -225,6 +253,10 @@ export class AnalyticsService {
     if (typeof accountContext === 'string' && (accountContext === 'null' || accountContext === 'undefined' || accountContext === 'all' || !accountContext.trim())) {
       accountContext = undefined;
     }
+    const cacheKey = `campaigns:${orgId}:${startDate}:${endDate}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) { this.logger.debug('[Analytics] Cache HIT for campaigns'); return cached; }
+
     const where: any = { organizationId: orgId };
     if (startDate || endDate) {
       where.createdAt = {
@@ -237,7 +269,7 @@ export class AnalyticsService {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-    return campaigns.map(c => {
+    const result = campaigns.map(c => {
       const total = c.totalRecipients || 0;
       return {
         ...c,
@@ -246,9 +278,15 @@ export class AnalyticsService {
         failureRate: total > 0 ? parseFloat(((c.failedCount / total) * 100).toFixed(2)) : 0,
       };
     });
+    this.cache.set(cacheKey, result, 30_000); // 30s TTL
+    return result;
   }
 
   async getAutomationsAnalytics(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string) {
+    const cacheKey = `automations:${orgId}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) { this.logger.debug('[Analytics] Cache HIT for automations'); return cached; }
+
     const [chatbots, sequences] = await Promise.all([
       this.prisma.chatbot.findMany({
         where: { organizationId: orgId },
@@ -259,7 +297,9 @@ export class AnalyticsService {
         select: { id: true, name: true, executions: true, status: true, updatedAt: true }
       })
     ]);
-    return { chatbots, sequences };
+    const result = { chatbots, sequences };
+    this.cache.set(cacheKey, result, 60_000); // 60s TTL
+    return result;
   }
 
   async getExportData(orgId: string, accountContext?: string | string[], startDate?: string, endDate?: string) {
