@@ -897,16 +897,20 @@ export class WhatsappService {
     // 1. If not forcing a sync, return from local database immediately (FAST)
     if (!forceSync) {
       this.logger.log(`[Templates] Fetching cached templates for account ${accountId} (Local DB)`);
-      const templates = await this.prisma.whatsAppTemplate.findMany({
-        where: { accountId, organizationId: orgId, isActive: true },
-        orderBy: { updatedAt: 'desc' }
-      });
 
-      const campaignStats = await this.prisma.campaign.groupBy({
-        by: ['templateName'],
-        _sum: { sentCount: true, deliveredCount: true, readCount: true },
-        where: { organizationId: orgId, templateName: { not: null } }
-      });
+      // OPTIMIZED: Run templates fetch and campaign stats in parallel (was sequential)
+      const [templates, campaignStats] = await Promise.all([
+        this.prisma.whatsAppTemplate.findMany({
+          where: { accountId, organizationId: orgId, isActive: true },
+          orderBy: { updatedAt: 'desc' }
+        }),
+        this.prisma.campaign.groupBy({
+          by: ['templateName'],
+          _sum: { sentCount: true, deliveredCount: true, readCount: true },
+          where: { organizationId: orgId, templateName: { not: null } }
+        })
+      ]);
+
       const statsMap = new Map(campaignStats.map(s => [s.templateName, s._sum]));
 
       return templates.map(t => {

@@ -24,12 +24,11 @@ export class CampaignsService {
   async findAll(orgId: string, accountContext?: string | string[]) {
     // Note: accountId is stored inside metadata JSON, not as a top-level column on Campaign.
     // We return all campaigns for the org; filtering by account would require JSON path queries.
+    // OPTIMIZED: Removed `_count: { recipients: true }` subquery — totalRecipients is already
+    // stored as a denormalized column on Campaign, so no JOIN is needed.
     const campaigns = await this.prisma.campaign.findMany({
       where: { organizationId: orgId },
       orderBy: { createdAt: 'desc' },
-      include: {
-        _count: { select: { recipients: true } }
-      }
     });
 
     return campaigns.map(c => {

@@ -581,30 +581,46 @@ export class MessagingService {
       this.prisma.conversation.count({ where: whereClause })
     ]);
 
-    // Enhance conversations with 24h window status
-    const enhanced = await Promise.all(conversations.map(async (conv) => {
-      const lastInbound = await this.prisma.message.findFirst({
-        where: { contactId: conv.contactId, direction: MessageDirection.INBOUND },
+    // ── OPTIMIZED: Single batch query instead of N individual queries ──────────
+    // Previously this was doing one DB round-trip PER conversation to find the last
+    // inbound message (N+1 problem). With 20 conversations on Neon = ~1,200ms overhead.
+    // Now: one query fetches all last inbound times, window is computed in memory.
+    const contactIds = conversations.map(c => c.contactId);
+    const now = new Date();
+    const windowMap = new Map<string, { isInWindow: boolean; windowExpiresAt: Date | null }>();
+
+    if (contactIds.length > 0) {
+      // Use raw groupBy to get the latest inbound message per contact in one query
+      const lastInbounds = await this.prisma.message.findMany({
+        where: {
+          contactId: { in: contactIds },
+          direction: MessageDirection.INBOUND,
+        },
         orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }],
-        select: { sentAt: true, createdAt: true }
+        select: { contactId: true, sentAt: true, createdAt: true },
+        distinct: ['contactId'],
       });
 
-      const lastInboundTime = lastInbound?.sentAt || lastInbound?.createdAt;
-      const windowExpiresAt = lastInboundTime
-        ? new Date(lastInboundTime.getTime() + 24 * 60 * 60 * 1000)
-        : null;
-      
-      const isInWindow = windowExpiresAt ? windowExpiresAt > new Date() : false;
+      for (const msg of lastInbounds) {
+        const lastInboundTime = msg.sentAt || msg.createdAt;
+        const windowExpiresAt = lastInboundTime
+          ? new Date(lastInboundTime.getTime() + 24 * 60 * 60 * 1000)
+          : null;
+        const isInWindow = windowExpiresAt ? windowExpiresAt > now : false;
+        windowMap.set(msg.contactId, { isInWindow, windowExpiresAt });
+      }
+    }
 
+    const enhanced = conversations.map((conv) => {
+      const window = windowMap.get(conv.contactId) ?? { isInWindow: false, windowExpiresAt: null };
       return {
         ...conv,
         contact: {
           ...conv.contact,
-          isInWindow,
-          windowExpiresAt
-        }
+          ...window,
+        },
       };
-    }));
+    });
 
     return {
       data: enhanced,
