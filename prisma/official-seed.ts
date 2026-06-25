@@ -6,6 +6,8 @@ const prisma = new PrismaClient();
 async function main() {
   const passwordHash = await bcrypt.hash('password123', 10);
 
+  const newSuperAdminHash = await bcrypt.hash('BizzRiser@79', 10);
+
   // 1. Create Organization
   const org = await prisma.organization.upsert({
     where: { slug: 'bizzriser' },
@@ -30,6 +32,23 @@ async function main() {
     },
   });
 
+  // 2b. Create New Super Admin
+  await prisma.user.upsert({
+    where: { email: 'divyarajmakwanabusiness@gmail.com' },
+    update: { 
+      role: UserRole.SUPER_ADMIN,
+      passwordHash: newSuperAdminHash
+    },
+    create: {
+      email: 'divyarajmakwanabusiness@gmail.com',
+      passwordHash: newSuperAdminHash,
+      firstName: 'Divyaraj',
+      lastName: 'Makwana',
+      role: UserRole.SUPER_ADMIN,
+      organizationId: org.id,
+    },
+  });
+
   // 3. Create a default Org Admin for the user to play with
   await prisma.user.upsert({
     where: { email: 'admin@bizzriser.com' },
@@ -45,8 +64,9 @@ async function main() {
   });
 
   console.log('--- SEEDING COMPLETE ---');
-  console.log('Super Admin: superadmin@bizzriser.com / password123');
-  console.log('Org Admin:   admin@bizzriser.com / password123');
+  console.log('Super Admin 1: superadmin@bizzriser.com / password123');
+  console.log('Super Admin 2: divyarajmakwanabusiness@gmail.com / BizzRiser@79');
+  console.log('Org Admin:     admin@bizzriser.com / password123');
 }
 
 main()

@@ -44,36 +44,76 @@ export class AnalyticsService {
          chartMessageWhere.createdAt = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
       }
 
-      // ── SAFE SEQUENTIAL QUERIES (To respect Neon connection limits) ──
-      
-      const messageStats = await this.prisma.message.groupBy({
-        by: ['status'],
-        where: { ...messageWhere, direction: 'OUTBOUND' },
-        _count: { id: true },
-      });
+      // ── CONCURRENT CONSOLIDATED QUERIES (Using Promise.all) ──
+      const [
+        messageStats,
+        recentPairs,
+        campaignStats,
+        uniqueContacts,
+        chatbotStats,
+        sequenceStats,
+        recentMessages
+      ] = await Promise.all([
+        // 1. Outbound status stats and Inbound total count combined
+        this.prisma.message.groupBy({
+          by: ['direction', 'status'],
+          where: messageWhere,
+          _count: { id: true },
+        }),
+        // 2. Recent message pairs for response time analysis
+        this.prisma.message.findMany({
+          where: messageWhere,
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          select: { createdAt: true, direction: true, contactId: true }
+        }),
+        // 3. Active and Total campaigns count combined
+        this.prisma.campaign.groupBy({
+          by: ['status'],
+          where: campaignWhere,
+          _count: { id: true },
+        }),
+        // 4. Contact count
+        this.prisma.contact.count({
+          where: { organizationId: orgId },
+        }),
+        // 5. Chatbot count and chatbot executions combined
+        this.prisma.chatbot.aggregate({
+          where: { organizationId: orgId },
+          _count: { id: true },
+          _sum: { executions: true }
+        }),
+        // 6. Sequence count and sequence executions combined
+        this.prisma.sequence.aggregate({
+          where: { organizationId: orgId },
+          _count: { id: true },
+          _sum: { executions: true }
+        }),
+        // 7. Chart data messages
+        this.prisma.message.findMany({
+          where: chartMessageWhere,
+          select: { createdAt: true, direction: true, status: true },
+          take: 1000 // Limit memory usage
+        })
+      ]);
 
-      const inboundCount = await this.prisma.message.count({
-        where: { ...messageWhere, direction: 'INBOUND' },
-      });
-
-      const recentPairs = await this.prisma.message.findMany({
-        where: messageWhere,
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-        select: { createdAt: true, direction: true, contactId: true }
-      });
-
+      // ── Compute stats locally from consolidated queries ──
       let totalOutbound = 0;
+      let inboundCount = 0;
       let delivered = 0;
       let read = 0;
       let failed = 0;
 
       messageStats.forEach((stat) => {
         const count = stat._count.id || 0;
-        totalOutbound += count;
-        if (stat.status === 'DELIVERED' || stat.status === 'READ') delivered += count;
-        if (stat.status === 'READ') read += count;
-        if (stat.status === 'FAILED') failed += count;
+        if (stat.direction === 'INBOUND') {
+          inboundCount += count;
+        } else {
+          totalOutbound += count;
+          if (stat.status === 'DELIVERED' || stat.status === 'READ') delivered += count;
+          if (stat.status === 'READ') read += count;
+          if (stat.status === 'FAILED') failed += count;
+        }
       });
 
       const deliveryRate = totalOutbound > 0 ? (delivered / totalOutbound) * 100 : 0;
@@ -101,37 +141,21 @@ export class AnalyticsService {
       const avgResponseLabel = avgResponseMin > 0 ? `${avgResponseMin}m` : (responseCount > 0 ? '< 1m' : 'N/A');
 
       // Campaigns
-      const activeCampaigns = await this.prisma.campaign.count({
-        where: { ...campaignWhere, status: { in: ['RUNNING', 'SCHEDULED'] } },
+      let activeCampaigns = 0;
+      let totalCampaigns = 0;
+      campaignStats.forEach((c) => {
+        const count = c._count.id || 0;
+        totalCampaigns += count;
+        if (c.status === 'RUNNING' || c.status === 'SCHEDULED') {
+          activeCampaigns += count;
+        }
       });
 
-      const totalCampaigns = await this.prisma.campaign.count({
-        where: campaignWhere,
-      });
+      const totalChatbots = chatbotStats._count.id || 0;
+      const chatbotExecutions = chatbotStats._sum.executions || 0;
 
-      const uniqueContacts = await this.prisma.contact.count({
-        where: { organizationId: orgId },
-      });
-
-      // Automations
-      const totalChatbots = await this.prisma.chatbot.count({ where: { organizationId: orgId } });
-      const chatbotExecutions = await this.prisma.chatbot.aggregate({
-        where: { organizationId: orgId },
-        _sum: { executions: true }
-      });
-      
-      const totalSequences = await this.prisma.sequence.count({ where: { organizationId: orgId } });
-      const sequenceExecutions = await this.prisma.sequence.aggregate({
-        where: { organizationId: orgId },
-        _sum: { executions: true }
-      });
-
-      // Chart Data
-      const recentMessages = await this.prisma.message.findMany({
-        where: chartMessageWhere,
-        select: { createdAt: true, direction: true, status: true },
-        take: 1000 // Limit memory usage
-      });
+      const totalSequences = sequenceStats._count.id || 0;
+      const sequenceExecutions = sequenceStats._sum.executions || 0;
 
       const end = endDate ? new Date(endDate) : new Date();
       const start = startDate ? new Date(startDate) : new Date();
@@ -184,10 +208,10 @@ export class AnalyticsService {
         },
         automations: {
           totalChatbots,
-          chatbotExecutions: chatbotExecutions._sum.executions || 0,
+          chatbotExecutions: chatbotExecutions || 0,
           totalSequences,
-          sequenceExecutions: sequenceExecutions._sum.executions || 0,
-          totalAutomations: (chatbotExecutions._sum.executions || 0) + (sequenceExecutions._sum.executions || 0)
+          sequenceExecutions: sequenceExecutions || 0,
+          totalAutomations: (chatbotExecutions || 0) + (sequenceExecutions || 0)
         },
         chartData,
       };

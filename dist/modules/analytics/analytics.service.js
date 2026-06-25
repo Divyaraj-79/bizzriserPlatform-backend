@@ -48,33 +48,61 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
             if (!startDate && !endDate) {
                 chartMessageWhere.createdAt = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
             }
-            const messageStats = await this.prisma.message.groupBy({
-                by: ['status'],
-                where: { ...messageWhere, direction: 'OUTBOUND' },
-                _count: { id: true },
-            });
-            const inboundCount = await this.prisma.message.count({
-                where: { ...messageWhere, direction: 'INBOUND' },
-            });
-            const recentPairs = await this.prisma.message.findMany({
-                where: messageWhere,
-                orderBy: { createdAt: 'desc' },
-                take: 100,
-                select: { createdAt: true, direction: true, contactId: true }
-            });
+            const [messageStats, recentPairs, campaignStats, uniqueContacts, chatbotStats, sequenceStats, recentMessages] = await Promise.all([
+                this.prisma.message.groupBy({
+                    by: ['direction', 'status'],
+                    where: messageWhere,
+                    _count: { id: true },
+                }),
+                this.prisma.message.findMany({
+                    where: messageWhere,
+                    orderBy: { createdAt: 'desc' },
+                    take: 100,
+                    select: { createdAt: true, direction: true, contactId: true }
+                }),
+                this.prisma.campaign.groupBy({
+                    by: ['status'],
+                    where: campaignWhere,
+                    _count: { id: true },
+                }),
+                this.prisma.contact.count({
+                    where: { organizationId: orgId },
+                }),
+                this.prisma.chatbot.aggregate({
+                    where: { organizationId: orgId },
+                    _count: { id: true },
+                    _sum: { executions: true }
+                }),
+                this.prisma.sequence.aggregate({
+                    where: { organizationId: orgId },
+                    _count: { id: true },
+                    _sum: { executions: true }
+                }),
+                this.prisma.message.findMany({
+                    where: chartMessageWhere,
+                    select: { createdAt: true, direction: true, status: true },
+                    take: 1000
+                })
+            ]);
             let totalOutbound = 0;
+            let inboundCount = 0;
             let delivered = 0;
             let read = 0;
             let failed = 0;
             messageStats.forEach((stat) => {
                 const count = stat._count.id || 0;
-                totalOutbound += count;
-                if (stat.status === 'DELIVERED' || stat.status === 'READ')
-                    delivered += count;
-                if (stat.status === 'READ')
-                    read += count;
-                if (stat.status === 'FAILED')
-                    failed += count;
+                if (stat.direction === 'INBOUND') {
+                    inboundCount += count;
+                }
+                else {
+                    totalOutbound += count;
+                    if (stat.status === 'DELIVERED' || stat.status === 'READ')
+                        delivered += count;
+                    if (stat.status === 'READ')
+                        read += count;
+                    if (stat.status === 'FAILED')
+                        failed += count;
+                }
             });
             const deliveryRate = totalOutbound > 0 ? (delivered / totalOutbound) * 100 : 0;
             const readRate = totalOutbound > 0 ? (read / totalOutbound) * 100 : 0;
@@ -96,30 +124,19 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
             const avgResponseMs = responseCount > 0 ? totalResponseTime / responseCount : 0;
             const avgResponseMin = Math.round(avgResponseMs / (1000 * 60) * 10) / 10;
             const avgResponseLabel = avgResponseMin > 0 ? `${avgResponseMin}m` : (responseCount > 0 ? '< 1m' : 'N/A');
-            const activeCampaigns = await this.prisma.campaign.count({
-                where: { ...campaignWhere, status: { in: ['RUNNING', 'SCHEDULED'] } },
+            let activeCampaigns = 0;
+            let totalCampaigns = 0;
+            campaignStats.forEach((c) => {
+                const count = c._count.id || 0;
+                totalCampaigns += count;
+                if (c.status === 'RUNNING' || c.status === 'SCHEDULED') {
+                    activeCampaigns += count;
+                }
             });
-            const totalCampaigns = await this.prisma.campaign.count({
-                where: campaignWhere,
-            });
-            const uniqueContacts = await this.prisma.contact.count({
-                where: { organizationId: orgId },
-            });
-            const totalChatbots = await this.prisma.chatbot.count({ where: { organizationId: orgId } });
-            const chatbotExecutions = await this.prisma.chatbot.aggregate({
-                where: { organizationId: orgId },
-                _sum: { executions: true }
-            });
-            const totalSequences = await this.prisma.sequence.count({ where: { organizationId: orgId } });
-            const sequenceExecutions = await this.prisma.sequence.aggregate({
-                where: { organizationId: orgId },
-                _sum: { executions: true }
-            });
-            const recentMessages = await this.prisma.message.findMany({
-                where: chartMessageWhere,
-                select: { createdAt: true, direction: true, status: true },
-                take: 1000
-            });
+            const totalChatbots = chatbotStats._count.id || 0;
+            const chatbotExecutions = chatbotStats._sum.executions || 0;
+            const totalSequences = sequenceStats._count.id || 0;
+            const sequenceExecutions = sequenceStats._sum.executions || 0;
             const end = endDate ? new Date(endDate) : new Date();
             const start = startDate ? new Date(startDate) : new Date();
             const diffTime = Math.abs(end.getTime() - start.getTime());
@@ -172,10 +189,10 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
                 },
                 automations: {
                     totalChatbots,
-                    chatbotExecutions: chatbotExecutions._sum.executions || 0,
+                    chatbotExecutions: chatbotExecutions || 0,
                     totalSequences,
-                    sequenceExecutions: sequenceExecutions._sum.executions || 0,
-                    totalAutomations: (chatbotExecutions._sum.executions || 0) + (sequenceExecutions._sum.executions || 0)
+                    sequenceExecutions: sequenceExecutions || 0,
+                    totalAutomations: (chatbotExecutions || 0) + (sequenceExecutions || 0)
                 },
                 chartData,
             };

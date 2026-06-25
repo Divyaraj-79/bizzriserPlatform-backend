@@ -321,6 +321,8 @@ model Contact {
   @@unique([organizationId, phone])
   @@index([organizationId])
   @@index([phone])
+  @@index([organizationId, updatedAt])
+  @@index([organizationId, status])
   @@map("contacts")
 }
 
@@ -373,6 +375,7 @@ model Message {
   @@index([conversationId])
   @@index([waMessageId])
   @@index([direction, status])
+  @@index([organizationId, createdAt])
   @@map("messages")
 }
 

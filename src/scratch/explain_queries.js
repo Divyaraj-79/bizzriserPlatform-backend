@@ -24,12 +24,28 @@ if (fs.existsSync(dotenvPath)) {
 const prisma = new PrismaClient();
 
 async function main() {
-  const superadmins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' } });
-  
-  console.log('--- Super Admin Users ---');
-  for (const admin of superadmins) {
-    console.log(`Email: ${admin.email} | Role: ${admin.role} | OrgId: ${admin.organizationId}`);
-  }
+  const orgId = '2d672d52-30df-484b-bd07-650ba09f22a6';
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  console.log('--- Outbound Message GroupBy EXPLAIN ---');
+  const plan1 = await prisma.$queryRawUnsafe(`
+    EXPLAIN ANALYZE
+    SELECT "status", COUNT(*)::int
+    FROM "messages"
+    WHERE "organizationId" = '${orgId}' AND "direction" = 'OUTBOUND'
+    GROUP BY "status"
+  `);
+  console.log(plan1.map(row => row['QUERY PLAN']).join('\n'));
+
+  console.log('\n--- Recent Messages (Chart Data) EXPLAIN ---');
+  const plan2 = await prisma.$queryRawUnsafe(`
+    EXPLAIN ANALYZE
+    SELECT "createdAt", "direction", "status"
+    FROM "messages"
+    WHERE "organizationId" = '${orgId}' AND "createdAt" >= '${thirtyDaysAgo}'
+    LIMIT 1000
+  `);
+  console.log(plan2.map(row => row['QUERY PLAN']).join('\n'));
 }
 
 main()
