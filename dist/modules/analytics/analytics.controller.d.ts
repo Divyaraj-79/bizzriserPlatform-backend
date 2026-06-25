@@ -47,13 +47,13 @@ export declare class AnalyticsController {
         createdAt: Date;
         updatedAt: Date;
         name: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue;
         description: string | null;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
+        startedAt: Date | null;
+        completedAt: Date | null;
         templateName: string | null;
         templateParams: import("@prisma/client/runtime/library").JsonValue;
         scheduledAt: Date | null;
-        startedAt: Date | null;
-        completedAt: Date | null;
         totalRecipients: number;
         sentCount: number;
         deliveredCount: number;
