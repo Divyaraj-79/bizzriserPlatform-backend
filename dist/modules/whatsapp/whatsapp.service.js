@@ -21,6 +21,28 @@ const security_service_1 = require("../../common/services/security.service");
 const client_1 = require("@prisma/client");
 const axios_1 = __importDefault(require("axios"));
 const uuid_1 = require("uuid");
+class WaTtlCache {
+    store = new Map();
+    get(key) {
+        const entry = this.store.get(key);
+        if (!entry)
+            return null;
+        if (Date.now() > entry.expiresAt) {
+            this.store.delete(key);
+            return null;
+        }
+        return entry.value;
+    }
+    set(key, value, ttlMs) {
+        this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+    }
+    invalidate(prefix) {
+        for (const key of this.store.keys()) {
+            if (key.startsWith(prefix))
+                this.store.delete(key);
+        }
+    }
+}
 let WhatsappService = WhatsappService_1 = class WhatsappService {
     configService;
     prisma;
@@ -29,6 +51,7 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
     apiVersion;
     graphBaseUrl;
     http;
+    cache = new WaTtlCache();
     constructor(configService, prisma, securityService) {
         this.configService = configService;
         this.prisma = prisma;
@@ -693,7 +716,11 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
     }
     async listAccounts(orgId, user) {
         const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ORG_ADMIN';
-        return this.prisma.whatsAppAccount.findMany({
+        const cacheKey = `accounts:${orgId}:${user.sub}`;
+        const cached = this.cache.get(cacheKey);
+        if (cached)
+            return cached;
+        const result = await this.prisma.whatsAppAccount.findMany({
             where: {
                 organizationId: orgId,
                 ...(isAdmin ? {} : {
@@ -713,8 +740,18 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                 createdAt: true,
             },
         });
+        this.cache.set(cacheKey, result, 30_000);
+        return result;
     }
     async getTemplates(orgId, accountId, forceSync = false) {
+        if (!forceSync) {
+            const cacheKey = `templates:${orgId}:${accountId}`;
+            const cached = this.cache.get(cacheKey);
+            if (cached) {
+                this.logger.debug('[Templates] Cache HIT');
+                return cached;
+            }
+        }
         const account = await this.prisma.whatsAppAccount.findUnique({
             where: { id: accountId, organizationId: orgId },
         });
@@ -722,17 +759,19 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
             throw new common_1.ConflictException('Account not found');
         if (!forceSync) {
             this.logger.log(`[Templates] Fetching cached templates for account ${accountId} (Local DB)`);
-            const templates = await this.prisma.whatsAppTemplate.findMany({
-                where: { accountId, organizationId: orgId, isActive: true },
-                orderBy: { updatedAt: 'desc' }
-            });
-            const campaignStats = await this.prisma.campaign.groupBy({
-                by: ['templateName'],
-                _sum: { sentCount: true, deliveredCount: true, readCount: true },
-                where: { organizationId: orgId, templateName: { not: null } }
-            });
+            const [templates, campaignStats] = await Promise.all([
+                this.prisma.whatsAppTemplate.findMany({
+                    where: { accountId, organizationId: orgId, isActive: true },
+                    orderBy: { updatedAt: 'desc' }
+                }),
+                this.prisma.campaign.groupBy({
+                    by: ['templateName'],
+                    _sum: { sentCount: true, deliveredCount: true, readCount: true },
+                    where: { organizationId: orgId, templateName: { not: null } }
+                })
+            ]);
             const statsMap = new Map(campaignStats.map(s => [s.templateName, s._sum]));
-            return templates.map(t => {
+            const result = templates.map(t => {
                 const rawSent = statsMap.get(t.name)?.sentCount || 0;
                 const rawDelivered = statsMap.get(t.name)?.deliveredCount || 0;
                 const rawRead = statsMap.get(t.name)?.readCount || 0;
@@ -750,6 +789,8 @@ let WhatsappService = WhatsappService_1 = class WhatsappService {
                     readRate
                 };
             });
+            this.cache.set(`templates:${orgId}:${accountId}`, result, 120_000);
+            return result;
         }
         const { token: validatedToken } = await this.getValidToken(account);
         const url = `${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}/message_templates`;

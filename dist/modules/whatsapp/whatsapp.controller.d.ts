@@ -19,36 +19,8 @@ export declare class WhatsappController {
         messagingLimitTier: string | null;
         messagingLimitCount: number;
     }>;
-    listAccounts(req: any): Promise<{
-        id: string;
-        status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
-        createdAt: Date;
-        phoneNumberId: string;
-        displayName: string;
-        phoneNumber: string;
-        wabaId: string;
-        businessProfile: import("@prisma/client/runtime/library").JsonValue;
-    }[]>;
-    getTemplates(req: any, id: string, sync?: string): Promise<{
-        sentCount: number;
-        deliveredCount: number;
-        readCount: number;
-        deliveryRate: number;
-        readRate: number;
-        id: string;
-        organizationId: string;
-        status: string;
-        createdAt: Date;
-        updatedAt: Date;
-        name: string;
-        accountId: string;
-        language: string;
-        category: string;
-        qualityScore: import("@prisma/client/runtime/library").JsonValue | null;
-        components: import("@prisma/client/runtime/library").JsonValue;
-        variableMapping: import("@prisma/client/runtime/library").JsonValue;
-        isActive: boolean;
-    }[] | undefined>;
+    listAccounts(req: any): Promise<any>;
+    getTemplates(req: any, id: string, sync?: string): Promise<any>;
     createTemplate(req: any, id: string, data: any): Promise<any>;
     uploadTemplateMedia(req: any, id: string, file: any): Promise<{
         handle: any;

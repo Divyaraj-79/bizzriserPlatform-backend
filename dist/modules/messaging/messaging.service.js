@@ -508,26 +508,38 @@ let MessagingService = MessagingService_1 = class MessagingService {
             }),
             this.prisma.conversation.count({ where: whereClause })
         ]);
-        const enhanced = await Promise.all(conversations.map(async (conv) => {
-            const lastInbound = await this.prisma.message.findFirst({
-                where: { contactId: conv.contactId, direction: client_1.MessageDirection.INBOUND },
+        const contactIds = conversations.map(c => c.contactId);
+        const now = new Date();
+        const windowMap = new Map();
+        if (contactIds.length > 0) {
+            const lastInbounds = await this.prisma.message.findMany({
+                where: {
+                    contactId: { in: contactIds },
+                    direction: client_1.MessageDirection.INBOUND,
+                },
                 orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }],
-                select: { sentAt: true, createdAt: true }
+                select: { contactId: true, sentAt: true, createdAt: true },
+                distinct: ['contactId'],
             });
-            const lastInboundTime = lastInbound?.sentAt || lastInbound?.createdAt;
-            const windowExpiresAt = lastInboundTime
-                ? new Date(lastInboundTime.getTime() + 24 * 60 * 60 * 1000)
-                : null;
-            const isInWindow = windowExpiresAt ? windowExpiresAt > new Date() : false;
+            for (const msg of lastInbounds) {
+                const lastInboundTime = msg.sentAt || msg.createdAt;
+                const windowExpiresAt = lastInboundTime
+                    ? new Date(lastInboundTime.getTime() + 24 * 60 * 60 * 1000)
+                    : null;
+                const isInWindow = windowExpiresAt ? windowExpiresAt > now : false;
+                windowMap.set(msg.contactId, { isInWindow, windowExpiresAt });
+            }
+        }
+        const enhanced = conversations.map((conv) => {
+            const window = windowMap.get(conv.contactId) ?? { isInWindow: false, windowExpiresAt: null };
             return {
                 ...conv,
                 contact: {
                     ...conv.contact,
-                    isInWindow,
-                    windowExpiresAt
-                }
+                    ...window,
+                },
             };
-        }));
+        });
         return {
             data: enhanced,
             total,

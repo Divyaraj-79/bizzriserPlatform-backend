@@ -40,9 +40,6 @@ let CampaignsService = CampaignsService_1 = class CampaignsService {
         const campaigns = await this.prisma.campaign.findMany({
             where: { organizationId: orgId },
             orderBy: { createdAt: 'desc' },
-            include: {
-                _count: { select: { recipients: true } }
-            }
         });
         return campaigns.map(c => {
             const readCount = Math.max(0, c.readCount);

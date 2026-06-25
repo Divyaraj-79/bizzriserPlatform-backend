@@ -10,6 +10,7 @@ export declare class WhatsappService {
     private readonly apiVersion;
     private readonly graphBaseUrl;
     private readonly http;
+    private readonly cache;
     constructor(configService: ConfigService, prisma: PrismaService, securityService: SecurityService);
     connectAccount(orgId: string, data: {
         code?: string;
@@ -66,36 +67,8 @@ export declare class WhatsappService {
     listAccounts(orgId: string, user: {
         role: string;
         sub: string;
-    }): Promise<{
-        id: string;
-        status: import(".prisma/client").$Enums.WhatsAppAccountStatus;
-        createdAt: Date;
-        phoneNumberId: string;
-        displayName: string;
-        phoneNumber: string;
-        wabaId: string;
-        businessProfile: import("@prisma/client/runtime/library").JsonValue;
-    }[]>;
-    getTemplates(orgId: string, accountId: string, forceSync?: boolean): Promise<{
-        sentCount: number;
-        deliveredCount: number;
-        readCount: number;
-        deliveryRate: number;
-        readRate: number;
-        id: string;
-        organizationId: string;
-        status: string;
-        createdAt: Date;
-        updatedAt: Date;
-        name: string;
-        accountId: string;
-        language: string;
-        category: string;
-        qualityScore: import("@prisma/client/runtime/library").JsonValue | null;
-        components: import("@prisma/client/runtime/library").JsonValue;
-        variableMapping: import("@prisma/client/runtime/library").JsonValue;
-        isActive: boolean;
-    }[] | undefined>;
+    }): Promise<any>;
+    getTemplates(orgId: string, accountId: string, forceSync?: boolean): Promise<any>;
     createTemplate(orgId: string, accountId: string, data: any): Promise<any>;
     updateTemplate(orgId: string, accountId: string, templateId: string, data: any): Promise<any>;
     deleteTemplate(orgId: string, accountId: string, templateName: string): Promise<{

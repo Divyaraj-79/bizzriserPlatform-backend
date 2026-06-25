@@ -13,14 +13,43 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AnalyticsService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
+class TtlCache {
+    store = new Map();
+    get(key) {
+        const entry = this.store.get(key);
+        if (!entry)
+            return null;
+        if (Date.now() > entry.expiresAt) {
+            this.store.delete(key);
+            return null;
+        }
+        return entry.value;
+    }
+    set(key, value, ttlMs) {
+        this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+    }
+    invalidate(prefix) {
+        for (const key of this.store.keys()) {
+            if (key.startsWith(prefix))
+                this.store.delete(key);
+        }
+    }
+}
 let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
     prisma;
     logger = new common_1.Logger(AnalyticsService_1.name);
+    cache = new TtlCache();
     constructor(prisma) {
         this.prisma = prisma;
     }
     async getOverview(orgId, accountContext, startDate, endDate) {
         try {
+            const cacheKey = `overview:${orgId}:${Array.isArray(accountContext) ? accountContext.join(',') : accountContext}:${startDate}:${endDate}`;
+            const cached = this.cache.get(cacheKey);
+            if (cached) {
+                this.logger.debug('[Analytics] Cache HIT for overview');
+                return cached;
+            }
             const isInvalid = (val) => typeof val === 'string' &&
                 (val === 'null' || val === 'undefined' || val === 'all' || !val.trim());
             if (isInvalid(accountContext)) {
@@ -168,7 +197,7 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
                     failureRate: parseFloat(fRate.toFixed(2))
                 };
             });
-            return {
+            const result = {
                 overview: {
                     totalMessages: totalOutbound + inboundCount,
                     deliveryRate: parseFloat(deliveryRate.toFixed(2)) || 0,
@@ -196,6 +225,8 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
                 },
                 chartData,
             };
+            this.cache.set(cacheKey, result, 45_000);
+            return result;
         }
         catch (error) {
             this.logger.error(`Failed to get analytics overview: ${error.message}`, error.stack);
@@ -205,6 +236,12 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
     async getCampaignsAnalytics(orgId, accountContext, startDate, endDate) {
         if (typeof accountContext === 'string' && (accountContext === 'null' || accountContext === 'undefined' || accountContext === 'all' || !accountContext.trim())) {
             accountContext = undefined;
+        }
+        const cacheKey = `campaigns:${orgId}:${startDate}:${endDate}`;
+        const cached = this.cache.get(cacheKey);
+        if (cached) {
+            this.logger.debug('[Analytics] Cache HIT for campaigns');
+            return cached;
         }
         const where = { organizationId: orgId };
         if (startDate || endDate) {
@@ -218,7 +255,7 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
             orderBy: { createdAt: 'desc' },
             take: 50,
         });
-        return campaigns.map(c => {
+        const result = campaigns.map(c => {
             const total = c.totalRecipients || 0;
             return {
                 ...c,
@@ -227,8 +264,16 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
                 failureRate: total > 0 ? parseFloat(((c.failedCount / total) * 100).toFixed(2)) : 0,
             };
         });
+        this.cache.set(cacheKey, result, 30_000);
+        return result;
     }
     async getAutomationsAnalytics(orgId, accountContext, startDate, endDate) {
+        const cacheKey = `automations:${orgId}`;
+        const cached = this.cache.get(cacheKey);
+        if (cached) {
+            this.logger.debug('[Analytics] Cache HIT for automations');
+            return cached;
+        }
         const [chatbots, sequences] = await Promise.all([
             this.prisma.chatbot.findMany({
                 where: { organizationId: orgId },
@@ -239,7 +284,9 @@ let AnalyticsService = AnalyticsService_1 = class AnalyticsService {
                 select: { id: true, name: true, executions: true, status: true, updatedAt: true }
             })
         ]);
-        return { chatbots, sequences };
+        const result = { chatbots, sequences };
+        this.cache.set(cacheKey, result, 60_000);
+        return result;
     }
     async getExportData(orgId, accountContext, startDate, endDate) {
         if (typeof accountContext === 'string' && (accountContext === 'null' || accountContext === 'undefined' || accountContext === 'all' || !accountContext.trim())) {
