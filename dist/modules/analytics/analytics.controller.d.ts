@@ -44,6 +44,7 @@ export declare class AnalyticsController {
         id: string;
         organizationId: string;
         status: import(".prisma/client").$Enums.CampaignStatus;
+        metadata: import("@prisma/client/runtime/library").JsonValue;
         createdAt: Date;
         updatedAt: Date;
         name: string;
