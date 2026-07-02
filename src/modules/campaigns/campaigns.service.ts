@@ -6,6 +6,21 @@ import { ContactsService } from '../contacts/contacts.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { MessagingService } from '../messaging/messaging.service';
 import { CampaignStatus, CampaignLogLevel, MessageStatus } from '@prisma/client';
+import { getPricingForCountry, calculateConversationCost, META_PRICING } from './whatsapp-pricing.data';
+import { groupPhonesByCountry, resolveCountryFromPhone } from './phone-country.util';
+
+export interface CostBreakdownLine {
+  countryCode: string;
+  countryName: string;
+  count: number;
+  baseRateUsd: number;
+  taxRate: number;
+  taxAmountUsd: number;
+  totalUsd: number;
+  totalLocal: number;
+  currency: string;
+}
+
 
 
 @Injectable()
@@ -583,4 +598,132 @@ export class CampaignsService {
 
     return this.prisma.campaign.findUnique({ where: { id: campaignId } });
   }
+
+  // ── Broadcast Cost Estimation ─────────────────────────────────────────────────
+
+  /**
+   * Estimate the cost of a broadcast before launching.
+   *
+   * Resolves contacts via tag, phone list, or contact IDs.
+   * Groups them by country (detected from phone prefix).
+   * Applies Meta's per-country rate + local tax (e.g., 18% GST for India).
+   * Returns both USD and local currency totals.
+   */
+  async estimateBroadcastCost(orgId: string, data: {
+    templateCategory: 'MARKETING' | 'UTILITY';
+    tags?: string[];
+    contactIds?: string[];
+    numbers?: string[];
+    count?: number; // direct count override (e.g. from CSV upload)
+  }) {
+    const { templateCategory, tags, contactIds, numbers, count } = data;
+
+    let phones: string[] = [];
+    let totalContacts = 0;
+
+    // ── 1. Resolve phone numbers from the targeting mode ──────────────────
+    if (numbers && numbers.length > 0) {
+      // Pasted numbers — direct list
+      phones = numbers;
+      totalContacts = numbers.length;
+
+    } else if (tags && tags.length > 0) {
+      // Tag-based — fetch phones from DB
+      const rawResult: { phone: string }[] = await this.prisma.$queryRaw`
+        SELECT phone FROM "contacts"
+        WHERE "organizationId" = ${orgId} AND "tags" && ${tags}
+      `;
+      phones = rawResult.map(c => c.phone);
+      totalContacts = phones.length;
+
+    } else if (contactIds && contactIds.length > 0) {
+      // Explicit contact IDs
+      const contacts = await this.prisma.contact.findMany({
+        where: { id: { in: contactIds }, organizationId: orgId },
+        select: { phone: true }
+      });
+      phones = contacts.map(c => c.phone);
+      totalContacts = phones.length;
+
+    } else if (count && count > 0) {
+      // CSV upload: we only know the count, not the phones
+      // Default all to India (most common use case)
+      totalContacts = count;
+      phones = Array(count).fill('+91'); // synthetic — treated as IN
+    }
+
+    if (totalContacts === 0) {
+      return {
+        totalContacts: 0,
+        unmappedCount: 0,
+        countryBreakdown: [],
+        totalCostUsd: 0,
+        totalCostLocal: 0,
+        currency: 'INR',
+        templateCategory,
+        note: 'No contacts to estimate cost for.',
+      };
+    }
+
+    // ── 2. Group phones by country ────────────────────────────────────────
+    const countryGroups = groupPhonesByCountry(phones);
+
+    // Track unmapped (fell back to default)
+    let unmappedCount = 0;
+
+    // ── 3. Build per-country breakdown ────────────────────────────────────
+    const breakdownMap: Record<string, CostBreakdownLine> = {};
+
+    for (const [countryCode, cnt] of Object.entries(countryGroups)) {
+      const pricing = getPricingForCountry(countryCode);
+      const costPerConversation = calculateConversationCost(pricing, templateCategory);
+
+      if (!META_PRICING[countryCode]) {
+        unmappedCount += cnt;
+      }
+
+      const existing = breakdownMap[pricing.countryCode];
+      if (existing) {
+        existing.count += cnt;
+        existing.totalUsd = parseFloat((existing.totalUsd + costPerConversation.totalUsd * cnt).toFixed(6));
+        existing.totalLocal = parseFloat((existing.totalLocal + costPerConversation.totalLocal * cnt).toFixed(4));
+        existing.taxAmountUsd = parseFloat((existing.taxAmountUsd + costPerConversation.taxAmountUsd * cnt).toFixed(6));
+      } else {
+        breakdownMap[pricing.countryCode] = {
+          countryCode: pricing.countryCode,
+          countryName: pricing.countryName,
+          count: cnt,
+          baseRateUsd: costPerConversation.baseRateUsd,
+          taxRate: costPerConversation.taxRate,
+          taxAmountUsd: parseFloat((costPerConversation.taxAmountUsd * cnt).toFixed(6)),
+          totalUsd: parseFloat((costPerConversation.totalUsd * cnt).toFixed(6)),
+          totalLocal: parseFloat((costPerConversation.totalLocal * cnt).toFixed(4)),
+          currency: costPerConversation.currency,
+        };
+      }
+    }
+
+    const countryBreakdown = Object.values(breakdownMap).sort((a, b) => b.count - a.count);
+
+    // ── 4. Compute grand totals ───────────────────────────────────────────
+    const totalCostUsd = parseFloat(countryBreakdown.reduce((sum, l) => sum + l.totalUsd, 0).toFixed(6));
+
+    // For display currency: if majority country is IN, show INR; else USD
+    const topCountry = countryBreakdown[0];
+    const displayCurrency = topCountry?.currency || 'USD';
+    const totalCostLocal = displayCurrency === 'INR'
+      ? parseFloat(countryBreakdown.reduce((sum, l) => sum + (l.currency === 'INR' ? l.totalLocal : l.totalUsd), 0).toFixed(2))
+      : totalCostUsd;
+
+    return {
+      totalContacts,
+      unmappedCount,
+      countryBreakdown,
+      totalCostUsd,
+      totalCostLocal,
+      currency: displayCurrency,
+      templateCategory,
+    };
+  }
 }
+
