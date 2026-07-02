@@ -1,1 +1,0 @@
-const { PrismaClient } = require('@prisma/client');\nconst prisma = new PrismaClient();\nasync function main() {\n  const deleted = await prisma.cannedResponse.deleteMany({\n    where: {\n      imageUrl: { not: null }\n    }\n  });\n  console.log('Deleted canned responses with images:', deleted.count);\n}\nmain().catch(console.error).finally(() => prisma.$disconnect());\n
