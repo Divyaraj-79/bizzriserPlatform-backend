@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Meta WhatsApp Business API — Official Per-Country Conversation Pricing
  *
  * Rates are in USD per conversation (24-hour window).
@@ -14,11 +14,13 @@ export interface CountryPricing {
   taxRate: number;
   marketing: number;
   utility: number;
+  marketingLocal?: number; // Explicit localized rate (e.g. Meta's exact INR pricing)
+  utilityLocal?: number;
 }
 
 export const META_PRICING: Record<string, CountryPricing> = {
   // South Asia
-  IN: { countryCode: 'IN', countryName: 'India', currency: 'INR', usdToLocalRate: 84.0, taxRate: 0.18, marketing: 0.0115, utility: 0.0040 },
+  IN: { countryCode: 'IN', countryName: 'India', currency: 'INR', usdToLocalRate: 84.0, taxRate: 0.18, marketing: 0.0086, utility: 0.0014, marketingLocal: 0.7265, utilityLocal: 0.1150 },
   PK: { countryCode: 'PK', countryName: 'Pakistan', currency: 'USD', usdToLocalRate: 1, taxRate: 0, marketing: 0.0125, utility: 0.0042 },
   BD: { countryCode: 'BD', countryName: 'Bangladesh', currency: 'USD', usdToLocalRate: 1, taxRate: 0, marketing: 0.0125, utility: 0.0042 },
   LK: { countryCode: 'LK', countryName: 'Sri Lanka', currency: 'USD', usdToLocalRate: 1, taxRate: 0, marketing: 0.0115, utility: 0.0040 },
@@ -104,9 +106,21 @@ export function calculateConversationCost(
   totalLocal: number;
   currency: string;
 } {
-  const baseRateUsd = category === 'MARKETING' ? pricing.marketing : pricing.utility;
+  const isMarketing = category === 'MARKETING';
+  const baseRateUsd = isMarketing ? pricing.marketing : pricing.utility;
   const taxAmountUsd = baseRateUsd * pricing.taxRate;
   const totalUsd = baseRateUsd + taxAmountUsd;
-  const totalLocal = totalUsd * pricing.usdToLocalRate;
+
+  let totalLocal = 0;
+  // If an exact localized rate is specified (like for INR), use it directly
+  if (isMarketing && pricing.marketingLocal !== undefined) {
+    totalLocal = pricing.marketingLocal * (1 + pricing.taxRate);
+  } else if (!isMarketing && pricing.utilityLocal !== undefined) {
+    totalLocal = pricing.utilityLocal * (1 + pricing.taxRate);
+  } else {
+    // Otherwise calculate local amount based on exchange rate
+    totalLocal = totalUsd * pricing.usdToLocalRate;
+  }
+
   return { baseRateUsd, taxRate: pricing.taxRate, taxAmountUsd, totalUsd, totalLocal, currency: pricing.currency };
 }
