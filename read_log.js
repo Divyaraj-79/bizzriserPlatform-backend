@@ -1,1 +1,0 @@
-const fs = require('fs');\nconst path = require('path');\n\nconst logPath = path.join(__dirname, 'backend-dev.log');\nconst stats = fs.statSync(logPath);\nconst buffer = Buffer.alloc(2000);\nconst fd = fs.openSync(logPath, 'r');\nfs.readSync(fd, buffer, 0, 2000, Math.max(0, stats.size - 2000));\nconsole.log(buffer.toString('utf8'));\nfs.closeSync(fd);\n
