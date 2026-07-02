@@ -91,4 +91,19 @@ export class CampaignsController {
   ) {
     return this.campaignsService.getExportData(req.user.orgId, id);
   }
+
+  @Post('estimate-cost')
+  async estimateCost(
+    @Req() req: any,
+    @Body() body: {
+      templateCategory: 'MARKETING' | 'UTILITY';
+      tags?: string[];
+      contactIds?: string[];
+      numbers?: string[];
+      count?: number;
+    },
+  ) {
+    return this.campaignsService.estimateBroadcastCost(req.user.orgId, body);
+  }
 }
+
