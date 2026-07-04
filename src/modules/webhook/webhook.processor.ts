@@ -185,6 +185,13 @@ export class WebhookProcessor {
     } else if (messageData.type === 'audio') {
       messageType = MessageType.AUDIO;
       content = { audio: messageData.audio, body: '[Audio]' };
+    } else if (messageData.type === 'unsupported') {
+      messageType = MessageType.TEXT;
+      const errorMsg = messageData.errors?.[0]?.title || 'Message type unknown';
+      content = { body: `[Unsupported Message: ${errorMsg}]` };
+    } else {
+      messageType = MessageType.TEXT;
+      content = { body: `[Received ${messageData.type} message]` };
     }
 
     // 3. Create message record
