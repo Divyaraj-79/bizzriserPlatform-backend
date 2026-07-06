@@ -16,11 +16,19 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly activityLogger: ActivityLoggerService,
-  ) {}
+  ) { }
 
   async validateUser(email: string, pass: string): Promise<any> {
     const user = await this.usersService.findByEmail(email);
     if (user && await bcrypt.compare(pass, user.passwordHash)) {
+      if (user.status !== 'ACTIVE') {
+        throw new UnauthorizedException('Your account is inactive or suspended.');
+      }
+      
+      if (user.role !== 'SUPER_ADMIN' && user.organization?.status !== 'ACTIVE') {
+        throw new UnauthorizedException('Your organization account is inactive or suspended.');
+      }
+      
       const { passwordHash, ...result } = user;
       return result;
     }
@@ -31,7 +39,7 @@ export class AuthService {
     // Audit Trail: Update last IP (Non-blocking for login)
     if (ip && user.id) {
       try {
-        await this.usersService.update(user.id, { 
+        await this.usersService.update(user.id, {
           lastIp: ip,
           lastLoginAt: new Date()
         });
@@ -41,10 +49,10 @@ export class AuthService {
       }
     }
 
-    const accessTokenPayload = { 
-      email: user.email, 
-      sub: user.id, 
-      orgId: user.organizationId, 
+    const accessTokenPayload = {
+      email: user.email,
+      sub: user.id,
+      orgId: user.organizationId,
       role: user.role,
       firstName: user.firstName,
       lastName: user.lastName,
@@ -64,18 +72,50 @@ export class AuthService {
   }
 
   async switchTenant(user: any, targetOrgId: string) {
-    const accessTokenPayload = { 
-      email: user.email, 
-      sub: user.sub, 
-      orgId: targetOrgId, 
-      role: user.role,
-      firstName: user.firstName,
-      lastName: user.lastName,
+    const isReturning = targetOrgId === user.originalOrgId;
+    let targetEmail = user.email;
+    let targetSub = user.sub;
+    let targetRole = user.role;
+    let targetFirstName = user.firstName;
+    let targetLastName = user.lastName;
+
+    if (!isReturning) {
+      const orgAdmin = await this.prisma.user.findFirst({
+        where: { organizationId: targetOrgId, role: 'ORG_ADMIN' }
+      });
+      if (orgAdmin) {
+        targetEmail = orgAdmin.email;
+        targetSub = orgAdmin.id;
+        targetRole = orgAdmin.role;
+        targetFirstName = orgAdmin.firstName;
+        targetLastName = orgAdmin.lastName;
+      }
+    } else {
+      const originalUser = await this.prisma.user.findUnique({
+        where: { id: user.originalUserId || user.sub }
+      });
+      if (originalUser) {
+        targetEmail = originalUser.email;
+        targetSub = originalUser.id;
+        targetRole = originalUser.role;
+        targetFirstName = originalUser.firstName;
+        targetLastName = originalUser.lastName;
+      }
+    }
+
+    const accessTokenPayload = {
+      email: targetEmail,
+      sub: targetSub,
+      orgId: targetOrgId,
+      role: targetRole,
+      firstName: targetFirstName,
+      lastName: targetLastName,
+      originalUserId: user.originalUserId || user.sub,
       originalOrgId: user.originalOrgId || user.orgId,
-      isImpersonating: true
+      isImpersonating: !isReturning
     };
 
-    const refreshTokenPayload = { sub: user.userId || user.sub };
+    const refreshTokenPayload = { sub: targetSub };
 
     return {
       access_token: this.jwtService.sign(accessTokenPayload),
@@ -95,10 +135,10 @@ export class AuthService {
       const user = await this.usersService.findOne(payload.sub);
       if (!user) throw new UnauthorizedException('User not found');
 
-      const accessTokenPayload = { 
-        email: user.email, 
-        sub: user.id, 
-        orgId: user.organizationId, 
+      const accessTokenPayload = {
+        email: user.email,
+        sub: user.id,
+        orgId: user.organizationId,
         role: user.role,
         firstName: user.firstName,
         lastName: user.lastName,

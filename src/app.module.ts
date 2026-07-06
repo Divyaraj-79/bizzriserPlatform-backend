@@ -19,6 +19,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ActivityLogsModule } from './modules/activity-logs/activity-logs.module';
 import { ChatbotsModule } from './modules/chatbots/chatbots.module';
 import { SequencesModule } from './modules/sequences/sequences.module';
+import { PackagesModule } from './modules/packages/packages.module';
 import { CannedResponsesModule } from './modules/canned-responses/canned-responses.module';
 import { FlowsModule } from './modules/flows/flows.module';
 import { MetaCommerceModule } from './meta-commerce/meta-commerce.module';
@@ -45,7 +46,7 @@ import { ClientsModule } from './modules/clients/clients.module';
         const rawHost = config.get<string>('redis.host') || 'localhost';
         const port = config.get<number>('redis.port') || 6379;
         const password = config.get<string>('redis.password');
-        
+
         // Handle if REDIS_HOST is actually a URL
         const isUrl = rawHost.startsWith('redis://') || rawHost.startsWith('rediss://');
         const isCloud = isUrl || rawHost.includes('render.com') || rawHost.includes('internal');
@@ -89,10 +90,11 @@ import { ClientsModule } from './modules/clients/clients.module';
     ActivityLogsModule,
     ChatbotsModule,
     SequencesModule,
+    PackagesModule,
     CannedResponsesModule,
     FlowsModule,
     MetaCommerceModule,
     ClientsModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }

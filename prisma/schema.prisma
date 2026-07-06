@@ -145,12 +145,25 @@ enum SequenceEnrollmentStatus {
   CANCELLED
 }
 
-enum SubscriptionPackage {
-  FREE
-  BASIC
-  ADVANCE
-  ADVANCE_5L
-  ENTERPRISE
+model Package {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  description     String?
+  price           Float    @default(0)
+  currency        String   @default("USD")
+  contactLimit    Int      @default(0)
+  messageLimit    Int      @default(0)
+  campaignLimit   Int      @default(0)
+  chatbotLimit    Int      @default(0)
+  teamMemberLimit Int      @default(0)
+  features        Json     @default("[]")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organizations   Organization[]
+
+  @@map("packages")
 }
 
 // ─── Models ────────────────────────────────────────────────────────────────
@@ -164,7 +177,8 @@ model Organization {
   address         String?
   whatsappNumber  String?
   expiryDate      DateTime?
-  package         SubscriptionPackage @default(FREE)
+  packageId       String?
+  package         Package?            @relation(fields: [packageId], references: [id])
   isPhoneVerified Boolean             @default(false)
   timezone        String              @default("UTC")
   status          OrganizationStatus  @default(ACTIVE)

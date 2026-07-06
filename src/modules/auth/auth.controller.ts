@@ -10,7 +10,7 @@ import { UserRole } from '@prisma/client';
   version: '1',
 })
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -29,14 +29,19 @@ export class AuthController {
     }
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN)
+  @UseGuards(JwtAuthGuard)
   @Post('switch-tenant/:orgId')
   @HttpCode(HttpStatus.OK)
   async switchTenant(@Req() req: any, @Param('orgId') orgId: string) {
+    if (req.user.role !== UserRole.SUPER_ADMIN && !req.user.isImpersonating) {
+      throw new UnauthorizedException('Only Super Admins can switch tenants');
+    }
+    if (req.user.isImpersonating && orgId !== req.user.originalOrgId) {
+      throw new UnauthorizedException('You can only switch back to your original organization');
+    }
     return this.authService.switchTenant(req.user, orgId);
   }
-  
+
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(@Body('refresh_token') refreshToken: string) {
