@@ -34,7 +34,7 @@ export class OrganizationsService {
           address: orgData.address,
           whatsappNumber: orgData.whatsappNumber,
           expiryDate: orgData.expiryDate ? new Date(orgData.expiryDate) : null,
-          package: orgData.package,
+          packageId: orgData.packageId,
           isPhoneVerified: orgData.isPhoneVerified || false,
           status: orgData.status || 'ACTIVE',
         },
@@ -66,6 +66,7 @@ export class OrganizationsService {
   async findAll() {
     return this.prisma.organization.findMany({
       include: {
+        package: true,
         users: {
           where: { role: UserRole.ORG_ADMIN },
           take: 1,
@@ -94,7 +95,7 @@ export class OrganizationsService {
         address: data.address,
         whatsappNumber: data.whatsappNumber,
         expiryDate: data.expiryDate ? new Date(data.expiryDate) : undefined,
-        package: data.package,
+        packageId: data.packageId,
         isPhoneVerified: data.isPhoneVerified,
         status: data.status,
       }

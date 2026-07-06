@@ -35,7 +35,8 @@ export class UsersService {
           include: {
             whatsappAccount: { select: { id: true, displayName: true, phoneNumber: true } }
           }
-        }
+        },
+        organization: true
       },
     });
   }

@@ -37,8 +37,9 @@ export class PermissionsGuard implements CanActivate {
       // Re-attach ID for the rest of the guard logic
       (user as any).sub = jwtUser.sub;
 
-      // Super Admin has all permissions bypass
-      if (user.role === UserRole.SUPER_ADMIN) {
+      // Super Admin and Org Admin have all permissions bypass
+      // (Org Admin is inherently isolated to their own tenant by the queries themselves)
+      if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ORG_ADMIN) {
         return true;
       }
 
