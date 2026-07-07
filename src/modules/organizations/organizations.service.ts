@@ -2,10 +2,14 @@ import { Injectable, ConflictException, NotFoundException, BadRequestException }
 import { PrismaService } from '../../prisma/prisma.service';
 import { Organization, Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtimeGateway: RealtimeGateway,
+  ) {}
 
   async create(data: Prisma.OrganizationCreateInput): Promise<Organization> {
     const exists = await this.prisma.organization.findUnique({
@@ -27,6 +31,12 @@ export class OrganizationsService {
     const passwordHash = await bcrypt.hash(adminData.password || 'BizzRiser@79', 10);
 
     return this.prisma.$transaction(async (tx) => {
+      let initialCredits = 0;
+      if (orgData.packageId) {
+        const pkg = await tx.package.findUnique({ where: { id: orgData.packageId } });
+        if (pkg) initialCredits = pkg.credits;
+      }
+
       const org = await tx.organization.create({
         data: {
           name: orgData.name,
@@ -35,6 +45,7 @@ export class OrganizationsService {
           whatsappNumber: orgData.whatsappNumber,
           expiryDate: orgData.expiryDate ? new Date(orgData.expiryDate) : null,
           packageId: orgData.packageId,
+          credits: initialCredits,
           isPhoneVerified: orgData.isPhoneVerified || false,
           status: orgData.status || 'ACTIVE',
         },
@@ -87,6 +98,10 @@ export class OrganizationsService {
   }
 
   async update(id: string, data: any) {
+    if (data.status === 'INACTIVE' || data.status === 'SUSPENDED') {
+      this.realtimeGateway.emitForceLogoutOrg(id);
+    }
+
     return this.prisma.organization.update({
       where: { id },
       data: {

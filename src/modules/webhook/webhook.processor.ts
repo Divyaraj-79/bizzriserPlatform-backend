@@ -194,7 +194,11 @@ export class WebhookProcessor {
       content = { body: `[Received ${messageData.type} message]` };
     }
 
-    // 3. Create message record
+    // 3. Credit limit check for inbound messages
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+    const isHidden = org?.credits !== -1 && (org?.credits || 0) < 1;
+
+    // 4. Create message record
     const savedMessage = await this.messagingService.createMessage({
       organizationId,
       whatsappAccountId: accountId,
@@ -204,8 +208,19 @@ export class WebhookProcessor {
       type: messageType,
       status: MessageStatus.READ, // Incoming messages are considered read by system
       content,
+      isHidden,
       sentAt: new Date(parseInt(messageData.timestamp) * 1000),
     });
+
+    if (isHidden) {
+      this.logger.log(`[WEBHOOK] Incoming message from ${from} paused because organization ${organizationId} has insufficient credits.`);
+      return; // Stop processing further (chatbots, flows, etc.)
+    }
+
+    // Deduct credit
+    if (org?.credits !== -1) {
+      await this.prisma.organization.update({ where: { id: organizationId }, data: { credits: { decrement: 1 } } });
+    }
 
     // Check if this is the contact's first response to a broadcast campaign
     try {

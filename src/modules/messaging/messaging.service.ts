@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -65,6 +65,7 @@ export class MessagingService {
     content: any;
     waMessageId?: string;
     status?: MessageStatus;
+    isHidden?: boolean;
     sentAt?: Date;
     metadata?: any;
   }) {
@@ -134,9 +135,11 @@ export class MessagingService {
       }
     };
 
-    this.logger.debug(`[RT] Emitting message:new and conversation:update to org_${data.organizationId}`);
-    this.realtimeGateway.emitNewMessage(data.organizationId, { ...message, conversationId: conversation.id });
-    this.realtimeGateway.emitConversationUpdate(data.organizationId, enrichedConv);
+    if (!message.isHidden) {
+      this.logger.debug(`[RT] Emitting message:new and conversation:update to org_${data.organizationId}`);
+      this.realtimeGateway.emitNewMessage(data.organizationId, { ...message, conversationId: conversation.id });
+      this.realtimeGateway.emitConversationUpdate(data.organizationId, enrichedConv);
+    }
 
     return message;
   }
@@ -147,6 +150,9 @@ export class MessagingService {
   async sendTextMessage(orgId: string, accountId: string, contactId: string, text: string) {
     const contact = await this.prisma.contact.findUnique({ where: { id: contactId, organizationId: orgId } });
     if (!contact) throw new NotFoundException('Contact not found');
+
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    if (!org || (org.credits !== -1 && org.credits < 1)) throw new BadRequestException('Insufficient credits to send message.');
 
     // Check window for templates requirement
     const window = await this.calculateWindow(contactId);
@@ -167,6 +173,11 @@ export class MessagingService {
 
     try {
       const response = await this.whatsapp.sendTextMessage(orgId, accountId, contact.phone, text);
+      
+      if (org.credits !== -1) {
+        await this.prisma.organization.update({ where: { id: orgId }, data: { credits: { decrement: 1 } } });
+      }
+      
       return this.prisma.message.update({
         where: { id: message.id },
         data: { waMessageId: response.messages?.[0]?.id, status: MessageStatus.SENT, sentAt: new Date() },
@@ -186,6 +197,9 @@ export class MessagingService {
   async sendMediaMessage(orgId: string, accountId: string, contactId: string, file: any, caption?: string) {
     const contact = await this.prisma.contact.findUnique({ where: { id: contactId, organizationId: orgId } });
     if (!contact) throw new NotFoundException('Contact not found');
+
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    if (!org || (org.credits !== -1 && org.credits < 1)) throw new BadRequestException('Insufficient credits to send message.');
 
     // 1. Upload to Meta
     const mediaRes = await this.whatsapp.uploadMedia(orgId, accountId, file);
@@ -209,6 +223,11 @@ export class MessagingService {
 
     try {
       const response = await this.whatsapp.sendMediaMessage(orgId, accountId, contact.phone, type, mediaId, caption);
+      
+      if (org.credits !== -1) {
+        await this.prisma.organization.update({ where: { id: orgId }, data: { credits: { decrement: 1 } } });
+      }
+
       return this.prisma.message.update({
         where: { id: message.id },
         data: { waMessageId: response.messages?.[0]?.id, status: MessageStatus.SENT, sentAt: new Date() },
@@ -229,6 +248,9 @@ export class MessagingService {
     const contact = await this.prisma.contact.findUnique({ where: { id: contactId } });
     if (!contact) throw new Error('Contact not found');
 
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    if (!org || (org.credits !== -1 && org.credits < 1)) throw new BadRequestException('Insufficient credits to send message.');
+
     const message = await this.createMessage({
       organizationId: orgId,
       whatsappAccountId: accountId,
@@ -243,6 +265,10 @@ export class MessagingService {
     try {
       const response = await this.whatsapp.sendTemplateMessage(orgId, accountId, contact.phone, templateName, language, components);
       const waMessageId = response.messages?.[0]?.id;
+
+      if (org.credits !== -1) {
+        await this.prisma.organization.update({ where: { id: orgId }, data: { credits: { decrement: 1 } } });
+      }
 
       return await this.prisma.message.update({
         where: { id: message.id },
@@ -688,5 +714,68 @@ export class MessagingService {
 
   async downloadMedia(orgId: string, accountId: string, mediaId: string) {
     return this.whatsapp.downloadMedia(orgId, accountId, mediaId);
+  }
+
+  async getPendingMessages(orgId: string) {
+    const count = await this.prisma.message.count({
+      where: {
+        organizationId: orgId,
+        direction: MessageDirection.INBOUND,
+        isHidden: true,
+      }
+    });
+    return { count };
+  }
+
+  async processPendingMessages(orgId: string, accept: boolean) {
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const pendingMessages = await this.prisma.message.findMany({
+      where: {
+        organizationId: orgId,
+        direction: MessageDirection.INBOUND,
+        isHidden: true,
+      },
+      include: { contact: true }
+    });
+
+    if (pendingMessages.length === 0) {
+      return { success: true, message: 'No pending messages found' };
+    }
+
+    if (accept) {
+      if (org.credits !== -1 && org.credits < pendingMessages.length) {
+        throw new BadRequestException(`Insufficient credits to retrieve messages. You need ${pendingMessages.length} credits, but have ${org.credits}.`);
+      }
+
+      // Deduct credits
+      if (org.credits !== -1) {
+        await this.prisma.organization.update({
+          where: { id: orgId },
+          data: { credits: { decrement: pendingMessages.length } }
+        });
+      }
+
+      // Unhide messages
+      await this.prisma.message.updateMany({
+        where: { organizationId: orgId, isHidden: true },
+        data: { isHidden: false }
+      });
+
+      // Emit them to realtime gateway
+      for (const msg of pendingMessages) {
+        this.logger.debug(`[RT] Emitting delayed message:new to org_${orgId}`);
+        this.realtimeGateway.emitNewMessage(orgId, { ...msg, isHidden: false });
+      }
+
+      return { success: true, count: pendingMessages.length, message: 'Messages retrieved successfully' };
+    } else {
+      // Discard them
+      await this.prisma.message.deleteMany({
+        where: { organizationId: orgId, isHidden: true }
+      });
+      return { success: true, count: pendingMessages.length, message: 'Pending messages discarded' };
+    }
   }
 }

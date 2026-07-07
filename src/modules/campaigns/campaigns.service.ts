@@ -119,7 +119,15 @@ export class CampaignsService {
        throw new BadRequestException('No contacts targeted for this broadcast.');
     }
 
-    // 2. Messaging Limit Logic
+    // 1.5. Credit Limit Check
+    const organization = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    if (!organization) throw new NotFoundException('Organization not found');
+
+    if (organization.credits !== -1 && finalContactIds.length > organization.credits) {
+       throw new BadRequestException(`Insufficient credits for this broadcast. You have ${organization.credits} credits, but you are trying to send to ${finalContactIds.length} contacts. Please recharge your credits.`);
+    }
+
+    // 2. Meta Messaging Limit Logic
     let leftoverContactIds: string[] = [];
     const limitCount = (account as any).messagingLimitCount || 1000;
     

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Req, ForbiddenException, Param, Delete, Patch, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req, ForbiddenException, Param, Delete, Patch, Query, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -86,6 +86,11 @@ export class UsersController {
   async getMyPermissions(@Req() req: any) {
     // 1. Fetch fresh user from DB to avoid staleness in JWT
     const user = await this.usersService.findOne(req.user.sub);
+    
+    if (user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('Your account has been suspended or deactivated.');
+    }
+
     const userPermissions = user.permissions || {};
     
     // STRICT GLOBAL PERMISSIONS ONLY (Role System Removed)
