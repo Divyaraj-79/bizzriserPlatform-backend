@@ -140,4 +140,17 @@ export class MessagingController {
     res.setHeader('Content-Type', media.mimeType);
     media.stream.pipe(res);
   }
+
+  @Get('pending-messages')
+  async getPendingMessages(@Req() req: any) {
+    return this.messagingService.getPendingMessages(req.user.orgId);
+  }
+
+  @Post('pending-messages/process')
+  async processPendingMessages(
+    @Req() req: any,
+    @Body() body: { accept: boolean }
+  ) {
+    return this.messagingService.processPendingMessages(req.user.orgId, body.accept);
+  }
 }

@@ -26,10 +26,23 @@ export class PackagesService {
   }
 
   async update(id: string, data: any) {
-    return this.prisma.package.update({
+    const oldPkg = await this.prisma.package.findUnique({ where: { id } });
+    
+    const updatedPkg = await this.prisma.package.update({
       where: { id },
       data,
     });
+
+    // If credits changed, retroactively apply the difference to all organizations on this package
+    if (oldPkg && data.credits !== undefined && data.credits !== oldPkg.credits) {
+      const diff = data.credits - oldPkg.credits;
+      await this.prisma.organization.updateMany({
+        where: { packageId: id },
+        data: { credits: { increment: diff } }
+      });
+    }
+
+    return updatedPkg;
   }
 
   async remove(id: string) {

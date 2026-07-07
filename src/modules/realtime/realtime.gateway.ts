@@ -51,8 +51,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       socket.data.orgId = orgId;
       socket.data.userId = payload.sub;
 
-      // Join organization room
+      // Join organization and user rooms
       await socket.join(`org_${orgId}`);
+      await socket.join(`user_${payload.sub}`);
       
       this.logger.log(`[Socket] Client Authenticated & Joined Room: org_${orgId} (User: ${payload.sub}, Socket: ${socket.id})`);
     } catch (error) {
@@ -139,5 +140,24 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     // Optionally allow deeper subscription to specific conversation threads
     socket.join(`conversation_${conversationId}`);
     return { status: 'subscribed', conversationId };
+  }
+  /**
+   * Helper method to force logout an entire organization.
+   */
+  emitForceLogoutOrg(orgId: string) {
+    if (this.server) {
+      this.server.to(`org_${orgId}`).emit('auth:force_logout');
+      this.logger.log(`[RT] Emitted force_logout to org_${orgId}`);
+    }
+  }
+
+  /**
+   * Helper method to force logout a specific user.
+   */
+  emitForceLogoutUser(userId: string) {
+    if (this.server) {
+      this.server.to(`user_${userId}`).emit('auth:force_logout');
+      this.logger.log(`[RT] Emitted force_logout to user_${userId}`);
+    }
   }
 }

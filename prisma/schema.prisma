@@ -151,10 +151,7 @@ model Package {
   description     String?
   price           Float    @default(0)
   currency        String   @default("USD")
-  contactLimit    Int      @default(0)
-  messageLimit    Int      @default(0)
-  campaignLimit   Int      @default(0)
-  chatbotLimit    Int      @default(0)
+  credits         Int      @default(0)
   teamMemberLimit Int      @default(0)
   features        Json     @default("[]")
   isActive        Boolean  @default(true)
@@ -183,6 +180,7 @@ model Organization {
   timezone        String              @default("UTC")
   status          OrganizationStatus  @default(ACTIVE)
   metadata        Json                @default("{}")
+  credits         Float               @default(0)
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
@@ -363,6 +361,7 @@ model Message {
   direction       MessageDirection
   type            MessageType      @default(TEXT)
   status          MessageStatus    @default(PENDING)
+  isHidden        Boolean          @default(false)
   content         Json             // flexible content structure per message type
   metadata        Json             @default("{}")
   conversationId  String?

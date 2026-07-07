@@ -4,9 +4,10 @@ import { UsersController } from './users.controller';
 import { CustomRolesService } from './custom-roles.service';
 import { CustomRolesController } from './custom-roles.controller';
 import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
-  imports: [ActivityLogsModule],
+  imports: [ActivityLogsModule, RealtimeModule],
   controllers: [UsersController, CustomRolesController],
   providers: [UsersService, CustomRolesService],
   exports: [UsersService],

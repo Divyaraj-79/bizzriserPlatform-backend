@@ -4,12 +4,14 @@ import { User, Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 import { ActivityLoggerService } from '../activity-logs/activity-logger.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activityLogger: ActivityLoggerService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   async findOne(id: string): Promise<any | null> {
@@ -98,7 +100,12 @@ export class UsersService {
     const updateData: Prisma.UserUncheckedUpdateInput = {};
     if (data.firstName !== undefined) updateData.firstName = data.firstName;
     if (data.lastName !== undefined) updateData.lastName = data.lastName;
-    if (data.status !== undefined) updateData.status = data.status as any;
+    if (data.status !== undefined) {
+      updateData.status = data.status as any;
+      if (data.status === 'INACTIVE' || data.status === 'SUSPENDED') {
+        this.realtimeGateway.emitForceLogoutUser(id);
+      }
+    }
     if (data.permissions !== undefined) updateData.permissions = data.permissions;
     if (data.timezone !== undefined) updateData.timezone = data.timezone;
 
