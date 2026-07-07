@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLoggerService } from '../activity-logs/activity-logger.service';
+import { MailService } from './mail.service';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly activityLogger: ActivityLoggerService,
+    private readonly mailService: MailService,
   ) { }
 
   async validateUser(email: string, pass: string): Promise<any> {
@@ -171,5 +173,83 @@ export class AuthService {
     // Since custom roles are removed we just return their global permissions strings
     const permissions = user.permissions as Record<string, boolean> || {};
     return Object.keys(permissions);
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      // Return success anyway to prevent email enumeration
+      return { message: 'If an account with that email exists, an OTP has been sent.' };
+    }
+
+    // Generate 6 digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = new Date();
+    expiry.setMinutes(expiry.getMinutes() + 15);
+
+    // Save OTP to user (plaintext is fine for short lived random code, or we could hash it. 
+    // For simplicity and matching standard practices where quick comparison is needed, 
+    // hashing is better but plaintext works for demo. Let's hash it for security.)
+    const hashedOtp = await bcrypt.hash(otp, 10);
+    
+    await this.usersService.update(user.id, {
+      resetOtp: hashedOtp,
+      resetOtpExpiry: expiry
+    });
+
+    await this.mailService.sendPasswordResetOtp(email, otp, user.firstName || 'User');
+    return { message: 'If an account with that email exists, an OTP has been sent.' };
+  }
+
+  async verifyOtp(email: string, otp: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired OTP');
+    }
+
+    if (!user.resetOtp || !user.resetOtpExpiry) {
+      throw new UnauthorizedException('No password reset requested');
+    }
+
+    if (new Date() > new Date(user.resetOtpExpiry)) {
+      throw new UnauthorizedException('OTP has expired');
+    }
+
+    const isMatch = await bcrypt.compare(otp, user.resetOtp);
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid OTP');
+    }
+
+    return { message: 'OTP is valid' };
+  }
+
+  async resetPassword(email: string, otp: string, newPassword: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired OTP');
+    }
+
+    if (!user.resetOtp || !user.resetOtpExpiry) {
+      throw new UnauthorizedException('No password reset requested');
+    }
+
+    if (new Date() > new Date(user.resetOtpExpiry)) {
+      throw new UnauthorizedException('OTP has expired');
+    }
+
+    const isMatch = await bcrypt.compare(otp, user.resetOtp);
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid OTP');
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    
+    await this.usersService.update(user.id, {
+      passwordHash: newPasswordHash,
+      resetOtp: null,
+      resetOtpExpiry: null
+    });
+
+    return { message: 'Password has been reset successfully' };
   }
 }

@@ -228,6 +228,8 @@ model User {
   refreshToken   String?
   timezone       String                   @default("UTC")
   permissions    Json                     @default("{}")
+  resetOtp       String?
+  resetOtpExpiry DateTime?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
 

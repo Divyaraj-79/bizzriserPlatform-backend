@@ -54,4 +54,36 @@ export class AuthController {
     const permissions = await this.authService.getAccountPermissions(req.user.sub, accountId);
     return { permissions };
   }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body('email') email: string) {
+    if (!email) {
+      throw new UnauthorizedException('Email is required');
+    }
+    return this.authService.forgotPassword(email);
+  }
+
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  async verifyOtp(@Body() body: any) {
+    const { email, otp } = body;
+    if (!email || !otp) {
+      throw new UnauthorizedException('Email and OTP are required');
+    }
+    return this.authService.verifyOtp(email, otp);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() body: any) {
+    const { email, otp, newPassword, confirmPassword } = body;
+    if (!email || !otp || !newPassword || !confirmPassword) {
+      throw new UnauthorizedException('All fields are required');
+    }
+    if (newPassword !== confirmPassword) {
+      throw new UnauthorizedException('Passwords do not match');
+    }
+    return this.authService.resetPassword(email, otp, newPassword);
+  }
 }
