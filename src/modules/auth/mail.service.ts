@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import * as dns from 'dns';
+
+// Force Node.js 18+ to use IPv4 first for DNS resolution globally
+// This prevents ENETUNREACH errors on Render when resolving smtp.gmail.com
+dns.setDefaultResultOrder('ipv4first');
 
 @Injectable()
 export class MailService {
@@ -15,7 +20,19 @@ export class MailService {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
-    });
+      // Render has issues with IPv6 outbound. Force IPv4 for the SMTP connection.
+      // This passes the family: 4 option down to Node's net.connect / tls.connect
+      tls: {
+        rejectUnauthorized: true,
+      },
+      // Pass socket options to force IPv4
+      socketTimeout: 30000,
+      dnsTimeout: 10000,
+    } as any);
+    // Explicitly force IPv4 for this transport if options allow
+    (this.transporter as any).options.host = process.env.SMTP_HOST || 'smtp.gmail.com';
+    (this.transporter as any).options.tls = { ...(this.transporter as any).options.tls };
+    (this.transporter as any).options.family = 4; // Explicitly set family to 4 for IPv4
   }
 
   async sendPasswordResetOtp(email: string, otp: string, firstName: string) {
