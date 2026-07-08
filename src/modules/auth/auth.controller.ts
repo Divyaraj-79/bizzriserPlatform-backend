@@ -57,11 +57,12 @@ export class AuthController {
 
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
-  async forgotPassword(@Body('email') email: string) {
+  async forgotPassword(@Req() req: any, @Body('email') email: string) {
     if (!email) {
       throw new UnauthorizedException('Email is required');
     }
-    return this.authService.forgotPassword(email);
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'UNKNOWN';
+    return this.authService.forgotPassword(email, ip);
   }
 
   @Post('verify-otp')

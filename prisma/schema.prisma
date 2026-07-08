@@ -849,3 +849,14 @@ model CatalogCoupon {
   @@index([organizationId])
   @@map("catalog_coupons")
 }
+
+model OtpRateLimit {
+  id         String    @id @default(uuid())
+  identifier String    @unique
+  count      Int       @default(0)
+  resetAt    DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@map("otp_rate_limits")
+}
