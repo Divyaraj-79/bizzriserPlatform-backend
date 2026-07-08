@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
@@ -175,16 +175,61 @@ export class AuthService {
     return Object.keys(permissions);
   }
 
-  async forgotPassword(email: string) {
+  async forgotPassword(email: string, ip: string = 'UNKNOWN') {
     const user = await this.usersService.findByEmail(email);
     if (!user) {
       throw new BadRequestException('Please enter a valid email or Contact support.');
     }
 
+    // --- Rate Limiting Logic ---
+    const identifiers = [email, ip];
+    for (const identifier of identifiers) {
+      if (identifier === 'UNKNOWN') continue;
+
+      let rateLimit = await this.prisma.otpRateLimit.findUnique({ where: { identifier } });
+      
+      // If resetAt is in the past, reset the count
+      if (rateLimit && rateLimit.resetAt && rateLimit.resetAt < new Date()) {
+        rateLimit = await this.prisma.otpRateLimit.update({
+          where: { identifier },
+          data: { count: 0, resetAt: null }
+        });
+      }
+
+      if (rateLimit && rateLimit.count >= 5) {
+        throw new HttpException({
+          message: 'Too many OTP requests. Please try again later.',
+          resetAt: rateLimit.resetAt
+        }, HttpStatus.TOO_MANY_REQUESTS);
+      }
+    }
+
+    // Increment count for both email and IP
+    for (const identifier of identifiers) {
+      if (identifier === 'UNKNOWN') continue;
+      
+      const rateLimit = await this.prisma.otpRateLimit.upsert({
+        where: { identifier },
+        update: { count: { increment: 1 } },
+        create: { identifier, count: 1 }
+      });
+
+      // If they just hit the 5 limit, set the reset timer to 24 hours from now
+      if (rateLimit.count >= 5 && !rateLimit.resetAt) {
+        const resetTime = new Date();
+        resetTime.setHours(resetTime.getHours() + 24);
+        await this.prisma.otpRateLimit.update({
+          where: { identifier },
+          data: { resetAt: resetTime }
+        });
+      }
+    }
+    // --- End Rate Limiting Logic ---
+
     // Generate 6 digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiry = new Date();
-    expiry.setMinutes(expiry.getMinutes() + 15);
+    expiry.setMinutes(expiry.getMinutes() + 10); // Changed to 10 minutes
 
     // Save OTP to user (plaintext is fine for short lived random code, or we could hash it. 
     // For simplicity and matching standard practices where quick comparison is needed, 
