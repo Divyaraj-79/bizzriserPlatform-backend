@@ -5,35 +5,13 @@ import * as dns from 'dns';
 // Force Node.js 18+ to use IPv4 first for DNS resolution globally
 // This prevents ENETUNREACH errors on Render when resolving smtp.gmail.com
 dns.setDefaultResultOrder('ipv4first');
+import { promisify } from 'util';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private transporter: nodemailer.Transporter;
 
-  constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      // Render has issues with IPv6 outbound. Force IPv4 for the SMTP connection.
-      // This passes the family: 4 option down to Node's net.connect / tls.connect
-      tls: {
-        rejectUnauthorized: true,
-      },
-      // Pass socket options to force IPv4
-      socketTimeout: 30000,
-      dnsTimeout: 10000,
-    } as any);
-    // Explicitly force IPv4 for this transport if options allow
-    (this.transporter as any).options.host = process.env.SMTP_HOST || 'smtp.gmail.com';
-    (this.transporter as any).options.tls = { ...(this.transporter as any).options.tls };
-    (this.transporter as any).options.family = 4; // Explicitly set family to 4 for IPv4
-  }
+  constructor() {}
 
   async sendPasswordResetOtp(email: string, otp: string, firstName: string) {
     const html = `
@@ -62,7 +40,25 @@ export class MailService {
         return;
       }
       
-      const info = await this.transporter.sendMail({
+      const resolve4 = promisify(dns.resolve4);
+      const hostName = process.env.SMTP_HOST || 'smtp.gmail.com';
+      const ips = await resolve4(hostName);
+      
+      const transporter = nodemailer.createTransport({
+        host: ips[0], // Hardcode the resolved IPv4 address to bypass Render's IPv6 ENETUNREACH completely
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+        tls: {
+          servername: hostName, // Crucial for TLS handshake when connecting directly via IP
+          rejectUnauthorized: true,
+        },
+      });
+      
+      const info = await transporter.sendMail({
         from: `"BizzRiser Support" <${process.env.SMTP_USER}>`,
         to: email,
         subject: 'BizzRiser - Your Password Reset OTP',
