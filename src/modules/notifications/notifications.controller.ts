@@ -41,4 +41,9 @@ export class NotificationsController {
   markAsRead(@Param('id') id: string, @Request() req: any) {
     return this.notificationsService.markAsRead(id, req.user.id);
   }
+
+  @Post(':id/dismiss')
+  dismiss(@Param('id') id: string, @Request() req: any) {
+    return this.notificationsService.dismiss(id, req.user.id);
+  }
 }

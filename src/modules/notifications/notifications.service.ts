@@ -12,12 +12,13 @@ export class NotificationsService {
     private realtimeGateway: RealtimeGateway,
   ) {}
 
-  async create(data: { title: string; message: string; type: 'POPUP' | 'TOAST'; isScheduled?: boolean; scheduledFor?: string }) {
+  async create(data: { title: string; message: string; type: 'POPUP' | 'TOAST'; category?: 'INFO' | 'ALERT' | 'SUCCESS' | 'WARNING' | 'NEW_FEATURE' | 'RESTRICTION'; isScheduled?: boolean; scheduledFor?: string }) {
     const notification = await this.prisma.systemNotification.create({
       data: {
         title: data.title,
         message: data.message,
         type: data.type,
+        category: data.category || 'INFO',
         isScheduled: data.isScheduled || false,
         scheduledFor: data.scheduledFor ? new Date(data.scheduledFor) : null,
       },
@@ -28,19 +29,19 @@ export class NotificationsService {
       this.realtimeGateway.server.emit('notification:new', notification);
     }
 
-    return { success: true, data: notification };
+    return notification;
   }
 
   async findAllAdmin() {
     const data = await this.prisma.systemNotification.findMany({
       orderBy: { createdAt: 'desc' },
     });
-    return { success: true, data };
+    return data;
   }
 
   async remove(id: string) {
     await this.prisma.systemNotification.delete({ where: { id } });
-    return { success: true, message: 'Notification deleted successfully' };
+    return { message: 'Notification deleted successfully' };
   }
 
   // Find all active notifications for a user that they haven't read
@@ -61,14 +62,17 @@ export class NotificationsService {
       where: {
         isActive: true,
         reads: {
-          some: { userId },
+          some: { 
+            userId,
+            isDismissed: false
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
       take: 20, // Only fetch last 20 read notifications for dropdown history
     });
 
-    return { success: true, data: { unread, read } };
+    return { unread, read };
   }
 
   async markAsRead(notificationId: string, userId: string) {
@@ -82,7 +86,31 @@ export class NotificationsService {
     } catch (e) {
       // Ignore if already marked as read
     }
-    return { success: true };
+    return true;
+  }
+
+  async dismiss(notificationId: string, userId: string) {
+    try {
+      await this.prisma.notificationRead.upsert({
+        where: {
+          userId_notificationId: {
+            userId,
+            notificationId,
+          }
+        },
+        update: {
+          isDismissed: true,
+        },
+        create: {
+          userId,
+          notificationId,
+          isDismissed: true,
+        }
+      });
+    } catch (e) {
+      // Ignore
+    }
+    return true;
   }
 
   // ─── Cron Job for Scheduled Notifications ────────────────────────────────
