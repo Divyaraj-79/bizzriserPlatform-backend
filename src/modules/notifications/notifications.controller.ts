@@ -1,8 +1,8 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -33,7 +33,8 @@ export class NotificationsController {
 
   @Get()
   findAllForUser(@Request() req: any) {
-    return this.notificationsService.findAllForUser(req.user.id, new Date(req.user.createdAt));
+    const userCreatedAt = req.user.createdAt ? new Date(req.user.createdAt) : new Date(0);
+    return this.notificationsService.findAllForUser(req.user.id, userCreatedAt);
   }
 
   @Post(':id/read')
