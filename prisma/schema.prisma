@@ -145,6 +145,11 @@ enum SequenceEnrollmentStatus {
   CANCELLED
 }
 
+enum NotificationType {
+  POPUP
+  TOAST
+}
+
 model Package {
   id              String   @id @default(uuid())
   name            String   @unique
@@ -238,6 +243,7 @@ model User {
   activityLogs   ActivityLog[]
   googleCredentials GoogleCredential[]
   contactNotes   ContactNote[]
+  notificationReads NotificationRead[]
 
   @@index([organizationId])
   @@index([email])
@@ -862,4 +868,34 @@ model OtpRateLimit {
   updatedAt  DateTime  @updatedAt
 
   @@map("otp_rate_limits")
+}
+
+model SystemNotification {
+  id           String           @id @default(uuid())
+  title        String
+  message      String
+  type         NotificationType @default(TOAST)
+  isScheduled  Boolean          @default(false)
+  scheduledFor DateTime?
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  reads        NotificationRead[]
+
+  @@map("system_notifications")
+}
+
+model NotificationRead {
+  id             String             @id @default(uuid())
+  userId         String
+  notificationId String
+  createdAt      DateTime           @default(now())
+
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification   SystemNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, notificationId])
+  @@index([userId])
+  @@map("notification_reads")
 }

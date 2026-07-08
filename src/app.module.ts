@@ -24,6 +24,7 @@ import { CannedResponsesModule } from './modules/canned-responses/canned-respons
 import { FlowsModule } from './modules/flows/flows.module';
 import { MetaCommerceModule } from './meta-commerce/meta-commerce.module';
 import { ClientsModule } from './modules/clients/clients.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -95,6 +96,7 @@ import { ClientsModule } from './modules/clients/clients.module';
     FlowsModule,
     MetaCommerceModule,
     ClientsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule { }
