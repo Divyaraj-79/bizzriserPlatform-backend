@@ -867,11 +867,21 @@ model OtpRateLimit {
   @@map("otp_rate_limits")
 }
 
+enum NotificationCategory {
+  INFO
+  ALERT
+  SUCCESS
+  WARNING
+  NEW_FEATURE
+  RESTRICTION
+}
+
 model SystemNotification {
   id           String           @id @default(uuid())
   title        String
   message      String
   type         NotificationType @default(TOAST)
+  category     NotificationCategory @default(INFO)
   isScheduled  Boolean          @default(false)
   scheduledFor DateTime?
   isActive     Boolean          @default(true)
@@ -887,6 +897,7 @@ model NotificationRead {
   id             String             @id @default(uuid())
   userId         String
   notificationId String
+  isDismissed    Boolean            @default(false)
   createdAt      DateTime           @default(now())
 
   user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
