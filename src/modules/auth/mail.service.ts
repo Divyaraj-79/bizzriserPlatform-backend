@@ -1,17 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
-import * as dns from 'dns';
-
-// Force Node.js 18+ to use IPv4 first for DNS resolution globally
-// This prevents ENETUNREACH errors on Render when resolving smtp.gmail.com
-dns.setDefaultResultOrder('ipv4first');
-import { promisify } from 'util';
+import { Resend } from 'resend';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
+  private resend: Resend;
 
-  constructor() {}
+  constructor() {
+    // Initialize Resend with the API key from environment variables
+    this.resend = new Resend(process.env.RESEND_API_KEY || 'dummy');
+  }
 
   async sendPasswordResetOtp(email: string, otp: string, firstName: string) {
     const html = `
@@ -35,37 +33,26 @@ export class MailService {
     `;
 
     try {
-      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-        this.logger.warn(`SMTP credentials not set. OTP for ${email} is ${otp}`);
+      if (!process.env.RESEND_API_KEY) {
+        this.logger.warn(`RESEND_API_KEY not set. OTP for ${email} is ${otp}`);
         return;
       }
       
-      const resolve4 = promisify(dns.resolve4);
-      const hostName = process.env.SMTP_HOST || 'smtp.gmail.com';
-      const ips = await resolve4(hostName);
-      
-      const transporter = nodemailer.createTransport({
-        host: ips[0], // Hardcode the resolved IPv4 address to bypass Render's IPv6 ENETUNREACH completely
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-        tls: {
-          servername: hostName, // Crucial for TLS handshake when connecting directly via IP
-          rejectUnauthorized: true,
-        },
-      });
-      
-      const info = await transporter.sendMail({
-        from: `"BizzRiser Support" <${process.env.SMTP_USER}>`,
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'BizzRiser Support <onboarding@resend.dev>';
+
+      const { data, error } = await this.resend.emails.send({
+        from: fromEmail,
         to: email,
         subject: 'BizzRiser - Your Password Reset OTP',
         html: html,
       });
+
+      if (error) {
+        this.logger.error(`Resend API Error: ${JSON.stringify(error)}`);
+        throw new Error(error.message);
+      }
       
-      this.logger.log(`Password reset email sent to ${email}: ${info.messageId}`);
+      this.logger.log(`Password reset email sent to ${email} (ID: ${data?.id})`);
     } catch (error) {
       this.logger.error(`Failed to send password reset email to ${email}`, error);
       throw new Error('Failed to send verification email. Please try again later.');
