@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
@@ -178,8 +178,7 @@ export class AuthService {
   async forgotPassword(email: string) {
     const user = await this.usersService.findByEmail(email);
     if (!user) {
-      // Return success anyway to prevent email enumeration
-      return { message: 'If an account with that email exists, an OTP has been sent.' };
+      throw new BadRequestException('Please enter a valid email or Contact support.');
     }
 
     // Generate 6 digit OTP
@@ -198,7 +197,7 @@ export class AuthService {
     });
 
     await this.mailService.sendPasswordResetOtp(email, otp, user.firstName || 'User');
-    return { message: 'If an account with that email exists, an OTP has been sent.' };
+    return { message: 'Verification code sent to your email.' };
   }
 
   async verifyOtp(email: string, otp: string) {
