@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { MailService } from '../auth/mail.service';
 
 @Injectable()
 export class NotificationsService {
@@ -10,31 +11,152 @@ export class NotificationsService {
   constructor(
     private prisma: PrismaService,
     private realtimeGateway: RealtimeGateway,
+    private mailService: MailService,
   ) {}
 
-  async create(data: { title: string; message: string; type: 'POPUP' | 'TOAST'; category?: 'INFO' | 'ALERT' | 'SUCCESS' | 'WARNING' | 'NEW_FEATURE' | 'RESTRICTION'; isScheduled?: boolean; scheduledFor?: string }) {
+  async create(data: any, createdByUserId?: string) {
     const notification = await this.prisma.systemNotification.create({
       data: {
         title: data.title,
         message: data.message,
-        type: data.type,
+        ctaLabel: data.ctaLabel || null,
+        ctaUrl: data.ctaUrl || null,
+        imageUrl: data.imageUrl || null,
+        type: data.type || 'TOAST',
         category: data.category || 'INFO',
+        priority: data.priority || 'NORMAL',
+        audience: data.audience || 'ALL',
+        targetOrgIds: data.targetOrgIds || [],
+        targetPlanId: data.targetPlanId || null,
+        channels: data.channels || ['IN_APP'],
         isScheduled: data.isScheduled || false,
         scheduledFor: data.scheduledFor ? new Date(data.scheduledFor) : null,
+        expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+        isPinned: data.isPinned || false,
+        createdBy: createdByUserId,
+        status: (data.isScheduled && data.scheduledFor) ? 'SCHEDULED' : 'DRAFT',
       },
     });
 
     if (!notification.isScheduled) {
-      // Broadcast immediately
-      this.realtimeGateway.server.emit('notification:new', notification);
+      await this.broadcast(notification);
     }
 
     return notification;
   }
 
+  async resolveAudienceUserIds(notification: any): Promise<string[]> {
+    switch (notification.audience) {
+      case 'ALL':
+        const allUsers = await this.prisma.user.findMany({ select: { id: true } });
+        return allUsers.map(u => u.id);
+      case 'ORG_ADMINS':
+        const orgAdmins = await this.prisma.user.findMany({ 
+          where: { role: 'ORG_ADMIN' }, select: { id: true } 
+        });
+        return orgAdmins.map(u => u.id);
+      case 'SPECIFIC_ORGS':
+        if (!notification.targetOrgIds || notification.targetOrgIds.length === 0) return [];
+        const specificOrgUsers = await this.prisma.user.findMany({
+          where: { organizationId: { in: notification.targetOrgIds } },
+          select: { id: true }
+        });
+        return specificOrgUsers.map(u => u.id);
+      case 'SPECIFIC_PLAN':
+        if (!notification.targetPlanId) return [];
+        const specificPlanUsers = await this.prisma.user.findMany({
+          where: { organization: { packageId: notification.targetPlanId } },
+          select: { id: true }
+        });
+        return specificPlanUsers.map(u => u.id);
+      case 'SUPER_ADMIN':
+        const superAdmins = await this.prisma.user.findMany({ 
+          where: { role: 'SUPER_ADMIN' }, select: { id: true } 
+        });
+        return superAdmins.map(u => u.id);
+      default:
+        return [];
+    }
+  }
+
+  async broadcast(notification: any) {
+    this.logger.log(`Broadcasting notification: ${notification.title}`);
+
+    // Update status to SENT
+    await this.prisma.systemNotification.update({
+      where: { id: notification.id },
+      data: { status: 'SENT', sentAt: new Date() },
+    });
+
+    const channels = notification.channels || [];
+    
+    // In-App Delivery
+    if (channels.includes('IN_APP')) {
+      const userIds = await this.resolveAudienceUserIds(notification);
+      
+      // If ALL users are targeted, we could just broadcast to everyone.
+      // But to respect newly connected users, they will get it from findAllForUser.
+      // For connected sockets, we emit to specific user rooms if not ALL.
+      if (notification.audience === 'ALL') {
+        this.realtimeGateway.server.emit('notification:new', notification);
+      } else {
+        const rooms = userIds.map(id => `user_${id}`);
+        if (rooms.length > 0) {
+          this.realtimeGateway.server.to(rooms).emit('notification:new', notification);
+        }
+      }
+
+      await this.prisma.notificationDelivery.create({
+        data: {
+          notificationId: notification.id,
+          channel: 'IN_APP',
+          status: 'sent',
+          recipientCount: userIds.length,
+          sentAt: new Date(),
+        }
+      });
+    }
+
+    // Email delivery (placeholder for Phase 3)
+    if (channels.includes('EMAIL')) {
+      const userIds = await this.resolveAudienceUserIds(notification);
+      
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: userIds }, status: 'ACTIVE' },
+        select: { email: true }
+      });
+
+      const validEmails = users.filter(user => user.email).map(user => user.email!);
+
+      if (validEmails.length > 0) {
+        // Send async without awaiting so we don't block the broadcast
+        this.mailService.sendSystemNotification(
+          validEmails,
+          notification.title,
+          notification.message,
+          notification.ctaLabel,
+          notification.ctaUrl
+        ).catch(e => this.logger.error(`Error sending batch emails`, e));
+      }
+
+      await this.prisma.notificationDelivery.create({
+        data: {
+          notificationId: notification.id,
+          channel: 'EMAIL',
+          status: 'sent',
+          recipientCount: validEmails.length,
+          sentAt: new Date(),
+        }
+      });
+    }
+  }
+
   async findAllAdmin() {
     const data = await this.prisma.systemNotification.findMany({
       orderBy: { createdAt: 'desc' },
+      include: {
+        deliveries: true,
+      }
     });
     return data;
   }
@@ -46,11 +168,39 @@ export class NotificationsService {
 
   // Find all active notifications for a user that they haven't read
   async findAllForUser(userId: string, userCreatedAt: Date) {
+    // Determine the user's role and organization to filter audience
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, organizationId: true, organization: { select: { packageId: true } } }
+    });
+
+    if (!user) return { unread: [], read: [] };
+
+    // Build audience conditions
+    const audienceConditions: any[] = [
+      { audience: 'ALL' }
+    ];
+
+    if (user.organizationId) {
+      audienceConditions.push({ audience: 'SPECIFIC_ORGS', targetOrgIds: { has: user.organizationId } });
+    }
+
+    if (user.role === 'SUPER_ADMIN') {
+      audienceConditions.push({ audience: 'SUPER_ADMIN' });
+    }
+    if (user.role === 'ORG_ADMIN') {
+      audienceConditions.push({ audience: 'ORG_ADMINS' });
+    }
+    if (user.organization?.packageId) {
+      audienceConditions.push({ audience: 'SPECIFIC_PLAN', targetPlanId: user.organization.packageId });
+    }
+
     const unread = await this.prisma.systemNotification.findMany({
       where: {
         isActive: true,
         isScheduled: false,
         createdAt: { gte: userCreatedAt },
+        OR: audienceConditions,
         reads: {
           none: { userId },
         },
@@ -61,6 +211,7 @@ export class NotificationsService {
     const read = await this.prisma.systemNotification.findMany({
       where: {
         isActive: true,
+        OR: audienceConditions,
         reads: {
           some: { 
             userId,
@@ -127,6 +278,7 @@ export class NotificationsService {
         scheduledFor: {
           lte: now,
         },
+        status: 'SCHEDULED'
       },
     });
 
@@ -134,14 +286,132 @@ export class NotificationsService {
       this.logger.log(`Found ${pendingNotifications.length} scheduled notifications to broadcast.`);
 
       for (const notification of pendingNotifications) {
-        // Broadcast via Socket
-        this.realtimeGateway.server.emit('notification:new', notification);
+        await this.broadcast(notification);
 
         // Mark as no longer scheduled so it doesn't get picked up again
         await this.prisma.systemNotification.update({
           where: { id: notification.id },
           data: { isScheduled: false },
         });
+      }
+    }
+  }
+
+  // ─── Automated Event Triggers ────────────────────────────────────────────
+
+  @Cron('0 0 * * *') // Run every day at midnight
+  async checkLowCredits() {
+    this.logger.log('Running automated low credits check...');
+    const threshold = 100; // Define low credits threshold
+
+    const lowCreditOrgs = await this.prisma.organization.findMany({
+      where: {
+        credits: { lte: threshold },
+        status: 'ACTIVE'
+      }
+    });
+
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    for (const org of lowCreditOrgs) {
+      // Check if we already warned them in the last 24 hours to avoid spam
+      const recentWarning = await this.prisma.systemNotification.findFirst({
+        where: {
+          category: 'CREDITS',
+          audience: 'SPECIFIC_ORGS',
+          targetOrgIds: { has: org.id },
+          createdAt: { gte: oneDayAgo }
+        }
+      });
+
+      if (!recentWarning) {
+        // Create and broadcast the warning
+        const notification = await this.prisma.systemNotification.create({
+          data: {
+            title: 'Low Credits Warning',
+            message: `Your organization "${org.name}" has ${org.credits} credits remaining. Please recharge soon to avoid service disruption.`,
+            type: 'POPUP',
+            category: 'CREDITS',
+            priority: 'HIGH',
+            audience: 'SPECIFIC_ORGS',
+            targetOrgIds: [org.id],
+            ctaLabel: 'Recharge Now',
+            ctaUrl: '/dashboard/billing',
+            isActive: true,
+            isScheduled: false,
+            channels: ['IN_APP']
+          }
+        });
+        await this.broadcast(notification);
+      }
+    }
+  }
+
+  @Cron('0 1 * * *') // Run every day at 1 AM
+  async checkExpiringSubscriptions() {
+    this.logger.log('Running automated expiring subscriptions check...');
+    const now = new Date();
+    
+    // We check for orgs expiring in exactly 3 days, 1 day, and 0 days
+    // To do this simply, we'll find all orgs expiring within 4 days and calculate
+    const fourDaysFromNow = new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000);
+
+    const expiringOrgs = await this.prisma.organization.findMany({
+      where: {
+        expiryDate: {
+          lte: fourDaysFromNow,
+          gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) // up to 1 day expired
+        },
+        status: 'ACTIVE'
+      }
+    });
+
+    for (const org of expiringOrgs) {
+      if (!org.expiryDate) continue;
+
+      const msLeft = org.expiryDate.getTime() - now.getTime();
+      const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+
+      // Determine milestone: 3, 1, or 0
+      let milestone: number | null = null;
+      if (daysLeft === 3) milestone = 3;
+      else if (daysLeft === 1) milestone = 1;
+      else if (daysLeft <= 0) milestone = 0;
+
+      if (milestone !== null) {
+        // Check if we already warned for this specific milestone (using message matching or just checking last 24h)
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentWarning = await this.prisma.systemNotification.findFirst({
+          where: {
+            category: 'SUBSCRIPTION',
+            audience: 'SPECIFIC_ORGS',
+            targetOrgIds: { has: org.id },
+            createdAt: { gte: oneDayAgo }
+          }
+        });
+
+        if (!recentWarning) {
+          const isCritical = milestone <= 1;
+          const notification = await this.prisma.systemNotification.create({
+            data: {
+              title: isCritical ? 'Subscription Expiring Soon!' : 'Subscription Reminder',
+              message: milestone === 0 
+                ? `Your subscription for "${org.name}" has expired. Please renew immediately to maintain access.`
+                : `Your subscription for "${org.name}" will expire in ${milestone} day(s).`,
+              type: 'POPUP',
+              category: 'SUBSCRIPTION',
+              priority: isCritical ? 'CRITICAL' : 'HIGH',
+              audience: 'SPECIFIC_ORGS',
+              targetOrgIds: [org.id],
+              ctaLabel: 'Renew Now',
+              ctaUrl: '/dashboard/billing',
+              isActive: true,
+              isScheduled: false,
+              channels: ['IN_APP']
+            }
+          });
+          await this.broadcast(notification);
+        }
       }
     }
   }

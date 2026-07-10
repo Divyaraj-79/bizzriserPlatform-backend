@@ -868,27 +868,95 @@ model OtpRateLimit {
 }
 
 enum NotificationCategory {
+  // System
+  MAINTENANCE
+  DISRUPTION
+  SECURITY
+  // Billing
+  BILLING
+  CREDITS
+  SUBSCRIPTION
+  // WhatsApp
+  WA_ACCOUNT
+  WA_TEMPLATE
+  // Product
+  NEW_FEATURE
+  CHANGELOG
+  DEPRECATION
+  // Engagement
+  OFFER
+  GREETING
+  MILESTONE
+  // General
   INFO
   ALERT
   SUCCESS
   WARNING
-  NEW_FEATURE
   RESTRICTION
 }
 
-model SystemNotification {
-  id           String           @id @default(uuid())
-  title        String
-  message      String
-  type         NotificationType @default(TOAST)
-  category     NotificationCategory @default(INFO)
-  isScheduled  Boolean          @default(false)
-  scheduledFor DateTime?
-  isActive     Boolean          @default(true)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+enum NotificationAudience {
+  ALL
+  ORG_ADMINS
+  SUPER_ADMIN
+  SPECIFIC_ORGS
+  SPECIFIC_PLAN
+}
 
-  reads        NotificationRead[]
+enum NotificationPriority {
+  CRITICAL
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  FAILED
+}
+
+model SystemNotification {
+  id             String                   @id @default(uuid())
+  title          String
+  message        String
+  ctaLabel       String?
+  ctaUrl         String?
+  imageUrl       String?
+  
+  type           NotificationType         @default(TOAST)
+  category       NotificationCategory     @default(INFO)
+  priority       NotificationPriority     @default(NORMAL)
+  
+  audience       NotificationAudience     @default(ALL)
+  targetOrgIds   String[]                 @default([])
+  targetPlanId   String?
+  
+  channels       NotificationChannel[]    @default([IN_APP])
+  
+  isScheduled    Boolean                  @default(false)
+  scheduledFor   DateTime?
+  
+  expiresAt      DateTime?
+  isPinned       Boolean                  @default(false)
+  isActive       Boolean                  @default(true)
+  
+  status         NotificationStatus       @default(DRAFT)
+  sentAt         DateTime?
+  
+  createdBy      String?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  reads          NotificationRead[]
+  deliveries     NotificationDelivery[]
 
   @@map("system_notifications")
 }
@@ -906,4 +974,19 @@ model NotificationRead {
   @@unique([userId, notificationId])
   @@index([userId])
   @@map("notification_reads")
+}
+
+model NotificationDelivery {
+  id               String               @id @default(uuid())
+  notificationId   String
+  channel          NotificationChannel
+  status           String
+  recipientCount   Int                  @default(0)
+  sentAt           DateTime?
+  errorMessage     String?
+
+  notification     SystemNotification   @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@map("notification_deliveries")
 }
