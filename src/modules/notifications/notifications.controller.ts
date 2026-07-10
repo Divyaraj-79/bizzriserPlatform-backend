@@ -13,8 +13,9 @@ export class NotificationsController {
 
   @Post()
   @Roles('SUPER_ADMIN')
-  create(@Body() createNotificationDto: any) {
-    return this.notificationsService.create(createNotificationDto);
+  create(@Body() createNotificationDto: any, @Request() req: any) {
+    const userId = req.user?.userId || req.user?.sub;
+    return this.notificationsService.create(createNotificationDto, userId);
   }
 
   @Get('admin')
@@ -33,17 +34,20 @@ export class NotificationsController {
 
   @Get()
   findAllForUser(@Request() req: any) {
-    const userCreatedAt = req.user.createdAt ? new Date(req.user.createdAt) : new Date(0);
-    return this.notificationsService.findAllForUser(req.user.id, userCreatedAt);
+    const userId = req.user?.userId || req.user?.sub;
+    const userCreatedAt = req.user?.createdAt ? new Date(req.user.createdAt) : new Date(0);
+    return this.notificationsService.findAllForUser(userId, userCreatedAt);
   }
 
   @Post(':id/read')
   markAsRead(@Param('id') id: string, @Request() req: any) {
-    return this.notificationsService.markAsRead(id, req.user.id);
+    const userId = req.user?.userId || req.user?.sub;
+    return this.notificationsService.markAsRead(id, userId);
   }
 
   @Post(':id/dismiss')
   dismiss(@Param('id') id: string, @Request() req: any) {
-    return this.notificationsService.dismiss(id, req.user.id);
+    const userId = req.user?.userId || req.user?.sub;
+    return this.notificationsService.dismiss(id, userId);
   }
 }
