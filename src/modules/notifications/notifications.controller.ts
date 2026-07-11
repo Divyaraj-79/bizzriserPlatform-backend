@@ -31,6 +31,11 @@ export class NotificationsController {
   }
 
   // ─── Client Endpoints ──────────────────────────────────────────────────
+  @Get(':id/analytics')
+  @Roles('SUPER_ADMIN')
+  getAnalytics(@Param('id') id: string) {
+    return this.notificationsService.getAnalyticsForAdmin(id);
+  }
 
   @Get()
   findAllForUser(@Request() req: any) {

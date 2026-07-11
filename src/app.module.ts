@@ -25,6 +25,7 @@ import { FlowsModule } from './modules/flows/flows.module';
 import { MetaCommerceModule } from './meta-commerce/meta-commerce.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { AppVersionsModule } from './modules/app-versions/app-versions.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     MetaCommerceModule,
     ClientsModule,
     NotificationsModule,
+    AppVersionsModule,
   ],
 })
 export class AppModule { }
