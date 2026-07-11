@@ -235,6 +235,7 @@ model User {
   permissions    Json                     @default("{}")
   resetOtp       String?
   resetOtpExpiry DateTime?
+  lastSeenVersion String?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
 
@@ -950,6 +951,7 @@ model SystemNotification {
   
   status         NotificationStatus       @default(DRAFT)
   sentAt         DateTime?
+  recipientCount Int                      @default(0)
   
   createdBy      String?
   createdAt      DateTime                 @default(now())
@@ -966,6 +968,7 @@ model NotificationRead {
   userId         String
   notificationId String
   isDismissed    Boolean            @default(false)
+  viewedAt       DateTime?
   createdAt      DateTime           @default(now())
 
   user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -989,4 +992,20 @@ model NotificationDelivery {
 
   @@index([notificationId])
   @@map("notification_deliveries")
+}
+
+model AppVersion {
+  id          String   @id @default(uuid())
+  version     String   @unique
+  title       String
+  highlights  String[]
+  changelog   String?
+  isPublished Boolean  @default(false)
+  notifyUsers Boolean  @default(true)
+  isScheduled Boolean  @default(false)
+  scheduledFor DateTime?
+  createdAt   DateTime @default(now())
+  publishedAt DateTime?
+
+  @@map("app_versions")
 }

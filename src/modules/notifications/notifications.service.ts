@@ -82,18 +82,18 @@ export class NotificationsService {
   async broadcast(notification: any) {
     this.logger.log(`Broadcasting notification: ${notification.title}`);
 
-    // Update status to SENT
+    const userIds = await this.resolveAudienceUserIds(notification);
+
+    // Update status to SENT and save recipientCount
     await this.prisma.systemNotification.update({
       where: { id: notification.id },
-      data: { status: 'SENT', sentAt: new Date() },
+      data: { status: 'SENT', sentAt: new Date(), recipientCount: userIds.length },
     });
 
     const channels = notification.channels || [];
     
     // In-App Delivery
     if (channels.includes('IN_APP')) {
-      const userIds = await this.resolveAudienceUserIds(notification);
-      
       // If ALL users are targeted, we could just broadcast to everyone.
       // But to respect newly connected users, they will get it from findAllForUser.
       // For connected sockets, we emit to specific user rooms if not ALL.
@@ -119,8 +119,6 @@ export class NotificationsService {
 
     // Email delivery (placeholder for Phase 3)
     if (channels.includes('EMAIL')) {
-      const userIds = await this.resolveAudienceUserIds(notification);
-      
       const users = await this.prisma.user.findMany({
         where: { id: { in: userIds }, status: 'ACTIVE' },
         select: { email: true }
@@ -228,14 +226,24 @@ export class NotificationsService {
 
   async markAsRead(notificationId: string, userId: string) {
     try {
-      await this.prisma.notificationRead.create({
-        data: {
+      await this.prisma.notificationRead.upsert({
+        where: {
+          userId_notificationId: {
+            userId,
+            notificationId,
+          }
+        },
+        update: {
+          viewedAt: new Date(),
+        },
+        create: {
           userId,
           notificationId,
-        },
+          viewedAt: new Date(),
+        }
       });
     } catch (e) {
-      // Ignore if already marked as read
+      // Ignore
     }
     return true;
   }
@@ -414,5 +422,137 @@ export class NotificationsService {
         }
       }
     }
+  }
+
+  async getInboxForUser(userId: string, filters: { status?: 'unread' | 'read' | 'all'; category?: string; startDate?: string; endDate?: string; page?: number; limit?: number }) {
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+    const skip = (page - 1) * limit;
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true, organizationId: true, organization: { select: { packageId: true } } } });
+    if (!user) return { data: [], total: 0 };
+
+    // Build the query to find all relevant notifications for this user
+    // They must have been SENT, active, not expired
+    const now = new Date();
+    
+    const audienceConditions: any[] = [
+      { audience: 'ALL' },
+      { audience: 'SPECIFIC_ORGS', targetOrgIds: { has: user.organizationId } },
+    ];
+    if (user.role === 'ORG_ADMIN') audienceConditions.push({ audience: 'ORG_ADMINS' });
+    if (user.role === 'SUPER_ADMIN') audienceConditions.push({ audience: 'SUPER_ADMIN' });
+    if (user.organization?.packageId) audienceConditions.push({ audience: 'SPECIFIC_PLAN', targetPlanId: user.organization.packageId });
+
+    const whereClause: any = {
+      status: 'SENT',
+      isActive: true,
+      AND: [
+        { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        { OR: audienceConditions }
+      ]
+    };
+
+    if (filters.category && filters.category !== 'ALL') {
+      whereClause.category = filters.category;
+    }
+
+    if (filters.startDate) {
+      whereClause.createdAt = { gte: new Date(filters.startDate) };
+    }
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      end.setHours(23, 59, 59, 999);
+      if (whereClause.createdAt) {
+        whereClause.createdAt.lte = end;
+      } else {
+        whereClause.createdAt = { lte: end };
+      }
+    }
+
+    const [total, notifications] = await Promise.all([
+      this.prisma.systemNotification.count({ where: whereClause }),
+      this.prisma.systemNotification.findMany({
+        where: whereClause,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          reads: {
+            where: { userId }
+          }
+        }
+      })
+    ]);
+
+    // Format the response
+    const formatted = notifications.map(notif => {
+      const readRecord = notif.reads[0];
+      const isRead = !!readRecord;
+      const isDismissed = readRecord?.isDismissed || false;
+
+      return {
+        ...notif,
+        isRead,
+        isDismissed,
+        viewedAt: readRecord?.viewedAt || null,
+        reads: undefined // remove relation array
+      };
+    });
+
+    // Filter by read/unread if requested
+    let result = formatted;
+    if (filters.status === 'unread') {
+      result = formatted.filter(n => !n.isRead);
+    } else if (filters.status === 'read') {
+      result = formatted.filter(n => n.isRead);
+    }
+
+    return {
+      data: result,
+      total: filters.status && filters.status !== 'all' ? result.length : total,
+      page,
+      limit
+    };
+  }
+
+  async getAnalyticsForAdmin(notifId: string) {
+    const notification = await this.prisma.systemNotification.findUnique({
+      where: { id: notifId },
+      include: {
+        reads: {
+          include: {
+            user: { select: { organization: { select: { name: true } } } }
+          }
+        }
+      }
+    });
+
+    if (!notification) throw new Error('Notification not found');
+
+    const totalReads = notification.reads.length;
+    const dismissedOnly = notification.reads.filter(r => r.isDismissed && !r.viewedAt).length;
+    const actualReads = notification.reads.filter(r => r.viewedAt).length;
+
+    const readByOrg: Record<string, number> = {};
+    notification.reads.forEach(r => {
+      if (r.viewedAt) {
+        const orgName = r.user?.organization?.name || 'Unknown';
+        readByOrg[orgName] = (readByOrg[orgName] || 0) + 1;
+      }
+    });
+
+    const orgBreakdown = Object.entries(readByOrg).map(([orgName, readCount]) => ({
+      orgName,
+      readCount
+    })).sort((a, b) => b.readCount - a.readCount);
+
+    return {
+      recipientCount: notification.recipientCount,
+      readCount: actualReads,
+      dismissedCount: dismissedOnly,
+      deliveryRate: notification.recipientCount > 0 ? (actualReads / notification.recipientCount) * 100 : 0,
+      orgBreakdown
+    };
   }
 }
