@@ -4,13 +4,15 @@ import { AuthService } from '../auth/auth.service';
 import { MailService } from '../auth/mail.service';
 import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ClientsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
-    private readonly mailService: MailService
+    private readonly mailService: MailService,
+    private readonly configService: ConfigService
   ) {}
 
   async findAll() {
@@ -75,7 +77,8 @@ export class ClientsService {
       });
     }
 
-    const signupUrl = `${process.env.FRONTEND_PUBLIC_URL || 'http://localhost:3000'}/signup`;
+    const frontendUrl = this.configService.get<string>('FRONTEND_PUBLIC_URL') || 'http://localhost:3000';
+    const signupUrl = `${frontendUrl}/signup?email=${encodeURIComponent(data.email)}`;
     await this.mailService.sendClientInvitationEmail(data.email, data.firstName, signupUrl);
 
     return invitation;

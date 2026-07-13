@@ -377,7 +377,8 @@ export class AuthService {
       return { org, user };
     });
 
-    const loginUrl = `${process.env.FRONTEND_PUBLIC_URL || 'http://localhost:3000'}/login`;
+    const frontendUrl = this.configService.get<string>('FRONTEND_PUBLIC_URL') || 'http://localhost:3000';
+    const loginUrl = `${frontendUrl}/login`;
     await this.mailService.sendOnboardingCompleteEmail(data.email, invitation.firstName, orgCode, loginUrl);
 
     // Return tokens so they are immediately logged in
