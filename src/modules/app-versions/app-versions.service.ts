@@ -1,6 +1,7 @@
 import { Injectable, Logger, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationChannel } from '@prisma/client';
 
 @Injectable()
 export class AppVersionsService {
@@ -83,7 +84,7 @@ export class AppVersionsService {
   private async triggerVersionNotification(appVersion: any, includeEmail: boolean = false) {
     const message = `Platform updated to ${appVersion.version}. Checkout the new features!`;
     
-    const channels = ['IN_APP'];
+    const channels: NotificationChannel[] = ['IN_APP'];
     if (includeEmail) {
       channels.push('EMAIL');
     }
