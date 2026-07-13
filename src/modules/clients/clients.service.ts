@@ -48,7 +48,12 @@ export class ClientsService {
     });
 
     if (existingInvitation && existingInvitation.status === 'ACTIVE') {
-      throw new ConflictException('Client is already fully onboarded and active.');
+      const orgExists = existingInvitation.organizationId ? await this.prisma.organization.findUnique({ where: { id: existingInvitation.organizationId } }) : null;
+      if (orgExists) {
+        throw new ConflictException('Client is already fully onboarded and active.');
+      } else {
+        await this.prisma.clientInvitation.delete({ where: { id: existingInvitation.id } });
+      }
     }
 
     const userExists = await this.prisma.user.findUnique({ where: { email: data.email } });
@@ -144,6 +149,7 @@ export class ClientsService {
     if (!org) throw new NotFoundException(`Organization with ID ${id} not found`);
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.clientInvitation.deleteMany({ where: { organizationId: id } });
       await tx.user.deleteMany({ where: { organizationId: id } });
       return tx.organization.delete({ where: { id } });
     });
