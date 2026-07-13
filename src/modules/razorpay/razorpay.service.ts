@@ -20,10 +20,22 @@ export class RazorpayService {
     private readonly offerCodesService: OfferCodesService,
     private readonly mailService: MailService,
   ) {
-    this.razorpay = new Razorpay({
-      key_id: this.configService.get<string>('RAZORPAY_KEY_ID'),
-      key_secret: this.configService.get<string>('RAZORPAY_KEY_SECRET'),
-    });
+    const key_id = this.configService.get<string>('RAZORPAY_KEY_ID');
+    const key_secret = this.configService.get<string>('RAZORPAY_KEY_SECRET');
+
+    if (!key_id || !key_secret) {
+      this.logger.error('RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is missing! Payments will not work.');
+      // Initialize with dummy values so the server can at least boot and serve other requests
+      this.razorpay = new Razorpay({
+        key_id: 'dummy_key_id',
+        key_secret: 'dummy_key_secret',
+      });
+    } else {
+      this.razorpay = new Razorpay({
+        key_id,
+        key_secret,
+      });
+    }
   }
 
   async createSubscription(orgId: string, planId: string, billingCycle: 'MONTHLY' | 'QUARTERLY' | 'YEARLY', offerCodeStr?: string) {
