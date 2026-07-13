@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Resend } from 'resend';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
   private resend: Resend;
 
-  constructor() {
+  constructor(private prisma: PrismaService) {
     // Initialize Resend with the API key from environment variables
     this.resend = new Resend(process.env.RESEND_API_KEY || 'dummy');
   }
@@ -120,6 +121,42 @@ export class MailService {
       `;
     }
 
+    let htmlMessage = `<div class="text" style="color: #4a5568; font-size: 15px; line-height: 1.6; white-space: pre-wrap; text-align: left;">${message}</div>`;
+
+    if (title.startsWith('New Version: ')) {
+      const versionTitle = title.replace('New Version: ', '');
+      const appVersion = await this.prisma.appVersion.findFirst({ where: { title: versionTitle } });
+      
+      if (appVersion) {
+        let lists = '';
+        if (appVersion.highlights && appVersion.highlights.length > 0) {
+          lists += `
+            <div style="margin-top: 24px; text-align: left;">
+              <h3 class="heading" style="color: #1a1a1a; margin-bottom: 12px; font-size: 16px;">✨ Highlights</h3>
+              <ul class="text" style="margin: 0; padding-left: 20px; color: #4a5568; line-height: 1.6;">
+                ${appVersion.highlights.map((h: string) => `<li style="margin-bottom: 8px;">${h}</li>`).join('')}
+              </ul>
+            </div>
+          `;
+        }
+        if (appVersion.changelog) {
+          lists += `
+            <div style="margin-top: 24px; text-align: left;">
+              <h3 class="heading" style="color: #1a1a1a; margin-bottom: 12px; font-size: 16px;">📝 Changelog</h3>
+              <div class="text" style="color: #4a5568; line-height: 1.6; white-space: pre-wrap; background-color: #f8f9fa; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-family: monospace; font-size: 13px;">${appVersion.changelog}</div>
+            </div>
+          `;
+        }
+        
+        htmlMessage = `
+          <div class="text" style="color: #4a5568; font-size: 15px; line-height: 1.6; text-align: left;">
+            ${message}
+          </div>
+          ${lists}
+        `;
+      }
+    }
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -151,7 +188,7 @@ export class MailService {
                 <tr>
                   <td align="left" style="padding: 40px;">
                     <h2 class="heading" style="color: #1a1a1a; font-size: 20px; font-weight: 600; margin-top: 0; margin-bottom: 20px; text-align: left;">${title}</h2>
-                    <div class="text" style="color: #4a5568; font-size: 15px; line-height: 1.6; white-space: pre-wrap; text-align: left;">${message}</div>
+                    ${htmlMessage}
                     
                     ${ctaHtml}
                   </td>
