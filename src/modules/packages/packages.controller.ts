@@ -6,7 +6,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 
 @Controller('packages')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class PackagesController {
   constructor(private readonly packagesService: PackagesService) {}
 
@@ -21,18 +20,21 @@ export class PackagesController {
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   create(@Body() createPackageDto: any) {
     return this.packagesService.create(createPackageDto);
   }
 
   @Put(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   update(@Param('id') id: string, @Body() updatePackageDto: any) {
     return this.packagesService.update(id, updatePackageDto);
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   remove(@Param('id') id: string) {
     return this.packagesService.remove(id);

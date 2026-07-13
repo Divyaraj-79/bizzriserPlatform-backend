@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException, BadRequestException, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { generateOrgCode } from '../../common/utils/org-code.util';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -295,5 +296,91 @@ export class AuthService {
     });
 
     return { message: 'Password has been reset successfully' };
+  }
+
+  async verifySignupEmail(email: string) {
+    const userExists = await this.usersService.findByEmail(email);
+    if (userExists) {
+      throw new BadRequestException('Account has already register, Please sign in.');
+    }
+    const invitation = await this.prisma.clientInvitation.findUnique({
+      where: { email }
+    });
+    if (!invitation) {
+      throw new BadRequestException('No invitation found for this email.');
+    }
+    if (invitation.status === 'ACTIVE') {
+      throw new BadRequestException('Account has already register, Please sign in.');
+    }
+    
+    // Register the user temporarily (but don't create User/Organization records yet)
+    await this.prisma.clientInvitation.update({
+      where: { email },
+      data: { status: 'REGISTERED' }
+    });
+
+    return { message: 'Email verified successfully.', firstName: invitation.firstName, lastName: invitation.lastName };
+  }
+
+  async completeSignup(data: { email: string; passwordHash: string; orgName: string; planId: string; offerCode?: string }) {
+    const invitation = await this.prisma.clientInvitation.findUnique({
+      where: { email: data.email }
+    });
+
+    if (!invitation || invitation.status === 'ACTIVE') {
+      throw new BadRequestException('Invalid or expired invitation.');
+    }
+
+    const orgCode = generateOrgCode(data.orgName);
+    const slug = data.orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') + '-' + Date.now().toString().slice(-4);
+    
+    // Set 3 days trial
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 3);
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 1. Create Organization
+      const org = await tx.organization.create({
+        data: {
+          name: data.orgName,
+          slug,
+          orgCode,
+          subscriptionStatus: 'TRIAL',
+          trialEndsAt,
+          packageId: data.planId,
+          status: 'ACTIVE'
+        }
+      });
+
+      // 2. Create User
+      const user = await tx.user.create({
+        data: {
+          email: data.email,
+          passwordHash: data.passwordHash,
+          firstName: invitation.firstName,
+          lastName: invitation.lastName,
+          role: 'ORG_ADMIN',
+          organizationId: org.id
+        }
+      });
+
+      // 3. Mark Invitation ACTIVE
+      await tx.clientInvitation.update({
+        where: { id: invitation.id },
+        data: {
+          status: 'ACTIVE',
+          organizationId: org.id,
+          tempPasswordHash: null // clear if any
+        }
+      });
+
+      return { org, user };
+    });
+
+    const loginUrl = `${process.env.FRONTEND_PUBLIC_URL || 'http://localhost:3000'}/login`;
+    await this.mailService.sendOnboardingCompleteEmail(data.email, invitation.firstName, orgCode, loginUrl);
+
+    // Return tokens so they are immediately logged in
+    return this.login(result.user);
   }
 }

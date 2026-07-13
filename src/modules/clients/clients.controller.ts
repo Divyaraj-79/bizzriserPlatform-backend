@@ -16,6 +16,11 @@ export class ClientsController {
     return this.clientsService.findAll();
   }
 
+  @Post('pre-register')
+  async preRegister(@Body() data: { email: string; firstName: string; lastName: string }, @Req() req: any) {
+    return this.clientsService.preRegister(data, req.user?.sub);
+  }
+
   @Post('onboard')
   async onboard(@Body() data: any) {
     return this.clientsService.onboard(data);

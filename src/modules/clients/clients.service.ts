@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
+import { MailService } from '../auth/mail.service';
 import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
@@ -8,7 +9,8 @@ import * as bcrypt from 'bcryptjs';
 export class ClientsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
+    private readonly mailService: MailService
   ) {}
 
   async findAll() {
@@ -36,6 +38,47 @@ export class ClientsService {
       },
       orderBy: { createdAt: 'desc' }
     });
+  }
+
+  async preRegister(data: { email: string; firstName: string; lastName: string }, currentUserId?: string) {
+    const existingInvitation = await this.prisma.clientInvitation.findUnique({
+      where: { email: data.email }
+    });
+
+    if (existingInvitation && existingInvitation.status === 'ACTIVE') {
+      throw new ConflictException('Client is already fully onboarded and active.');
+    }
+
+    const userExists = await this.prisma.user.findUnique({ where: { email: data.email } });
+    if (userExists) {
+      throw new ConflictException('A user with this email already exists.');
+    }
+
+    let invitation;
+    if (existingInvitation) {
+      invitation = await this.prisma.clientInvitation.update({
+        where: { email: data.email },
+        data: {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          preRegisteredBy: currentUserId,
+        }
+      });
+    } else {
+      invitation = await this.prisma.clientInvitation.create({
+        data: {
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          preRegisteredBy: currentUserId,
+        }
+      });
+    }
+
+    const signupUrl = `${process.env.FRONTEND_PUBLIC_URL || 'http://localhost:3000'}/signup`;
+    await this.mailService.sendClientInvitationEmail(data.email, data.firstName, signupUrl);
+
+    return invitation;
   }
 
   async onboard(data: any) {

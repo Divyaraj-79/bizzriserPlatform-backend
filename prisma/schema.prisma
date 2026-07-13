@@ -150,20 +150,63 @@ enum NotificationType {
   TOAST
 }
 
-model Package {
-  id              String   @id @default(uuid())
-  name            String   @unique
-  description     String?
-  price           Float    @default(0)
-  currency        String   @default("USD")
-  credits         Int      @default(0)
-  teamMemberLimit Int      @default(0)
-  features        Json     @default("[]")
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+enum BillingCycle {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
 
-  organizations   Organization[]
+enum SubscriptionStatus {
+  TRIAL
+  TRIAL_EXPIRED
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum InvitationStatus {
+  PENDING
+  REGISTERED
+  ACTIVE
+}
+
+enum OfferCodeType {
+  PERCENTAGE
+  FIXED
+}
+
+model Package {
+  id                      String   @id @default(uuid())
+  name                    String   @unique
+  description             String?
+  
+  monthlyPrice            Int      @default(0)
+  quarterlyPrice          Int      @default(0)
+  yearlyPrice             Int      @default(0)
+  currency                String   @default("INR")
+  
+  razorpayMonthlyPlanId   String?
+  razorpayQuarterlyPlanId String?
+  razorpayYearlyPlanId    String?
+  
+  whatsappAccountLimit    Int?
+  chatbotLimit            Int?
+  teamMemberLimit         Int?
+  contactImportLimit      Int?
+  broadcastContactLimit   Int?
+  broadcastAllowed        Boolean  @default(true)
+  sequencesAllowed        Boolean  @default(true)
+  
+  credits                 Int      @default(0)
+  features                Json     @default("[]")
+  isActive                Boolean  @default(true)
+  sortOrder               Int      @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  organizations           Organization[]
+  subscriptions           RazorpaySubscription[]
 
   @@map("packages")
 }
@@ -215,6 +258,18 @@ model Organization {
   manualPayments          ManualPayment[]
   catalogCoupons          CatalogCoupon[]
 
+  // New Subscription / Trial fields
+  orgCode             String?             @unique
+  subscriptionStatus  SubscriptionStatus  @default(TRIAL)
+  billingCycle        BillingCycle?
+  trialEndsAt         DateTime?
+  subscriptionId      String?
+  subscriptionEndsAt  DateTime?
+  razorpayCustomerId  String?
+  
+  subscriptions       RazorpaySubscription[]
+  clientInvitation    ClientInvitation?
+
   @@map("organizations")
 }
 
@@ -249,6 +304,65 @@ model User {
   @@index([organizationId])
   @@index([email])
   @@map("users")
+}
+
+model ClientInvitation {
+  id              String           @id @default(uuid())
+  email           String           @unique
+  firstName       String
+  lastName        String
+  status          InvitationStatus @default(PENDING)
+  tempPasswordHash String?
+  organizationId  String?          @unique
+  organization    Organization?    @relation(fields: [organizationId], references: [id])
+  preRegisteredBy String?
+  ipAddress       String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@map("client_invitations")
+}
+
+model RazorpaySubscription {
+  id                    String             @id @default(uuid())
+  organizationId        String
+  razorpaySubscriptionId String            @unique
+  razorpayCustomerId    String?
+  razorpayPaymentId     String?
+  packageId             String
+  package               Package            @relation(fields: [packageId], references: [id])
+  billingCycle          BillingCycle
+  currency              String             @default("INR")
+  amount                Int
+  status                SubscriptionStatus
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  offerCodeId           String?
+  discountAmount        Int                @default(0)
+  webhookVerified       Boolean            @default(false)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  organization          Organization       @relation(fields: [organizationId], references: [id])
+
+  @@map("razorpay_subscriptions")
+}
+
+model OfferCode {
+  id              String        @id @default(uuid())
+  code            String        @unique
+  type            OfferCodeType
+  value           Int
+  maxUses         Int?
+  usedCount       Int           @default(0)
+  validFrom       DateTime?
+  validUntil      DateTime?
+  applicablePlans String[]      @default([])
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@map("offer_codes")
 }
 
 model CustomRole {

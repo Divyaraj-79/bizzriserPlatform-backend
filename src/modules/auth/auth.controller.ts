@@ -12,6 +12,18 @@ import { UserRole } from '@prisma/client';
 export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
+  @Post('verify-signup-email')
+  @HttpCode(HttpStatus.OK)
+  async verifySignupEmail(@Body('email') email: string) {
+    return this.authService.verifySignupEmail(email);
+  }
+
+  @Post('complete-signup')
+  @HttpCode(HttpStatus.OK)
+  async completeSignup(@Body() data: { email: string; passwordHash: string; orgName: string; planId: string; offerCode?: string }) {
+    return this.authService.completeSignup(data);
+  }
+
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Req() req: any, @Body() loginDto: any) {

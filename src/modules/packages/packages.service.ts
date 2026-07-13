@@ -7,7 +7,7 @@ export class PackagesService {
 
   async findAll() {
     return this.prisma.package.findMany({
-      orderBy: { price: 'asc' },
+      orderBy: { sortOrder: 'asc' },
     });
   }
 

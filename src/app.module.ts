@@ -26,6 +26,8 @@ import { MetaCommerceModule } from './meta-commerce/meta-commerce.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AppVersionsModule } from './modules/app-versions/app-versions.module';
+import { RazorpayModule } from './modules/razorpay/razorpay.module';
+import { OfferCodesModule } from './modules/offer-codes/offer-codes.module';
 
 @Module({
   imports: [
@@ -99,6 +101,8 @@ import { AppVersionsModule } from './modules/app-versions/app-versions.module';
     ClientsModule,
     NotificationsModule,
     AppVersionsModule,
+    RazorpayModule,
+    OfferCodesModule,
   ],
 })
 export class AppModule { }
