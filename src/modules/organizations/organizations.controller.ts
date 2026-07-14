@@ -28,7 +28,7 @@ export class OrganizationsController {
   @Get('me/usage')
   async getMyUsage(@Req() req: any) {
     // req.user contains the authenticated user details
-    const orgId = req.user.organizationId;
+    const orgId = req.user.orgId;
     return this.orgsService.getUsage(orgId);
   }
 
