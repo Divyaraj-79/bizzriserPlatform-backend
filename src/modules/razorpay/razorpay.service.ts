@@ -48,17 +48,21 @@ export class RazorpayService {
     const plan = await this.prisma.package.findUnique({ where: { id: planId } });
     if (!plan) throw new NotFoundException('Plan not found');
 
+    if (plan.isContactOnly) {
+      throw new BadRequestException('This plan requires contacting sales.');
+    }
+
     let razorpayPlanId: string = '';
     let price = 0;
-    if (billingCycle === 'MONTHLY') {
-      razorpayPlanId = plan.razorpayMonthlyPlanId ?? '';
-      price = plan.monthlyPrice ?? 0;
-    } else if (billingCycle === 'QUARTERLY') {
+    
+    if (billingCycle === 'QUARTERLY') {
       razorpayPlanId = plan.razorpayQuarterlyPlanId ?? '';
       price = plan.quarterlyPrice ?? 0;
-    } else {
+    } else if (billingCycle === 'YEARLY') {
       razorpayPlanId = plan.razorpayYearlyPlanId ?? '';
       price = plan.yearlyPrice ?? 0;
+    } else {
+      throw new BadRequestException(`Unsupported billing cycle: ${billingCycle}`);
     }
 
     if (!razorpayPlanId) throw new BadRequestException(`Razorpay Plan ID not configured for ${billingCycle} billing`);
@@ -68,10 +72,14 @@ export class RazorpayService {
       offer = await this.offerCodesService.validate(offerCodeStr, planId);
     }
 
+    let totalCount = 1200;
+    if (billingCycle === 'QUARTERLY') totalCount = 400;
+    if (billingCycle === 'YEARLY') totalCount = 100;
+
     // Call Razorpay API to create subscription
     const payload: any = {
       plan_id: razorpayPlanId,
-      total_count: 1200, // Large number for recurring
+      total_count: totalCount,
       customer_notify: 1,
     };
 
@@ -134,6 +142,8 @@ export class RazorpayService {
       case 'subscription.charged': {
         const nextBillingDate = new Date(rzpSubscription.current_end * 1000);
         
+        const pkg = await this.prisma.package.findUnique({ where: { id: sub.packageId } });
+        
         await this.prisma.$transaction(async (tx) => {
           await tx.razorpaySubscription.update({
             where: { id: sub.id },
@@ -153,7 +163,8 @@ export class RazorpayService {
               packageId: sub.packageId,
               subscriptionId: sub.id,
               subscriptionEndsAt: nextBillingDate,
-              razorpayCustomerId: rzpSubscription.customer_id
+              razorpayCustomerId: rzpSubscription.customer_id,
+              credits: pkg?.credits && pkg.credits > 0 ? { increment: pkg.credits } : undefined
             }
           });
         });
@@ -178,5 +189,76 @@ export class RazorpayService {
     }
 
     return { status: 'ok' };
+  }
+
+  async verifySubscription(
+    razorpayPaymentId: string,
+    razorpaySubscriptionId: string,
+    razorpaySignature: string
+  ) {
+    const secret = this.configService.get<string>('RAZORPAY_KEY_SECRET') || '';
+
+    const generatedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(razorpayPaymentId + '|' + razorpaySubscriptionId)
+      .digest('hex');
+
+    if (generatedSignature !== razorpaySignature) {
+      this.logger.error('Invalid Razorpay signature in verifySubscription');
+      throw new BadRequestException('Invalid signature');
+    }
+
+    const sub = await this.prisma.razorpaySubscription.findUnique({
+      where: { razorpaySubscriptionId: razorpaySubscriptionId }
+    });
+
+    if (!sub) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    if (sub.status === 'ACTIVE') {
+      return { success: true, message: 'Already activated' };
+    }
+
+    const pkg = await this.prisma.package.findUnique({ where: { id: sub.packageId } });
+
+    let currentEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    let customerId = undefined;
+    try {
+      const rzpSub = await this.razorpay.subscriptions.fetch(razorpaySubscriptionId);
+      if (rzpSub) {
+        currentEnd = new Date(rzpSub.current_end * 1000);
+        customerId = rzpSub.customer_id;
+      }
+    } catch (err) {
+      this.logger.warn('Failed to fetch subscription from Razorpay during verification', err);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.razorpaySubscription.update({
+        where: { id: sub.id },
+        data: {
+          status: 'ACTIVE',
+          razorpayCustomerId: customerId,
+          currentPeriodEnd: currentEnd,
+          webhookVerified: true
+        }
+      });
+
+      await tx.organization.update({
+        where: { id: sub.organizationId },
+        data: {
+          subscriptionStatus: 'ACTIVE',
+          billingCycle: sub.billingCycle,
+          packageId: sub.packageId,
+          subscriptionId: sub.id,
+          subscriptionEndsAt: currentEnd,
+          razorpayCustomerId: customerId,
+          credits: pkg?.credits && pkg.credits > 0 ? { increment: pkg.credits } : undefined
+        }
+      });
+    });
+
+    return { success: true };
   }
 }

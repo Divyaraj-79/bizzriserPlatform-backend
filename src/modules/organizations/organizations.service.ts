@@ -45,7 +45,8 @@ export class OrganizationsService {
           whatsappNumber: orgData.whatsappNumber,
           expiryDate: orgData.expiryDate ? new Date(orgData.expiryDate) : null,
           packageId: orgData.packageId,
-          credits: initialCredits,
+          credits: orgData.subscriptionStatus === 'TRIAL' ? 50 : initialCredits,
+          subscriptionStatus: orgData.subscriptionStatus || 'ACTIVE',
           isPhoneVerified: orgData.isPhoneVerified || false,
           status: orgData.status || 'ACTIVE',
         },
@@ -147,11 +148,12 @@ export class OrganizationsService {
 
     return {
       limits: {
-        contactImportLimit: org.package?.contactImportLimit ?? 0,
+        contactImportLimit: org.subscriptionStatus === 'TRIAL' ? 100 : (org.package?.contactImportLimit ?? 0),
         whatsappAccountLimit: org.package?.whatsappAccountLimit ?? 0,
         teamMemberLimit: org.package?.teamMemberLimit ?? 0,
         chatbotLimit: org.package?.chatbotLimit ?? 0,
-        broadcastContactLimit: org.package?.broadcastContactLimit ?? 0
+        broadcastContactLimit: org.subscriptionStatus === 'TRIAL' ? 50 : (org.package?.broadcastContactLimit ?? 0),
+        campaignLimit: org.subscriptionStatus === 'TRIAL' ? 1 : 0 // 0 means unlimited or determined elsewhere for non-trial
       },
       usage: {
         contacts: contactsCount,
@@ -162,7 +164,10 @@ export class OrganizationsService {
       },
       credits: org.credits,
       subscriptionStatus: org.subscriptionStatus,
-      trialEndsAt: org.trialEndsAt
+      trialEndsAt: org.trialEndsAt,
+      subscriptionEndsAt: org.subscriptionEndsAt,
+      billingCycle: org.billingCycle,
+      package: org.package
     };
   }
 

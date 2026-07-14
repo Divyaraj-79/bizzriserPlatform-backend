@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Req, UseGuards, BadRequestException } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { RazorpayService } from './razorpay.service';
@@ -15,7 +15,33 @@ export class RazorpayController {
 
   @UseGuards(JwtAuthGuard)
   @Post('create-subscription')
-  async createSubscription(@Body() data: { orgId: string, planId: string, billingCycle: 'MONTHLY' | 'QUARTERLY' | 'YEARLY', offerCode?: string }) {
-    return this.razorpayService.createSubscription(data.orgId, data.planId, data.billingCycle, data.offerCode);
+  async createSubscription(
+    @Req() req: any,
+    @Body() data: { orgId?: string, planId: string, billingCycle: 'MONTHLY' | 'QUARTERLY' | 'YEARLY', offerCode?: string }
+  ) {
+    let orgId = data.orgId || req.user?.orgId;
+    if (!orgId && req.user?.sub) {
+      const user = await this.razorpayService['prisma'].user.findUnique({ where: { id: req.user.sub } });
+      orgId = user?.organizationId;
+    }
+    if (!orgId) {
+      throw new BadRequestException('Organization ID is missing');
+    }
+    return this.razorpayService.createSubscription(orgId, data.planId, data.billingCycle, data.offerCode);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('verify-subscription')
+  async verifySubscription(
+    @Body() data: { razorpayPaymentId: string, razorpaySubscriptionId: string, razorpaySignature: string }
+  ) {
+    if (!data.razorpayPaymentId || !data.razorpaySubscriptionId || !data.razorpaySignature) {
+      throw new BadRequestException('Missing payment verification details');
+    }
+    return this.razorpayService.verifySubscription(
+      data.razorpayPaymentId,
+      data.razorpaySubscriptionId,
+      data.razorpaySignature
+    );
   }
 }

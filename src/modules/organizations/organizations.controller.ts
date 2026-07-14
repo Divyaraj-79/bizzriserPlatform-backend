@@ -27,8 +27,12 @@ export class OrganizationsController {
 
   @Get('me/usage')
   async getMyUsage(@Req() req: any) {
-    // req.user contains the authenticated user details
-    const orgId = req.user.orgId;
+    let orgId = req.user.orgId;
+    if (!orgId && req.user.sub) {
+      // Fallback for older JWTs
+      const user = await this.orgsService['prisma'].user.findUnique({ where: { id: req.user.sub } });
+      orgId = user?.organizationId;
+    }
     return this.orgsService.getUsage(orgId);
   }
 

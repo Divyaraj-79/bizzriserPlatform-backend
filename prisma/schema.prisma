@@ -201,6 +201,7 @@ model Package {
   credits                 Int      @default(0)
   features                Json     @default("[]")
   isActive                Boolean  @default(true)
+  isContactOnly           Boolean  @default(false)
   sortOrder               Int      @default(0)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt

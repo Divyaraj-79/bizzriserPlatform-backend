@@ -169,10 +169,13 @@ export class NotificationsService {
     // Determine the user's role and organization to filter audience
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true, organizationId: true, organization: { select: { packageId: true } } }
+      select: { role: true, organizationId: true, createdAt: true, organization: { select: { packageId: true, createdAt: true } } }
     });
 
     if (!user) return { unread: [], read: [] };
+
+    // Use organization creation date if available, otherwise user creation date
+    const actualUserCreatedAt = user.organization?.createdAt || user.createdAt;
 
     // Build audience conditions
     const audienceConditions: any[] = [
@@ -197,7 +200,7 @@ export class NotificationsService {
       where: {
         isActive: true,
         isScheduled: false,
-        createdAt: { gte: userCreatedAt },
+        createdAt: { gte: actualUserCreatedAt },
         OR: audienceConditions,
         reads: {
           none: { userId },
@@ -209,6 +212,7 @@ export class NotificationsService {
     const read = await this.prisma.systemNotification.findMany({
       where: {
         isActive: true,
+        createdAt: { gte: actualUserCreatedAt },
         OR: audienceConditions,
         reads: {
           some: { 
