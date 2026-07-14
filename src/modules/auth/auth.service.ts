@@ -71,6 +71,14 @@ export class AuthService {
         secret: this.configService.get<string>('jwt.refreshSecret'),
         expiresIn: this.configService.get<string>('jwt.refreshExpiresIn') as any,
       }),
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        organizationId: user.organizationId,
+      }
     };
   }
 
