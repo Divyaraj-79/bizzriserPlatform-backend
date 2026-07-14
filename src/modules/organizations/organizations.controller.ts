@@ -25,6 +25,13 @@ export class OrganizationsController {
     return this.orgsService.createWithAdmin(orgData, adminData);
   }
 
+  @Get('me/usage')
+  async getMyUsage(@Req() req: any) {
+    // req.user contains the authenticated user details
+    const orgId = req.user.organizationId;
+    return this.orgsService.getUsage(orgId);
+  }
+
   @Get(':id')
   async findOne(@Req() req: any) {
     return this.orgsService.findOne(req.params.id);

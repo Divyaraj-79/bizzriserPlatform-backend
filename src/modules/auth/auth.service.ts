@@ -356,7 +356,8 @@ export class AuthService {
           subscriptionStatus: 'TRIAL',
           trialEndsAt,
           packageId: data.planId,
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          credits: 50
         }
       });
 

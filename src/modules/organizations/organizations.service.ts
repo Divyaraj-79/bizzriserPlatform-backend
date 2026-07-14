@@ -123,6 +123,49 @@ export class OrganizationsService {
     });
   }
 
+  async getUsage(orgId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      include: { package: true }
+    });
+
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const [
+      contactsCount,
+      whatsappAccountsCount,
+      teamMembersCount,
+      chatbotsCount,
+      broadcastsCount
+    ] = await Promise.all([
+      this.prisma.contact.count({ where: { organizationId: orgId } }),
+      this.prisma.whatsAppAccount.count({ where: { organizationId: orgId } }),
+      this.prisma.user.count({ where: { organizationId: orgId } }),
+      this.prisma.chatbot.count({ where: { organizationId: orgId } }),
+      this.prisma.campaign.count({ where: { organizationId: orgId } }) // Assuming campaigns are broadcasts
+    ]);
+
+    return {
+      limits: {
+        contactImportLimit: org.package?.contactImportLimit ?? 0,
+        whatsappAccountLimit: org.package?.whatsappAccountLimit ?? 0,
+        teamMemberLimit: org.package?.teamMemberLimit ?? 0,
+        chatbotLimit: org.package?.chatbotLimit ?? 0,
+        broadcastContactLimit: org.package?.broadcastContactLimit ?? 0
+      },
+      usage: {
+        contacts: contactsCount,
+        whatsappAccounts: whatsappAccountsCount,
+        teamMembers: teamMembersCount,
+        chatbots: chatbotsCount,
+        broadcasts: broadcastsCount
+      },
+      credits: org.credits,
+      subscriptionStatus: org.subscriptionStatus,
+      trialEndsAt: org.trialEndsAt
+    };
+  }
+
   async findOne(id: string) {
     return this.prisma.organization.findUnique({
       where: { id },
