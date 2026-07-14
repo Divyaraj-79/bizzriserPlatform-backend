@@ -13,7 +13,7 @@ export class ClientsService {
     private readonly authService: AuthService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService
-  ) {}
+  ) { }
 
   async findAll() {
     return this.prisma.organization.findMany({
@@ -82,7 +82,7 @@ export class ClientsService {
       });
     }
 
-    const frontendUrl = this.configService.get<string>('FRONTEND_PUBLIC_URL') || 'http://localhost:3000';
+    const frontendUrl = this.configService.get<string>('FRONTEND_PUBLIC_URL') || 'https://bizzriser-platform-frontend-yw8n-sand.vercel.app';
     const signupUrl = `${frontendUrl}/signup?email=${encodeURIComponent(data.email)}`;
     await this.mailService.sendClientInvitationEmail(data.email, data.firstName, signupUrl);
 
