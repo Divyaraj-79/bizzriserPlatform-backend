@@ -52,6 +52,18 @@ export class AuthService {
       }
     }
 
+    // Ensure Superadmins always have unlimited control without plan boundaries
+    if (user.role === 'SUPER_ADMIN' && user.organizationId) {
+      try {
+        await this.prisma.organization.update({
+          where: { id: user.organizationId },
+          data: { credits: -1, subscriptionStatus: 'ACTIVE', status: 'ACTIVE' }
+        });
+      } catch (err) {
+        console.error('[Auth Service] Failed to enforce Superadmin org limits:', err);
+      }
+    }
+
     const accessTokenPayload = {
       email: user.email,
       sub: user.id,

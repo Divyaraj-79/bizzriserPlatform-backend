@@ -72,9 +72,9 @@ export class RazorpayService {
       offer = await this.offerCodesService.validate(offerCodeStr, planId);
     }
 
-    let totalCount = 600;
-    if (billingCycle === 'QUARTERLY') totalCount = 200;
-    if (billingCycle === 'YEARLY') totalCount = 50;
+    let totalCount = 120; // 10 years monthly
+    if (billingCycle === 'QUARTERLY') totalCount = 40; // 10 years quarterly
+    if (billingCycle === 'YEARLY') totalCount = 10; // 10 years yearly
 
     // Call Razorpay API to create subscription
     const payload: any = {

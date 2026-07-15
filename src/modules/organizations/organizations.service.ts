@@ -77,6 +77,7 @@ export class OrganizationsService {
 
   async findAll() {
     return this.prisma.organization.findMany({
+      where: { name: { not: 'Superadmin Private' } },
       include: {
         package: true,
         users: {
