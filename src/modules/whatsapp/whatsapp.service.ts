@@ -1,4 +1,4 @@
-import { Injectable, Logger, ConflictException, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, ConflictException, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SecurityService } from '../../common/services/security.service';

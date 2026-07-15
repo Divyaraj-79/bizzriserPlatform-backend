@@ -159,4 +159,96 @@ export class UsersService {
       }
     });
   }
+
+  // --- MY ACCOUNT METHODS ---
+
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        organization: {
+          include: {
+            package: true
+          }
+        }
+      }
+    });
+    if (!user) throw new NotFoundException('User not found');
+    const { passwordHash, ...safeUser } = user;
+    return safeUser;
+  }
+
+  async updateMe(userId: string, data: any) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const updateData: any = {};
+    if (data.firstName !== undefined) updateData.firstName = data.firstName;
+    if (data.lastName !== undefined) updateData.lastName = data.lastName;
+    if (data.timezone !== undefined) updateData.timezone = data.timezone;
+    if (data.address !== undefined && user.role === 'ORG_ADMIN') {
+      await this.prisma.organization.update({
+        where: { id: user.organizationId },
+        data: { address: data.address }
+      });
+    }
+
+    if (data.preferences) {
+      const currentPerms = (user.permissions as Record<string, any>) || {};
+      updateData.permissions = { ...currentPerms, preferences: data.preferences };
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: updateData
+    });
+    const { passwordHash, ...safeUser } = updated;
+    return safeUser;
+  }
+
+  async changePassword(userId: string, currentPass: string, newPass: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const isMatch = await bcrypt.compare(currentPass, user.passwordHash);
+    if (!isMatch) throw new Error('Incorrect current password');
+
+    const passwordHash = await bcrypt.hash(newPass, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash }
+    });
+    return { success: true };
+  }
+
+  async uploadMyAvatar(userId: string, file: any) {
+    const base64 = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl: base64 },
+    });
+    return { avatarUrl: updated.avatarUrl };
+  }
+
+  async deleteMe(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    // Guard: Prevent sole ORG_ADMIN from deleting account
+    if (user.role === 'ORG_ADMIN') {
+      const adminCount = await this.prisma.user.count({
+        where: {
+          organizationId: user.organizationId,
+          role: 'ORG_ADMIN',
+          status: 'ACTIVE'
+        }
+      });
+      if (adminCount <= 1) {
+        throw new Error('You are the sole admin of your organization. Please transfer ownership or contact support to delete your account.');
+      }
+    }
+
+    await this.prisma.user.delete({ where: { id: userId } });
+    return { success: true };
+  }
 }

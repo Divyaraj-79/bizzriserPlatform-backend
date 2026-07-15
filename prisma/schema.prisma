@@ -291,6 +291,8 @@ model User {
   permissions    Json                     @default("{}")
   resetOtp       String?
   resetOtpExpiry DateTime?
+  twoFactorEnabled Boolean  @default(false)
+  twoFactorSecret  String?
   lastSeenVersion String?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt

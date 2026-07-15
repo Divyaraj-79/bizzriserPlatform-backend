@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, UseGuards, Req, ForbiddenException, Param, Delete, Patch, Query, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req, ForbiddenException, Param, Delete, Patch, Query, UnauthorizedException, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -43,9 +44,43 @@ export class UsersController {
     return this.usersService.create(createUserDto);
   }
 
+  // --- MY ACCOUNT ROUTES ---
+
+  @Get('me')
+  async getMe(@Req() req: any) {
+    return this.usersService.getMe(req.user.sub);
+  }
+
+  @Patch('me')
+  async updateMe(@Req() req: any, @Body() body: any) {
+    return this.usersService.updateMe(req.user.sub, body);
+  }
+
+  @Post('me/change-password')
+  async changePassword(@Req() req: any, @Body() body: any) {
+    if (!body.currentPassword || !body.newPassword) {
+      throw new BadRequestException('currentPassword and newPassword are required');
+    }
+    return this.usersService.changePassword(req.user.sub, body.currentPassword, body.newPassword);
+  }
+
+  @Post('me/avatar')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadMyAvatar(@Req() req: any, @UploadedFile() file: any) {
+    if (!file) throw new BadRequestException('File is required');
+    return this.usersService.uploadMyAvatar(req.user.sub, file);
+  }
+
+  @Delete('me')
+  async deleteMe(@Req() req: any) {
+    return this.usersService.deleteMe(req.user.sub);
+  }
+
+  // --- END MY ACCOUNT ROUTES ---
+
   @Get('profile')
   async getProfile(@Req() req: any) {
-    return this.usersService.findOne(req.user.userId);
+    return this.usersService.findOne(req.user.sub);
   }
 
   @Patch(':id')

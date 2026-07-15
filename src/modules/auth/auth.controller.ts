@@ -67,6 +67,41 @@ export class AuthController {
     return { permissions };
   }
 
+  // --- 2FA Endpoints ---
+  
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/setup')
+  @HttpCode(HttpStatus.OK)
+  async setup2FA(@Req() req: any) {
+    return this.authService.setup2FA(req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/verify')
+  @HttpCode(HttpStatus.OK)
+  async verify2FASetup(@Req() req: any, @Body('token') token: string) {
+    if (!token) throw new UnauthorizedException('Token is required');
+    return this.authService.verify2FASetup(req.user.sub, token);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/disable')
+  @HttpCode(HttpStatus.OK)
+  async disable2FA(@Req() req: any, @Body('currentPassword') currentPassword: string) {
+    if (!currentPassword) throw new UnauthorizedException('Current password is required');
+    return this.authService.disable2FA(req.user.sub, currentPassword);
+  }
+
+  @Post('2fa/login')
+  @HttpCode(HttpStatus.OK)
+  async complete2FALogin(@Req() req: any, @Body('pre_auth_token') preAuthToken: string, @Body('token') token: string) {
+    if (!preAuthToken || !token) throw new UnauthorizedException('pre_auth_token and token are required');
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    return this.authService.complete2FALogin(preAuthToken, token, ip);
+  }
+
+  // --- End 2FA Endpoints ---
+
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   async forgotPassword(@Req() req: any, @Body('email') email: string) {

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Logger, HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { generateOrgCode } from '../../common/utils/org-code.util';
 import { ConfigService } from '@nestjs/config';
@@ -7,6 +7,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLoggerService } from '../activity-logs/activity-logger.service';
 import { MailService } from './mail.service';
 import * as bcrypt from 'bcryptjs';
+import * as speakeasy from 'speakeasy';
+import * as qrcode from 'qrcode';
 
 @Injectable()
 export class AuthService {
@@ -39,6 +41,24 @@ export class AuthService {
   }
 
   async login(user: any, ip?: string) {
+    // Fetch fresh user data to get twoFactorEnabled status
+    const freshUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { id: true, twoFactorEnabled: true, twoFactorSecret: true }
+    });
+
+    // If 2FA is enabled, issue a short-lived pre-auth token instead of a full JWT
+    if (freshUser?.twoFactorEnabled) {
+      const preAuthToken = this.jwtService.sign(
+        { sub: user.id, purpose: '2fa_challenge' },
+        { expiresIn: '5m' }
+      );
+      return {
+        requires_2fa: true,
+        pre_auth_token: preAuthToken,
+      };
+    }
+
     // Audit Trail: Update last IP (Non-blocking for login)
     if (ip && user.id) {
       try {
@@ -80,6 +100,88 @@ export class AuthService {
     return {
       access_token: this.jwtService.sign(accessTokenPayload),
       refresh_token: this.jwtService.sign(refreshTokenPayload, {
+        secret: this.configService.get<string>('jwt.refreshSecret'),
+        expiresIn: this.configService.get<string>('jwt.refreshExpiresIn') as any,
+      }),
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        organizationId: user.organizationId,
+      }
+    };
+  }
+
+  async complete2FALogin(preAuthToken: string, totpToken: string, ip?: string) {
+    // Verify the pre-auth token
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(preAuthToken);
+    } catch (err) {
+      throw new UnauthorizedException('2FA session expired. Please log in again.');
+    }
+
+    if (payload.purpose !== '2fa_challenge') {
+      throw new UnauthorizedException('Invalid 2FA token');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: { organization: true }
+    });
+
+    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+      throw new UnauthorizedException('2FA is not enabled for this account');
+    }
+
+    // Verify the TOTP token with a 1-step window for clock skew tolerance
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: totpToken,
+      window: 1,
+    });
+
+    if (!verified) {
+      throw new UnauthorizedException('Invalid or expired 2FA code');
+    }
+
+    // Audit trail
+    if (ip) {
+      try {
+        await this.usersService.update(user.id, { lastIp: ip, lastLoginAt: new Date() });
+        await this.activityLogger.log(user.id, 'user_login_2fa', { ip, timestamp: new Date() }, ip);
+      } catch (err) {
+        console.error('[Auth Service] Failed to update 2FA login audit:', err);
+      }
+    }
+
+    // Enforce Superadmin limits
+    if (user.role === 'SUPER_ADMIN' && user.organizationId) {
+      try {
+        await this.prisma.organization.update({
+          where: { id: user.organizationId },
+          data: { credits: -1, subscriptionStatus: 'ACTIVE', status: 'ACTIVE' }
+        });
+      } catch (err) {}
+    }
+
+    const accessTokenPayload = {
+      email: user.email,
+      sub: user.id,
+      orgId: user.organizationId,
+      role: user.role,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      originalOrgId: user.organizationId,
+      permissions: (user as any).permissions || {}
+    };
+
+    return {
+      access_token: this.jwtService.sign(accessTokenPayload),
+      refresh_token: this.jwtService.sign({ sub: user.id }, {
         secret: this.configService.get<string>('jwt.refreshSecret'),
         expiresIn: this.configService.get<string>('jwt.refreshExpiresIn') as any,
       }),
@@ -404,5 +506,63 @@ export class AuthService {
 
     // Return tokens so they are immediately logged in
     return this.login(result.user);
+  }
+
+  // --- 2FA METHODS ---
+
+  async setup2FA(userId: string) {
+    const user = await this.usersService.findOne(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    const secret = speakeasy.generateSecret({ name: `BizzRiser (${user.email})` });
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { twoFactorSecret: secret.base32 }
+    });
+
+    const qrCodeDataUrl = await qrcode.toDataURL(secret.otpauth_url as string);
+
+    return {
+      secret: secret.base32,
+      qrCode: qrCodeDataUrl
+    };
+  }
+
+  async verify2FASetup(userId: string, token: string) {
+    const user = await this.usersService.findOne(userId);
+    if (!user || !user.twoFactorSecret) throw new BadRequestException('2FA setup not initiated properly');
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token
+    });
+
+    if (!verified) {
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { twoFactorEnabled: true }
+    });
+
+    return { success: true };
+  }
+
+  async disable2FA(userId: string, currentPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) throw new BadRequestException('Incorrect password');
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { twoFactorEnabled: false, twoFactorSecret: null }
+    });
+
+    return { success: true };
   }
 }
