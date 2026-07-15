@@ -86,6 +86,11 @@ export class WhatsappController {
     return this.whatsappService.disconnectAccount(req.user.orgId, id);
   }
 
+  @Post('register/:id')
+  async registerAccount(@Req() req: any, @Param('id') id: string) {
+    return this.whatsappService.registerPhoneNumber(req.user.orgId, id, true);
+  }
+
   @Get('config')
   async getSignupConfig() {
     return {

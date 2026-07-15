@@ -1440,7 +1440,18 @@ export class WhatsappService {
         return;
       }
 
-      // 2. Cooldown check: Don't attempt more than once every 12 hours unless forced
+      // 2. Cooldown check & Robust 72-hour Rate Limiting
+      const now = Date.now();
+      const seventyTwoHoursMs = 72 * 60 * 60 * 1000;
+      let registrationHistory: string[] = Array.isArray(profile.registrationHistory) ? profile.registrationHistory : [];
+      
+      // Clean up history older than 72 hours
+      registrationHistory = registrationHistory.filter((ts: string) => (now - new Date(ts).getTime()) <= seventyTwoHoursMs);
+
+      if (registrationHistory.length >= 9 && force) {
+        throw new Error('RATE_LIMIT_EXCEEDED: Meta strict limit reached. Maximum of 9 manual registrations allowed per 72 hours.');
+      }
+
       const lastAttempt = profile.lastRegistrationAttemptAt ? new Date(profile.lastRegistrationAttemptAt) : null;
       const cooldownMs = 12 * 60 * 60 * 1000; // 12 hours
 
@@ -1448,6 +1459,9 @@ export class WhatsappService {
         this.logger.warn(`[Registration] Registration cooldown active for ${account.phoneNumberId}. Skipping. Last attempt: ${lastAttempt.toISOString()}`);
         return;
       }
+
+      // Record this new attempt (will be saved in DB in steps 4 & catch)
+      registrationHistory.push(new Date(now).toISOString());
 
       // 3. Perform the actual registration
       this.logger.log(`[Registration] Sending registration request for ${account.phoneNumberId} (PIN: 123456) using token: ${registrationToken.substring(0, 10)}...`);
@@ -1469,12 +1483,18 @@ export class WhatsappService {
             ...profile,
             lastRegistrationAttemptAt: new Date().toISOString(),
             registrationStatus: 'SUCCESS',
-            metaRegistrationResponse: regRes.data
+            metaRegistrationResponse: regRes.data,
+            registrationHistory
           }
         }
       });
 
     } catch (error: any) {
+      if (error.message?.includes('RATE_LIMIT_EXCEEDED')) {
+        this.logger.warn(`[Registration] Blocked by robust rate limiter for ${account.phoneNumberId}`);
+        throw new BadRequestException('Meta limit reached: Maximum of 9 registrations allowed per 72 hours. Please try again later.');
+      }
+
       const errorData = error.response?.data?.error;
       const errorMsg = errorData?.message || error.message;
       const errorCode = errorData?.code;
@@ -1484,6 +1504,14 @@ export class WhatsappService {
 
       // Update attempt timestamp even on failure to respect cooldown
       const profile = typeof account.businessProfile === 'object' ? (account.businessProfile as any) : {};
+      
+      // Calculate history again since we need to save it even on failure
+      const now = Date.now();
+      const seventyTwoHoursMs = 72 * 60 * 60 * 1000;
+      let registrationHistory: string[] = Array.isArray(profile.registrationHistory) ? profile.registrationHistory : [];
+      registrationHistory = registrationHistory.filter((ts: string) => (now - new Date(ts).getTime()) <= seventyTwoHoursMs);
+      registrationHistory.push(new Date(now).toISOString());
+
       await this.prisma.whatsAppAccount.update({
         where: { id: accountId },
         data: {
@@ -1492,10 +1520,14 @@ export class WhatsappService {
             lastRegistrationAttemptAt: new Date().toISOString(),
             registrationError: errorMsg,
             metaErrorCode: errorCode,
-            metaErrorSubcode: errorSubcode
+            metaErrorSubcode: errorSubcode,
+            registrationHistory
           }
         }
       });
+      
+      // Rethrow to let the controller catch it for UI feedback
+      throw new BadRequestException(`Registration failed: ${errorMsg}`);
     }
   }
 
