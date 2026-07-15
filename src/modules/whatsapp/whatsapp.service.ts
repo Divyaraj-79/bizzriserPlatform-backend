@@ -1054,7 +1054,7 @@ export class WhatsappService {
       });
       const statsMap = new Map(campaignStats.map(s => [s.templateName, s._sum]));
 
-      return templates.map(t => {
+      const result = templates.map(t => {
         const rawSent = statsMap.get(t.name)?.sentCount || 0;
         const rawDelivered = statsMap.get(t.name)?.deliveredCount || 0;
         const rawRead = statsMap.get(t.name)?.readCount || 0;
@@ -1077,6 +1077,9 @@ export class WhatsappService {
           readRate
         };
       });
+      
+      this.cache.set(`templates:${orgId}:${accountId}`, result, 120_000); // 2 min TTL
+      return result;
     } catch (error) {
       this.handleError(error, `Failed to fetch and sync templates via account ${accountId}`);
     }
