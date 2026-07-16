@@ -26,6 +26,7 @@ export class SequencesService implements OnModuleInit {
             status: SequenceEnrollmentStatus.ACTIVE,
             nextExecuteAt: { lte: new Date() },
           },
+          select: { id: true }, // Optimized: only fetch ID to massively reduce bandwidth
           take: 50,
         });
 
@@ -41,7 +42,7 @@ export class SequencesService implements OnModuleInit {
       } catch (error) {
         this.logger.error('Error polling sequences: ' + error.message);
       }
-    }, 30000); // 30 seconds
+    }, 60000); // Increased polling interval to 60 seconds (down from 30s) to save database quota
   }
 
   async createSequence(orgId: string, data: CreateSequenceDto) {

@@ -255,6 +255,7 @@ model Organization {
   userInputFlows          UserInputFlow[]
   metaCommerceConnection  MetaCommerceConnection?
   metaCatalogs            MetaCatalog[]
+  metaProducts            MetaProduct[]
   catalogOrders           CatalogOrder[]
   manualPayments          ManualPayment[]
   catalogCoupons          CatalogCoupon[]
@@ -906,6 +907,8 @@ model MetaCatalog {
   isPublic         Boolean         @default(false)
   settings         Json            @default("{}")
   messageTemplates Json            @default("{}")
+  productCount     Int             @default(0)
+  lastSyncedAt     DateTime?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   coupons          CatalogCoupon[]
@@ -1128,4 +1131,32 @@ model AppVersion {
   publishedAt DateTime?
 
   @@map("app_versions")
+}
+
+model MetaProduct {
+  id              String   @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  metaCatalogId   String
+  
+  metaId          String?  // Meta's node ID
+  retailerId      String   // SKU / Content ID
+  
+  name            String
+  description     String?  @db.Text
+  price           String?
+  currency        String?
+  image_url       String?
+  url             String?
+  brand           String?
+  availability    String?
+  condition       String?
+  category        String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([organizationId, metaCatalogId, retailerId])
+  @@index([organizationId, metaCatalogId])
+  @@map("meta_products")
 }

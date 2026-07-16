@@ -7,6 +7,7 @@ import { json, urlencoded } from 'express';
 import * as express from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
+import compression from 'compression';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -22,6 +23,9 @@ async function bootstrap() {
     }
   }));
   app.use(urlencoded({ limit: '150mb', extended: true }));
+
+  // Enable compression to gzip/brotli API responses, drastically reducing bandwidth egress
+  app.use(compression());
 
   // Serve uploaded media files publicly (used as WhatsApp template media links)
   // Meta requires publicly accessible URLs for template media headers; media_ids from upload API cause error 131053
