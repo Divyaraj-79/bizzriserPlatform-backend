@@ -95,8 +95,8 @@ export class MetaCommerceService {
       : await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
 
     if (data.paymentSettings || data.cartSettings) {
-      const catalog = await this.prisma.metaCatalog.findFirst({ where: { organizationId } });
-      if (catalog) {
+      const catalogs = await this.prisma.metaCatalog.findMany({ where: { organizationId } });
+      for (const catalog of catalogs) {
         const currentSettings = (catalog.settings as any) || {};
         const newSettings = { ...currentSettings };
         if (data.paymentSettings) newSettings.paymentSettings = data.paymentSettings;
@@ -113,16 +113,16 @@ export class MetaCommerceService {
 
   async getSettings(organizationId: string) {
     const connection = await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
-    const catalog = await this.prisma.metaCatalog.findFirst({ where: { organizationId } });
+    const catalog = await this.prisma.metaCatalog.findFirst({
+      where: { organizationId },
+      orderBy: { updatedAt: 'desc' }
+    });
     const settings = (catalog?.settings as any) || {};
     
     return {
-      success: true,
-      data: {
-        outOfStockBehavior: connection?.outOfStockBehavior,
-        paymentSettings: settings.paymentSettings || {},
-        cartSettings: settings.cartSettings || {}
-      }
+      outOfStockBehavior: connection?.outOfStockBehavior,
+      paymentSettings: settings.paymentSettings || {},
+      cartSettings: settings.cartSettings || {}
     };
   }
 
@@ -708,7 +708,8 @@ export class MetaCommerceService {
       return response.data;
     } catch (error: any) {
       this.logger.error('Create Product Set Error:', error.response?.data || error.message);
-      const metaError = error.response?.data?.error?.message;
+      const errData = error.response?.data?.error || {};
+      const metaError = errData.error_user_msg || errData.message;
       throw new InternalServerErrorException(metaError || 'Failed to create product set');
     }
   }
@@ -847,7 +848,8 @@ export class MetaCommerceService {
       }
     });
 
-      const checkoutLink = `https://bizzriser.com/checkout/${newOrder.id}`;
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const checkoutLink = `${frontendUrl}/checkout/${newOrder.id}`;
       require('fs').appendFileSync('order-log.txt', 'SUCCESS\\n');
       return { order: newOrder, checkoutLink, totalAmount, currency };
     } catch (e: any) {

@@ -28,6 +28,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { AppVersionsModule } from './modules/app-versions/app-versions.module';
 import { RazorpayModule } from './modules/razorpay/razorpay.module';
 import { OfferCodesModule } from './modules/offer-codes/offer-codes.module';
+import { CheckoutModule } from './modules/checkout/checkout.module';
 
 @Module({
   imports: [
@@ -103,6 +104,7 @@ import { OfferCodesModule } from './modules/offer-codes/offer-codes.module';
     AppVersionsModule,
     RazorpayModule,
     OfferCodesModule,
+    CheckoutModule,
   ],
 })
 export class AppModule { }

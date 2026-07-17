@@ -111,6 +111,21 @@ export class WhatsappService {
       }
     }
 
+    let fbUserId = 'Unknown';
+    let fbUserName = 'Unknown';
+    if (accessToken) {
+      try {
+        const meRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/me`, {
+          params: { fields: 'id,name', access_token: accessToken },
+        });
+        fbUserId = meRes.data.id || 'Unknown';
+        fbUserName = meRes.data.name || 'Unknown';
+        this.logger.log(`Fetched connected Facebook User: ${fbUserName} (${fbUserId})`);
+      } catch (meErr: any) {
+        this.logger.warn(`Could not fetch Facebook user info: ${meErr.message}`);
+      }
+    }
+
     // 3. Final Discovery Fallback: Safe Webhook Lookup (No-Migration needed)
     if (!wabaId) {
       this.logger.log(`Performing Safe Webhook discovery for App ${appId} (Retrying for 5s)...`);
@@ -218,6 +233,15 @@ export class WhatsappService {
     try {
       this.logger.log(`Linking WhatsApp Account: ${phoneNumber} (${phoneNumberId}) to Org: ${orgId}`);
 
+      const existingAccount = await this.prisma.whatsAppAccount.findUnique({ where: { phoneNumberId } });
+      const currentProfile = existingAccount?.businessProfile && typeof existingAccount.businessProfile === 'object' ? existingAccount.businessProfile : {};
+      
+      const newBusinessProfile = {
+        ...(currentProfile as any),
+        connectedByFbName: fbUserName !== 'Unknown' ? fbUserName : ((currentProfile as any).connectedByFbName || 'Unknown'),
+        connectedByFbId: fbUserId !== 'Unknown' ? fbUserId : ((currentProfile as any).connectedByFbId || 'Unknown'),
+      };
+
       const account = await this.prisma.whatsAppAccount.upsert({
         where: { phoneNumberId },
         update: {
@@ -227,6 +251,7 @@ export class WhatsappService {
           displayName,
           phoneNumber,
           status: 'ACTIVE',
+          businessProfile: newBusinessProfile,
         },
         create: {
           organizationId: orgId,
@@ -237,6 +262,7 @@ export class WhatsappService {
           accessToken: encryptedToken,
           verifyToken,
           webhookSecret,
+          businessProfile: newBusinessProfile,
         },
       });
 
@@ -1330,6 +1356,21 @@ export class WhatsappService {
       const tier = phoneInfo.messaging_limit_tier || 'TIER_1000';
       const limitLabel = tierMapping[tier] || tier;
 
+      let bmName = 'Unknown';
+      let bmId = 'Unknown';
+      try {
+        const wabaRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/${account.wabaId}`, {
+          params: { fields: 'owner_business_info' },
+          headers: { Authorization: `Bearer ${validatedToken}` },
+        });
+        if (wabaRes.data?.owner_business_info) {
+          bmName = wabaRes.data.owner_business_info.name || 'Unknown';
+          bmId = wabaRes.data.owner_business_info.id || 'Unknown';
+        }
+      } catch (err: any) {
+        this.logger.warn(`Could not fetch Business Manager info: ${err.message}`);
+      }
+
       let businessProfile: any = {};
       try {
         businessProfile = {
@@ -1337,14 +1378,18 @@ export class WhatsappService {
           qualityRating: (phoneInfo.quality_rating || 'UNKNOWN').toUpperCase(),
           nameStatus: phoneInfo.name_status || 'UNKNOWN',
           messagingLimit: limitLabel,
+          businessManagerName: bmName !== 'Unknown' ? bmName : ((account.businessProfile as any)?.businessManagerName || 'Unknown'),
+          businessManagerId: bmId !== 'Unknown' ? bmId : ((account.businessProfile as any)?.businessManagerId || 'Unknown'),
           lastSyncAt: new Date().toISOString(),
         };
-      } catch (profileErr) {
+      } catch (profileErr: any) {
         this.logger.error(`[SYNC] Failed to merge business profile JSON for account ${accountId}: ${profileErr.message}`);
         businessProfile = { 
           qualityRating: (phoneInfo.quality_rating || 'UNKNOWN').toUpperCase(),
           nameStatus: phoneInfo.name_status || 'UNKNOWN',
           messagingLimit: limitLabel,
+          businessManagerName: bmName,
+          businessManagerId: bmId,
           lastSyncAt: new Date().toISOString() 
         };
       }

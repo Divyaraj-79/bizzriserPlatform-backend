@@ -147,14 +147,19 @@ export class OrganizationsService {
       this.prisma.campaign.count({ where: { organizationId: orgId } }) // Assuming campaigns are broadcasts
     ]);
 
+    const superAdmin = await this.prisma.user.findFirst({
+      where: { organizationId: orgId, role: 'SUPER_ADMIN' }
+    });
+    const isSuperAdmin = !!superAdmin;
+
     return {
       limits: {
-        contactImportLimit: org.subscriptionStatus === 'TRIAL' ? 100 : (org.package?.contactImportLimit ?? 0),
-        whatsappAccountLimit: org.package?.whatsappAccountLimit ?? 0,
-        teamMemberLimit: org.package?.teamMemberLimit ?? 0,
-        chatbotLimit: org.package?.chatbotLimit ?? 0,
-        broadcastContactLimit: org.subscriptionStatus === 'TRIAL' ? 50 : (org.package?.broadcastContactLimit ?? 0),
-        campaignLimit: org.subscriptionStatus === 'TRIAL' ? 1 : 0 // 0 means unlimited or determined elsewhere for non-trial
+        contactImportLimit: isSuperAdmin ? -1 : (org.subscriptionStatus === 'TRIAL' ? 100 : (org.package?.contactImportLimit ?? 0)),
+        whatsappAccountLimit: isSuperAdmin ? -1 : (org.package?.whatsappAccountLimit ?? 0),
+        teamMemberLimit: isSuperAdmin ? -1 : (org.package?.teamMemberLimit ?? 0),
+        chatbotLimit: isSuperAdmin ? -1 : (org.package?.chatbotLimit ?? 0),
+        broadcastContactLimit: isSuperAdmin ? -1 : (org.subscriptionStatus === 'TRIAL' ? 50 : (org.package?.broadcastContactLimit ?? 0)),
+        campaignLimit: isSuperAdmin ? -1 : (org.subscriptionStatus === 'TRIAL' ? 1 : 0)
       },
       usage: {
         contacts: contactsCount,
