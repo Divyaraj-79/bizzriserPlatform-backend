@@ -31,6 +31,12 @@ export class MetaCommerceController {
     return this.metaCommerceService.setActiveBusiness(organizationId, businessId);
   }
 
+  @Get('settings')
+  async getSettings(@Req() req: any) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.getSettings(organizationId);
+  }
+
   @Put('settings')
   async updateSettings(@Body() data: any, @Req() req: any) {
     const organizationId = req.user?.orgId;
@@ -159,5 +165,11 @@ export class MetaCommerceController {
   async deleteCoupon(@Param('couponId') couponId: string, @Req() req: any) {
     const organizationId = req.user?.orgId;
     return this.metaCommerceService.deleteCoupon(couponId, organizationId);
+  }
+
+  @Put('coupons/:couponId')
+  async updateCoupon(@Param('couponId') couponId: string, @Body() data: any, @Req() req: any) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.updateCoupon(couponId, organizationId, data);
   }
 }

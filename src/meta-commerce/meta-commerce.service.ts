@@ -82,12 +82,48 @@ export class MetaCommerceService {
   }
 
   async updateSettings(organizationId: string, data: any) {
-    return this.prisma.metaCommerceConnection.update({
-      where: { organizationId },
-      data: {
-        outOfStockBehavior: data.outOfStockBehavior
+    const updateData: any = {};
+    if (data.outOfStockBehavior !== undefined) {
+      updateData.outOfStockBehavior = data.outOfStockBehavior;
+    }
+    
+    const conn = Object.keys(updateData).length > 0 
+      ? await this.prisma.metaCommerceConnection.update({
+          where: { organizationId },
+          data: updateData
+        })
+      : await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
+
+    if (data.paymentSettings || data.cartSettings) {
+      const catalog = await this.prisma.metaCatalog.findFirst({ where: { organizationId } });
+      if (catalog) {
+        const currentSettings = (catalog.settings as any) || {};
+        const newSettings = { ...currentSettings };
+        if (data.paymentSettings) newSettings.paymentSettings = data.paymentSettings;
+        if (data.cartSettings) newSettings.cartSettings = data.cartSettings;
+        
+        await this.prisma.metaCatalog.update({
+          where: { id: catalog.id },
+          data: { settings: newSettings }
+        });
       }
-    });
+    }
+    return conn;
+  }
+
+  async getSettings(organizationId: string) {
+    const connection = await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
+    const catalog = await this.prisma.metaCatalog.findFirst({ where: { organizationId } });
+    const settings = (catalog?.settings as any) || {};
+    
+    return {
+      success: true,
+      data: {
+        outOfStockBehavior: connection?.outOfStockBehavior,
+        paymentSettings: settings.paymentSettings || {},
+        cartSettings: settings.cartSettings || {}
+      }
+    };
   }
 
   async getCatalogs(organizationId: string) {
@@ -159,6 +195,32 @@ export class MetaCommerceService {
     } catch (error: any) {
       this.logger.error('Fetch Local Products Error:', error.message);
       throw new InternalServerErrorException(`Failed to fetch local products: ${error.message}`);
+    }
+  }
+
+  async updateCoupon(couponId: string, organizationId: string, data: any) {
+    try {
+      const existing = await this.prisma.catalogCoupon.findFirst({
+        where: { id: couponId, organizationId }
+      });
+      if (!existing) throw new Error('Coupon not found');
+
+      const updated = await this.prisma.catalogCoupon.update({
+        where: { id: couponId },
+        data: {
+          code: data.code,
+          type: data.type,
+          value: data.value,
+          minOrder: data.minOrderAmount,
+          maxUses: data.maxUses,
+          isActive: data.isActive,
+          validFrom: data.validFrom ? new Date(data.validFrom) : null,
+          validTo: data.validTo ? new Date(data.validTo) : null,
+        }
+      });
+      return { success: true, data: updated };
+    } catch (err: any) {
+      throw new InternalServerErrorException(`Failed to update coupon: ${err.message}`);
     }
   }
 
@@ -755,19 +817,15 @@ export class MetaCommerceService {
     const taxAmount = (subtotal * taxPercent) / 100;
     const totalAmount = subtotal + taxAmount + finalShipping + serviceFee;
 
-    const currentInvoiceId = parseInt(cartSettings.nextInvoiceId || '1');
-    const orderUniqueId = `INV-${currentInvoiceId.toString().padStart(5, '0')}` ;
-    
-    const newCartSettings = { ...cartSettings, nextInvoiceId: currentInvoiceId + 1 };
-    await this.prisma.metaCatalog.update({
-      where: { id: catalog.id },
-      data: {
-        settings: {
-          ...settings,
-          cartSettings: newCartSettings
-        }
+    const generateOrderId = () => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let result = '';
+      for (let i = 0; i < 6; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
       }
-    });
+      return `ORD-${result}`;
+    };
+    const orderUniqueId = generateOrderId();
 
     const newOrder = await this.prisma.catalogOrder.create({
       data: {

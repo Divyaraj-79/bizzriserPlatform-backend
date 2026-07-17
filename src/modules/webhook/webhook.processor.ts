@@ -202,7 +202,17 @@ export class WebhookProcessor {
       // Process the catalog order for inventory sync
       try {
         await this.whatsappService.processCatalogOrder(organizationId, accountId, contact, order);
-        await this.metaCommerceService.processIncomingOrder(organizationId, accountId, contact.phone, order);
+        const { order: newOrder, checkoutLink, totalAmount, currency } = await this.metaCommerceService.processIncomingOrder(organizationId, accountId, contact.phone, order);
+        
+        // Send order confirmation and payment link back to customer
+        const messageText = `*Order Received!* 🎉\\n\\nYour order #${newOrder.orderUniqueId} for ${currency} ${totalAmount.toFixed(2)} has been submitted successfully.\\n\\nPlease complete your payment using this link:\\n${checkoutLink}\\n\\nThank you for shopping with us!`;
+        
+        await this.whatsappService.sendTextMessage(
+          organizationId,
+          accountId,
+          contact.phone,
+          messageText
+        );
       } catch (err: any) {
         this.logger.error(`Failed to process catalog order: ${err}`);
       }
