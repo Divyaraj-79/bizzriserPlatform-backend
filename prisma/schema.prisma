@@ -891,6 +891,7 @@ model MetaCommerceConnection {
   accessToken    String
   businessId     String?
   catalogId      String?
+  outOfStockBehavior String @default("MARK_OUT_OF_STOCK")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -1152,6 +1153,10 @@ model MetaProduct {
   availability    String?
   condition       String?
   category        String?
+  
+  itemGroupId     String?
+  inventory       Int?
+  salePrice       String?
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

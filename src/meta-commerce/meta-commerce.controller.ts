@@ -13,10 +13,28 @@ export class MetaCommerceController {
     return this.metaCommerceService.getStatus(organizationId);
   }
 
+  @Get('stats')
+  async getStats(@Req() req: any) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.getEcommerceStats(organizationId);
+  }
+
   @Post('disconnect')
   async disconnectAccount(@Req() req: any) {
     const organizationId = req.user?.orgId;
     return this.metaCommerceService.disconnectAccount(organizationId);
+  }
+
+  @Put('business')
+  async setActiveBusiness(@Body('businessId') businessId: string, @Req() req: any) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.setActiveBusiness(organizationId, businessId);
+  }
+
+  @Put('settings')
+  async updateSettings(@Body() data: any, @Req() req: any) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.updateSettings(organizationId, data);
   }
 
   @Get('oauth/url')
@@ -56,6 +74,12 @@ export class MetaCommerceController {
     return this.metaCommerceService.addProduct(catalogId, organizationId, data);
   }
 
+  @Post('catalogs/:catalogId/products/bulk')
+  async bulkAddProducts(@Param('catalogId') catalogId: string, @Body('products') products: any[], @Req() req: any) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.bulkAddProducts(catalogId, organizationId, products);
+  }
+
   @Put('catalogs/:catalogId/products/:retailerId')
   async updateProduct(
     @Param('catalogId') catalogId: string, 
@@ -75,6 +99,26 @@ export class MetaCommerceController {
   ) {
     const organizationId = req.user?.orgId;
     return this.metaCommerceService.deleteProduct(catalogId, organizationId, retailerId);
+  }
+
+  // --- Product Sets (Collections) ---
+
+  @Get('catalogs/:catalogId/sets')
+  async getProductSets(@Param('catalogId') catalogId: string, @Req() req: any) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.getProductSets(catalogId, organizationId);
+  }
+
+  @Post('catalogs/:catalogId/sets')
+  async createProductSet(@Param('catalogId') catalogId: string, @Body() data: any, @Req() req: any) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.createProductSet(catalogId, organizationId, data.name, data.filter);
+  }
+
+  @Delete('sets/:setId')
+  async deleteProductSet(@Param('setId') setId: string, @Req() req: any) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.deleteProductSet(setId, organizationId);
   }
 
   @Post('catalogs/:catalogId/sync')

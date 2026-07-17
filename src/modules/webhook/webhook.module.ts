@@ -8,6 +8,7 @@ import { MessagingModule } from '../messaging/messaging.module';
 import { ChatbotsModule } from '../chatbots/chatbots.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { MetaCommerceModule } from '../../meta-commerce/meta-commerce.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
     ChatbotsModule,
     WhatsappModule,
     RealtimeModule,
+    MetaCommerceModule,
   ],
   controllers: [WebhookController],
   providers: [WebhookService, WebhookProcessor],

@@ -1937,6 +1937,65 @@ export class WhatsappService {
     }
   }
 
+  async processCatalogOrder(organizationId: string, accountId: string, contact: any, orderData: any) {
+    if (!orderData || !orderData.product_items) return;
+    
+    const connection = await this.prisma.metaCommerceConnection.findUnique({
+      where: { organizationId }
+    });
+    if (!connection) return;
+
+    let outOfStockItems: string[] = [];
+
+    for (const item of orderData.product_items) {
+      const retailerId = item.product_retailer_id;
+      const quantity = parseInt(item.quantity) || 1;
+
+      const product = await this.prisma.metaProduct.findFirst({
+        where: { organizationId, retailerId }
+      });
+
+      if (product && product.inventory !== null && product.inventory !== undefined) {
+        let newInventory = product.inventory - quantity;
+        if (newInventory < 0) newInventory = 0;
+
+        await this.prisma.metaProduct.update({
+          where: { id: product.id },
+          data: { inventory: newInventory }
+        });
+
+        if (newInventory === 0 && product.inventory > 0) {
+          outOfStockItems.push(product.name);
+          
+          await this.prisma.metaProduct.update({
+            where: { id: product.id },
+            data: { availability: 'out of stock' }
+          });
+          
+          try {
+            await axios.post(`https://graph.facebook.com/${this.apiVersion}/${orderData.catalog_id}/items_batch`, {
+              item_type: 'PRODUCT_ITEM',
+              requests: [
+                {
+                  method: 'UPDATE',
+                  retailer_id: retailerId,
+                  data: { availability: 'out of stock' }
+                }
+              ]
+            }, { params: { access_token: connection.accessToken } });
+          } catch (e) {
+            this.logger.error(`Failed to mark product out of stock on Meta: ${e}`);
+          }
+        }
+      }
+    }
+
+    if (outOfStockItems.length > 0 && connection.outOfStockBehavior === 'CANCEL_ORDER') {
+      const msg = `Hi ${contact.firstName || 'there'},\n\nThank you for your order! Unfortunately, the following items from your order just went out of stock:\n- ${outOfStockItems.join('\n- ')}\n\nWe apologize for the inconvenience and will contact you shortly to adjust your order.`;
+      await this.sendTextMessage(organizationId, accountId, contact.phone, msg);
+    }
+  }
+
   private handleError(error: any, context: string) {
     const errorData = error.response?.data;
     const errorMsg = errorData?.error?.message || errorData?.error?.error_user_msg || errorData?.message || error.message;

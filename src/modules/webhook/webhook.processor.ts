@@ -8,6 +8,7 @@ import { MessageDirection, MessageType, MessageStatus, ChatbotSessionStatus } fr
 import { FlowExecutorService } from '../chatbots/executor/flow-executor.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { MetaCommerceService } from '../../meta-commerce/meta-commerce.service';
 
 @Processor('webhooks')
 export class WebhookProcessor {
@@ -20,6 +21,7 @@ export class WebhookProcessor {
     private readonly flowExecutor: FlowExecutorService,
     private readonly whatsappService: WhatsappService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly metaCommerceService: MetaCommerceService,
   ) {}
 
   @Process('process-message')
@@ -185,6 +187,26 @@ export class WebhookProcessor {
     } else if (messageData.type === 'audio') {
       messageType = MessageType.AUDIO;
       content = { audio: messageData.audio, body: '[Audio]' };
+    } else if (messageData.type === 'order') {
+      messageType = MessageType.TEXT;
+      
+      const order = messageData.order;
+      const itemCount = order.product_items?.length || 0;
+      let orderSummary = `[Order Received: ${itemCount} items]\n`;
+      order.product_items?.forEach((item: any) => {
+        orderSummary += `- ${item.quantity}x ${item.product_retailer_id} (Price: ${item.item_price})\n`;
+      });
+      
+      content = { body: orderSummary, order: order };
+
+      // Process the catalog order for inventory sync
+      try {
+        await this.whatsappService.processCatalogOrder(organizationId, accountId, contact, order);
+        await this.metaCommerceService.processIncomingOrder(organizationId, accountId, contact.phone, order);
+      } catch (err: any) {
+        this.logger.error(`Failed to process catalog order: ${err}`);
+      }
+
     } else if (messageData.type === 'unsupported') {
       messageType = MessageType.TEXT;
       const errorMsg = messageData.errors?.[0]?.title || 'Message type unknown';
@@ -251,6 +273,8 @@ export class WebhookProcessor {
           }
         } else if (messageData.type === 'button') {
           textBody = messageData.button.text;
+        } else if (messageData.type === 'order') {
+          textBody = '[Order Received]';
         } else {
           textBody = `[${messageData.type.toUpperCase()}]`;
         }

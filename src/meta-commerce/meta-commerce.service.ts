@@ -74,28 +74,47 @@ export class MetaCommerceService {
     }
   }
 
+  async setActiveBusiness(organizationId: string, businessId: string | null) {
+    return this.prisma.metaCommerceConnection.update({
+      where: { organizationId },
+      data: { businessId }
+    });
+  }
+
+  async updateSettings(organizationId: string, data: any) {
+    return this.prisma.metaCommerceConnection.update({
+      where: { organizationId },
+      data: {
+        outOfStockBehavior: data.outOfStockBehavior
+      }
+    });
+  }
+
   async getCatalogs(organizationId: string) {
     const connection = await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
     if (!connection) throw new Error('Meta account not connected');
+    
+    if (!connection.businessId) {
+      // Return a specific error structure that the frontend can catch
+      throw new InternalServerErrorException('BUSINESS_MANAGER_NOT_SELECTED');
+    }
 
     try {
-      const bRes = await axios.get(`https://graph.facebook.com/${this.graphApiVersion}/me/businesses`, {
+      const bRes = await axios.get(`https://graph.facebook.com/${this.graphApiVersion}/${connection.businessId}`, {
         params: { 
           access_token: connection.accessToken,
-          fields: 'id,name,owned_product_catalogs,client_product_catalogs'
+          fields: 'owned_product_catalogs,client_product_catalogs'
         },
       });
-      const businesses = bRes.data.data;
+      const b = bRes.data;
       
       let allCatalogs: any[] = [];
       
-      for (const b of businesses) {
-        if (b.owned_product_catalogs?.data) {
-          allCatalogs.push(...b.owned_product_catalogs.data);
-        }
-        if (b.client_product_catalogs?.data) {
-          allCatalogs.push(...b.client_product_catalogs.data);
-        }
+      if (b.owned_product_catalogs?.data) {
+        allCatalogs.push(...b.owned_product_catalogs.data);
+      }
+      if (b.client_product_catalogs?.data) {
+        allCatalogs.push(...b.client_product_catalogs.data);
       }
       
       return allCatalogs;
@@ -150,6 +169,23 @@ export class MetaCommerceService {
     return { connected: !!connection, connection };
   }
 
+  async getEcommerceStats(organizationId: string) {
+    const [totalProducts, totalOrders, activeCoupons] = await Promise.all([
+      this.prisma.metaProduct.count({ where: { organizationId } }),
+      this.prisma.catalogOrder.count({ where: { organizationId } }),
+      this.prisma.catalogCoupon.count({ where: { organizationId, isActive: true } })
+    ]);
+
+    return {
+      success: true,
+      data: {
+        totalProducts,
+        totalOrders,
+        activeCoupons
+      }
+    };
+  }
+
   async addProduct(catalogId: string, organizationId: string, data: any) {
     const connection = await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
     if (!connection) throw new Error('Meta account not connected');
@@ -187,6 +223,10 @@ export class MetaCommerceService {
           brand: data.brand,
           availability: data.availability,
           condition: data.condition,
+          category: data.category || data.product_group,
+          itemGroupId: data.item_group_id,
+          inventory: data.inventory !== undefined && data.inventory !== null ? parseInt(data.inventory) : null,
+          salePrice: data.sale_price
         }
       });
       
@@ -195,6 +235,90 @@ export class MetaCommerceService {
       const fbError = error.response?.data?.error?.message || error.message;
       this.logger.error('Add Product Error:', fbError);
       throw new InternalServerErrorException(`Failed to add product: ${fbError}`);
+    }
+  }
+
+  async bulkAddProducts(catalogId: string, organizationId: string, products: any[]) {
+    const connection = await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
+    if (!connection) throw new Error('Meta account not connected');
+
+    if (!products || products.length === 0) return { success: true };
+
+    try {
+      // Split into batches of 50 (Meta's limit for items_batch is usually higher but 50 is safe)
+      const batchSize = 50;
+      for (let i = 0; i < products.length; i += batchSize) {
+        const batch = products.slice(i, i + batchSize);
+        const requests = batch.map(data => ({
+          method: 'CREATE',
+          data: data
+        }));
+
+        const payload = {
+          item_type: 'PRODUCT_ITEM',
+          requests
+        };
+
+        const response = await axios.post(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/items_batch`, payload, {
+          params: { access_token: connection.accessToken },
+        });
+
+        const validationStatus = response.data?.validation_status?.[0];
+        if (validationStatus?.errors?.length > 0) {
+          throw new Error(`Meta Validation Error: ${validationStatus.errors[0].message}`);
+        }
+
+        // Save to DB
+        const dbOperations = batch.map(data => {
+          return this.prisma.metaProduct.upsert({
+            where: {
+              organizationId_metaCatalogId_retailerId: {
+                organizationId,
+                metaCatalogId: catalogId,
+                retailerId: data.id
+              }
+            },
+            update: {
+              name: data.title || 'Unnamed Product',
+              description: data.description,
+              price: data.price,
+              image_url: data.image_link,
+              url: data.link,
+              brand: data.brand,
+              availability: data.availability,
+              condition: data.condition,
+              category: data.category || data.product_group,
+              itemGroupId: data.item_group_id,
+              inventory: data.inventory !== undefined && data.inventory !== null ? parseInt(data.inventory) : null,
+              salePrice: data.sale_price
+            },
+            create: {
+              organizationId,
+              metaCatalogId: catalogId,
+              retailerId: data.id,
+              name: data.title || 'Unnamed Product',
+              description: data.description,
+              price: data.price,
+              image_url: data.image_link,
+              url: data.link,
+              brand: data.brand,
+              availability: data.availability,
+              condition: data.condition,
+              category: data.category || data.product_group,
+              itemGroupId: data.item_group_id,
+              inventory: data.inventory !== undefined && data.inventory !== null ? parseInt(data.inventory) : null,
+              salePrice: data.sale_price
+            }
+          });
+        });
+        
+        await Promise.all(dbOperations);
+      }
+      return { success: true, count: products.length };
+    } catch (error: any) {
+      const fbError = error.response?.data?.error?.message || error.message;
+      this.logger.error('Bulk Add Products Error:', fbError);
+      throw new InternalServerErrorException(`Failed to bulk add products: ${fbError}`);
     }
   }
 
@@ -238,6 +362,10 @@ export class MetaCommerceService {
           brand: data.brand,
           availability: data.availability,
           condition: data.condition,
+          category: data.category || data.product_group,
+          itemGroupId: data.item_group_id,
+          inventory: data.inventory !== undefined && data.inventory !== null ? parseInt(data.inventory) : null,
+          salePrice: data.sale_price
         }
       });
       
@@ -260,6 +388,7 @@ export class MetaCommerceService {
           {
             method: 'DELETE',
             retailer_id: retailerId,
+            data: { id: retailerId }
           }
         ]
       };
@@ -345,6 +474,9 @@ export class MetaCommerceService {
           availability: product.availability,
           condition: product.condition,
           category: categoryStr,
+          itemGroupId: product.item_group_id || null,
+          inventory: product.inventory !== undefined && product.inventory !== null ? parseInt(product.inventory) : null,
+          salePrice: product.sale_price || null
         },
         create: {
           organizationId: organizationId,
@@ -361,6 +493,9 @@ export class MetaCommerceService {
           availability: product.availability,
           condition: product.condition,
           category: categoryStr,
+          itemGroupId: product.item_group_id || null,
+          inventory: product.inventory !== undefined && product.inventory !== null ? parseInt(product.inventory) : null,
+          salePrice: product.sale_price || null
         }
       });
     }
@@ -474,6 +609,63 @@ export class MetaCommerceService {
     }
   }
 
+  // --- Product Sets (Collections) ---
+
+  async getProductSets(catalogId: string, organizationId: string) {
+    const connection = await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
+    if (!connection) throw new Error('Meta account not connected');
+
+    try {
+      const response = await axios.get(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/product_sets`, {
+        params: { access_token: connection.accessToken, fields: 'id,name,filter,product_count' }
+      });
+      return response.data.data;
+    } catch (error: any) {
+      this.logger.error('Get Product Sets Error:', error.response?.data || error.message);
+      throw new InternalServerErrorException('Failed to fetch product sets');
+    }
+  }
+
+  async createProductSet(catalogId: string, organizationId: string, name: string, filter: any) {
+    const connection = await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
+    if (!connection) throw new Error('Meta account not connected');
+
+    try {
+      const formData = new URLSearchParams();
+      formData.append('name', name);
+      formData.append('filter', typeof filter === 'string' ? filter : JSON.stringify(filter));
+      
+      const response = await axios.post(
+        `https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/product_sets`,
+        formData,
+        {
+          params: { access_token: connection.accessToken },
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      this.logger.error('Create Product Set Error:', error.response?.data || error.message);
+      const metaError = error.response?.data?.error?.message;
+      throw new InternalServerErrorException(metaError || 'Failed to create product set');
+    }
+  }
+
+  async deleteProductSet(setId: string, organizationId: string) {
+    const connection = await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
+    if (!connection) throw new Error('Meta account not connected');
+
+    try {
+      const response = await axios.delete(`https://graph.facebook.com/${this.graphApiVersion}/${setId}`, {
+        params: { access_token: connection.accessToken }
+      });
+      return response.data;
+    } catch (error: any) {
+      this.logger.error('Delete Product Set Error:', error.response?.data || error.message);
+      throw new InternalServerErrorException('Failed to delete product set');
+    }
+  }
+
   async getCheckoutSession(id: string) {
     const order = await this.prisma.catalogOrder.findUnique({
       where: { id }
@@ -532,11 +724,12 @@ export class MetaCommerceService {
   }
 
   async processIncomingOrder(organizationId: string, whatsappAccountId: string, fromPhone: string, orderData: any) {
-    const catalogId = orderData.catalog_id;
-    const catalog = await this.prisma.metaCatalog.findFirst({
-      where: { metaCatalogId: catalogId, organizationId }
-    });
-    if (!catalog) throw new Error('Catalog not found for this order');
+    try {
+      const catalogId = orderData.catalog_id;
+      const catalog = await this.prisma.metaCatalog.findFirst({
+        where: { metaCatalogId: catalogId, organizationId }
+      });
+      if (!catalog) throw new Error('Catalog not found for this order');
 
     let subtotal = 0;
     const items = orderData.product_items || [];
@@ -566,7 +759,15 @@ export class MetaCommerceService {
     const orderUniqueId = `INV-${currentInvoiceId.toString().padStart(5, '0')}` ;
     
     const newCartSettings = { ...cartSettings, nextInvoiceId: currentInvoiceId + 1 };
-    await this.updateCatalogSettings(catalog.metaCatalogId, organizationId, { cartSettings: newCartSettings });
+    await this.prisma.metaCatalog.update({
+      where: { id: catalog.id },
+      data: {
+        settings: {
+          ...settings,
+          cartSettings: newCartSettings
+        }
+      }
+    });
 
     const newOrder = await this.prisma.catalogOrder.create({
       data: {
@@ -588,7 +789,12 @@ export class MetaCommerceService {
       }
     });
 
-    const checkoutLink = `https://bizzriser.com/checkout/${newOrder.id}`;
-    return { order: newOrder, checkoutLink, totalAmount, currency };
+      const checkoutLink = `https://bizzriser.com/checkout/${newOrder.id}`;
+      require('fs').appendFileSync('order-log.txt', 'SUCCESS\\n');
+      return { order: newOrder, checkoutLink, totalAmount, currency };
+    } catch (e: any) {
+      require('fs').appendFileSync('order-log.txt', 'ERROR: ' + e.message + '\\n');
+      throw e;
+    }
   }
 }
