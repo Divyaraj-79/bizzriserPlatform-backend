@@ -116,6 +116,7 @@ enum ChatbotTriggerType {
   KEYWORD_MATCH
   COMMENT_ON_POST
   STORY_REPLY
+  SYSTEM_EVENT
 }
 
 enum ChatbotStatus {
@@ -677,6 +678,7 @@ model Chatbot {
   description    String?
   channel        ChatbotChannel
   triggerType    ChatbotTriggerType
+  systemEvent    String?
   status         ChatbotStatus      @default(DRAFT)
   keywords       String[]           @default([])
   flowData       Json               @default("{}")

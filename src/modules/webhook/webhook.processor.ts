@@ -204,15 +204,31 @@ export class WebhookProcessor {
         await this.whatsappService.processCatalogOrder(organizationId, accountId, contact, order);
         const { order: newOrder, checkoutLink, totalAmount, currency } = await this.metaCommerceService.processIncomingOrder(organizationId, accountId, contact.phone, order);
         
-        // Send order confirmation and payment link back to customer
-        const messageText = `*Order Received!* 🎉\\n\\nYour order #${newOrder.orderUniqueId} for ${currency} ${totalAmount.toFixed(2)} has been submitted successfully.\\n\\nPlease complete your payment using this link:\\n${checkoutLink}\\n\\nThank you for shopping with us!`;
-        
-        await this.whatsappService.sendTextMessage(
-          organizationId,
-          accountId,
-          contact.phone,
-          messageText
-        );
+        // Check if there is an active predefined system chatbot for Order Confirmation
+        const systemBot = await this.prisma.chatbot.findFirst({
+          where: { organizationId, systemEvent: 'ORDER_CONFIRMATION', status: 'ACTIVE' }
+        });
+
+        if (systemBot) {
+          const initialVars = {
+            orderId: newOrder.orderUniqueId,
+            currency,
+            totalAmount: totalAmount.toFixed(2),
+            checkoutLink
+          };
+          // We must pass messageData as a fallback object if needed, it can be the order payload
+          await this.flowExecutor.startSession(organizationId, accountId, systemBot, contact, messageData, initialVars);
+        } else {
+          // Send default order confirmation and payment link back to customer
+          const messageText = `*Order Received!* 🎉\\n\\nYour order #${newOrder.orderUniqueId} for ${currency} ${totalAmount.toFixed(2)} has been submitted successfully.\\n\\nPlease complete your payment using this link:\\n${checkoutLink}\\n\\nThank you for shopping with us!`;
+          
+          await this.whatsappService.sendTextMessage(
+            organizationId,
+            accountId,
+            contact.phone,
+            messageText
+          );
+        }
       } catch (err: any) {
         this.logger.error(`Failed to process catalog order: ${err}`);
       }

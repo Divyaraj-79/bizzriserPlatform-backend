@@ -32,6 +32,12 @@ export class ChatbotsController {
     return this.chatbotsService.findAll(req.user.orgId);
   }
 
+  @Get('system')
+  @Permissions('chatbots:view')
+  findSystemChatbots(@Req() req: any) {
+    return this.chatbotsService.findSystemChatbots(req.user.orgId);
+  }
+
   @Post()
   @Permissions('chatbots:create')
   create(@Req() req: any, @Body() dto: CreateChatbotDto) {

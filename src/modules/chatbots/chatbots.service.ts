@@ -14,15 +14,16 @@ export class ChatbotsService {
   async findAll(orgId: string) {
     const [chatbots, total, active, inactive] = await Promise.all([
       this.prisma.chatbot.findMany({
-        where: { organizationId: orgId },
+        where: { organizationId: orgId, systemEvent: null },
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.chatbot.count({ where: { organizationId: orgId } }),
-      this.prisma.chatbot.count({ where: { organizationId: orgId, status: ChatbotStatus.ACTIVE } }),
+      this.prisma.chatbot.count({ where: { organizationId: orgId, systemEvent: null } }),
+      this.prisma.chatbot.count({ where: { organizationId: orgId, status: ChatbotStatus.ACTIVE, systemEvent: null } }),
       this.prisma.chatbot.count({
         where: {
           organizationId: orgId,
           status: { in: [ChatbotStatus.INACTIVE, ChatbotStatus.DRAFT] },
+          systemEvent: null,
         },
       }),
     ]);
@@ -31,6 +32,75 @@ export class ChatbotsService {
       chatbots,
       stats: { total, active, inactive },
     };
+  }
+
+  async findSystemChatbots(orgId: string) {
+    const requiredSystemEvents = [
+      {
+        event: 'ORDER_CONFIRMATION',
+        name: 'Order Confirmation',
+        description: 'Sent automatically when a customer places an order via the WhatsApp catalog.',
+      },
+    ];
+
+    for (const sysEvent of requiredSystemEvents) {
+      const existing = await this.prisma.chatbot.findFirst({
+        where: { organizationId: orgId, systemEvent: sysEvent.event },
+      });
+
+      if (!existing) {
+        // Initialize default system bot
+        const defaultFlow = {
+          nodes: [
+            {
+              id: 'trigger-1',
+              type: 'triggerNode',
+              position: { x: 100, y: 100 },
+              data: { 
+                isTrigger: true, 
+                label: 'System Event',
+                config: {
+                  type: 'SYSTEM_EVENT',
+                  eventName: sysEvent.event
+                }
+              },
+            },
+            {
+              id: 'message-1',
+              type: 'sendData',
+              position: { x: 400, y: 100 },
+              data: {
+                messageType: 'text',
+                text: '*Order Received!* 🎉\\n\\nYour order #{{orderId}} for {{currency}} {{totalAmount}} has been submitted successfully.\\n\\nPlease complete your payment using this link:\\n{{checkoutLink}}\\n\\nThank you for shopping with us!',
+              },
+            },
+          ],
+          edges: [
+            { id: 'e1', source: 'trigger-1', target: 'message-1' },
+          ],
+        };
+
+        await this.prisma.chatbot.create({
+          data: {
+            organizationId: orgId,
+            name: sysEvent.name,
+            description: sysEvent.description,
+            channel: 'WHATSAPP',
+            triggerType: 'SYSTEM_EVENT',
+            systemEvent: sysEvent.event,
+            status: 'DRAFT',
+            flowData: defaultFlow,
+          },
+        });
+      }
+    }
+
+    const chatbots = await this.prisma.chatbot.findMany({
+      where: { organizationId: orgId, systemEvent: { not: null } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return { chatbots };
   }
 
   async findOne(orgId: string, id: string) {

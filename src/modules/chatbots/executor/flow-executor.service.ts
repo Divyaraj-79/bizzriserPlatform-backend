@@ -40,7 +40,7 @@ export class FlowExecutorService {
 
   // ─── Session Lifecycle ───────────────────────────────────────────────────
 
-  async startSession(orgId: string, accountId: string, chatbot: Chatbot, contact: Contact, messageData: any) {
+  async startSession(orgId: string, accountId: string, chatbot: Chatbot, contact: Contact, messageData: any, initialVariables: Record<string, any> = {}) {
     this.logger.log(`Starting flow ${chatbot.id} for contact ${contact.phone}`);
     const flowData = chatbot.flowData as any;
     if (!flowData?.nodes?.length) return;
@@ -55,7 +55,7 @@ export class FlowExecutorService {
         accountId,
         currentNodeId: triggerNode.id,
         status: ChatbotSessionStatus.ACTIVE,
-        variables: {},
+        variables: initialVariables,
       },
     });
 
