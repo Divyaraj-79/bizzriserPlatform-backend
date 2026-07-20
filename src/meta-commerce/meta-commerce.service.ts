@@ -1,4 +1,5 @@
 import { Injectable, InternalServerErrorException, NotFoundException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { FlowExecutorService } from '../modules/chatbots/executor/flow-executor.service';
 import axios from 'axios';
@@ -13,7 +14,8 @@ export class MetaCommerceService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly flowExecutor: FlowExecutorService
+    private readonly flowExecutor: FlowExecutorService,
+    private readonly configService: ConfigService
   ) { }
 
   generateOAuthUrl() {
@@ -98,20 +100,8 @@ export class MetaCommerceService {
       })
       : await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
 
-    if (data.paymentSettings || data.cartSettings) {
-      const catalogs = await this.prisma.metaCatalog.findMany({ where: { organizationId } });
-      for (const catalog of catalogs) {
-        const currentSettings = (catalog.settings as any) || {};
-        const newSettings = { ...currentSettings };
-        if (data.paymentSettings) newSettings.paymentSettings = data.paymentSettings;
-        if (data.cartSettings) newSettings.cartSettings = data.cartSettings;
-
-        await this.prisma.metaCatalog.update({
-          where: { id: catalog.id },
-          data: { settings: newSettings }
-        });
-      }
-    }
+    // Removed the global cartSettings and paymentSettings mass-update logic
+    // as it is now handled per-catalog via updateCatalogSettings
     return conn;
   }
 
@@ -128,6 +118,31 @@ export class MetaCommerceService {
       paymentSettings: settings.paymentSettings || {},
       cartSettings: settings.cartSettings || {}
     };
+  }
+
+  async getCartAndPaymentSettings(organizationId: string, catalogId: string) {
+    const catalog = await this.prisma.metaCatalog.findFirst({
+      where: { organizationId, id: catalogId }
+    });
+    if (!catalog) throw new Error('Catalog not found');
+    return catalog.settings || {};
+  }
+
+  async updateCartAndPaymentSettings(organizationId: string, catalogId: string, data: any) {
+    const catalog = await this.prisma.metaCatalog.findFirst({
+      where: { organizationId, id: catalogId }
+    });
+    if (!catalog) throw new Error('Catalog not found');
+
+    const currentSettings = (catalog.settings as any) || {};
+    const newSettings = { ...currentSettings };
+    if (data.paymentSettings) newSettings.paymentSettings = data.paymentSettings;
+    if (data.cartSettings) newSettings.cartSettings = data.cartSettings;
+
+    return this.prisma.metaCatalog.update({
+      where: { id: catalog.id },
+      data: { settings: newSettings }
+    });
   }
 
   async getCatalogs(organizationId: string) {
@@ -173,7 +188,7 @@ export class MetaCommerceService {
       const response = await axios.get(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/products`, {
         params: {
           access_token: connection.accessToken,
-          fields: 'id,name,description,price,currency,image_url,availability,retailer_id,product_group,brand,condition,link'
+          fields: 'id,name,description,price,currency,image_url,availability,retailer_id,product_group,brand,condition,link,visibility'
         },
       });
       return response.data.data;
@@ -243,12 +258,9 @@ export class MetaCommerceService {
     ]);
 
     return {
-      success: true,
-      data: {
-        totalProducts,
-        totalOrders,
-        activeCoupons
-      }
+      totalProducts,
+      totalOrders,
+      activeCoupons
     };
   }
 
@@ -262,7 +274,10 @@ export class MetaCommerceService {
         requests: [
           {
             method: 'CREATE',
-            data: data
+            data: {
+              ...data,
+              visibility: data.isHidden !== undefined ? (data.isHidden ? 'staging' : 'published') : undefined
+            }
           }
         ]
       };
@@ -292,7 +307,8 @@ export class MetaCommerceService {
           category: data.category || data.product_group,
           itemGroupId: data.item_group_id,
           inventory: data.inventory !== undefined && data.inventory !== null ? parseInt(data.inventory) : null,
-          salePrice: data.sale_price
+          salePrice: data.sale_price,
+          isHidden: data.isHidden || false
         }
       });
 
@@ -399,7 +415,10 @@ export class MetaCommerceService {
           {
             method: 'UPDATE',
             retailer_id: retailerId,
-            data: data
+            data: {
+              ...data,
+              visibility: data.isHidden !== undefined ? (data.isHidden ? 'staging' : 'published') : undefined
+            }
           }
         ]
       };
@@ -431,7 +450,8 @@ export class MetaCommerceService {
           category: data.category || data.product_group,
           itemGroupId: data.item_group_id,
           inventory: data.inventory !== undefined && data.inventory !== null ? parseInt(data.inventory) : null,
-          salePrice: data.sale_price
+          salePrice: data.sale_price,
+          isHidden: data.isHidden !== undefined ? data.isHidden : undefined
         }
       });
 
@@ -440,6 +460,43 @@ export class MetaCommerceService {
       const fbError = error.response?.data?.error?.message || error.message;
       this.logger.error('Update Product Error:', fbError);
       throw new InternalServerErrorException(`Failed to update product: ${fbError}`);
+    }
+  }
+
+  async toggleProductVisibility(catalogId: string, organizationId: string, retailerId: string, isHidden: boolean) {
+    const connection = await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
+    if (!connection) throw new Error('Meta account not connected');
+
+    try {
+      const payload = {
+        item_type: 'PRODUCT_ITEM',
+        requests: [
+          {
+            method: 'UPDATE',
+            retailer_id: retailerId,
+            data: { visibility: isHidden ? 'staging' : 'published' }
+          }
+        ]
+      };
+
+      await axios.post(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/items_batch`, payload, {
+        params: { access_token: connection.accessToken },
+      });
+
+      await this.prisma.metaProduct.updateMany({
+        where: {
+          metaCatalogId: catalogId,
+          retailerId: retailerId,
+          organizationId: organizationId
+        },
+        data: { isHidden }
+      });
+
+      return { success: true, isHidden };
+    } catch (error: any) {
+      const fbError = error.response?.data?.error?.message || error.message;
+      this.logger.error('Toggle Product Visibility Error:', fbError);
+      throw new InternalServerErrorException(`Failed to toggle visibility: ${fbError}`);
     }
   }
 
@@ -542,7 +599,8 @@ export class MetaCommerceService {
           category: categoryStr,
           itemGroupId: product.item_group_id || null,
           inventory: product.inventory !== undefined && product.inventory !== null ? parseInt(product.inventory) : null,
-          salePrice: product.sale_price || null
+          salePrice: product.sale_price || null,
+          isHidden: product.visibility === 'staging'
         },
         create: {
           organizationId: organizationId,
@@ -561,7 +619,8 @@ export class MetaCommerceService {
           category: categoryStr,
           itemGroupId: product.item_group_id || null,
           inventory: product.inventory !== undefined && product.inventory !== null ? parseInt(product.inventory) : null,
-          salePrice: product.sale_price || null
+          salePrice: product.sale_price || null,
+          isHidden: product.visibility === 'staging'
         }
       });
     }
@@ -855,6 +914,10 @@ export class MetaCommerceService {
             const rate = response.data.rates[baseCurrency];
             if (rate) {
               price = price * rate;
+              // Update the item itself so the frontend sees the converted price
+              item.item_price = price.toFixed(2);
+              item.currency = baseCurrency;
+              item.original_currency = itemCurrency;
             } else {
               this.logger.warn(`Exchange rate not found for ${itemCurrency} to ${baseCurrency}`);
             }
@@ -918,6 +981,80 @@ export class MetaCommerceService {
     } catch (e: any) {
       require('fs').appendFileSync('order-log.txt', 'ERROR: ' + e.message + '\\n');
       throw e;
+    }
+  }
+
+  async uploadImage(organizationId: string, file: any) {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+
+      const ext = path.extname(file.originalname) || `.${file.mimetype.split('/')[1] || 'jpeg'}`;
+      const uniqueName = `product_${organizationId.slice(0, 8)}_${Date.now()}`;
+
+      const cloudName = this.configService.get<string>('cloudinary.cloudName');
+      const apiKey = this.configService.get<string>('cloudinary.apiKey');
+      const apiSecret = this.configService.get<string>('cloudinary.apiSecret');
+
+      let publicUrl = '';
+
+      if (cloudName && apiKey && apiSecret) {
+        const cloudinary = require('cloudinary').v2;
+        cloudinary.config({
+          cloud_name: cloudName,
+          api_key: apiKey,
+          api_secret: apiSecret,
+        });
+
+        this.logger.log(`[uploadImage] Uploading product image to Cloudinary...`);
+        
+        publicUrl = await new Promise<string>((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            {
+              resource_type: 'image',
+              public_id: uniqueName,
+              folder: `bizzriser_products/${organizationId}`,
+            },
+            (error: any, result: any) => {
+              if (error) {
+                this.logger.error(`Cloudinary upload failed: ${JSON.stringify(error)}`);
+                reject(error);
+              } else {
+                let finalUrl = result.secure_url;
+                if (!finalUrl.endsWith(ext) && !finalUrl.includes('?')) {
+                  finalUrl = `${finalUrl}${ext}`;
+                }
+                resolve(finalUrl);
+              }
+            }
+          );
+          
+          const streamifier = require('streamifier');
+          streamifier.createReadStream(file.buffer).pipe(uploadStream);
+        });
+
+        this.logger.log(`[uploadImage] Cloudinary Upload SUCCESS → ${publicUrl}`);
+      } else {
+        this.logger.log('[uploadImage] Cloudinary not configured. Falling back to local disk storage.');
+        const uploadsDir = path.join(process.cwd(), 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+
+        const filenameToReturn = uniqueName + ext;
+        const filePath = path.join(uploadsDir, filenameToReturn);
+        fs.writeFileSync(filePath, file.buffer);
+
+        const backendUrl = this.configService.get<string>('app.publicUrl') || 'http://localhost:3001';
+        publicUrl = `${backendUrl}/uploads/${filenameToReturn}`;
+
+        this.logger.log(`[uploadImage] Saved locally (${file.size} bytes) → ${publicUrl}`);
+      }
+
+      return { success: true, url: publicUrl };
+    } catch (error: any) {
+      this.logger.error(`[uploadImage] Failed to upload image: ${error.message}`);
+      throw new InternalServerErrorException(`Failed to process image upload: ${error.message}`);
     }
   }
 }

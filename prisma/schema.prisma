@@ -1159,6 +1159,7 @@ model MetaProduct {
   itemGroupId     String?
   inventory       Int?
   salePrice       String?
+  isHidden        Boolean  @default(false)
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

@@ -203,20 +203,31 @@ export class WebhookProcessor {
       try {
         await this.whatsappService.processCatalogOrder(organizationId, accountId, contact, order);
         const { order: newOrder, checkoutLink, totalAmount, currency } = await this.metaCommerceService.processIncomingOrder(organizationId, accountId, contact.phone, order);
-        
+        // Generate products string from the converted items saved in the order
+        let formattedProducts = '';
+        if (newOrder.metadata && (newOrder.metadata as any).items) {
+          (newOrder.metadata as any).items.forEach((item: any) => {
+            const sym = item.currency === 'INR' ? '₹' : (item.currency === 'USD' ? '$' : item.currency + ' ');
+            formattedProducts += `- ${item.quantity}x ${item.product_retailer_id} (Price: ${sym}${item.item_price})\n`;
+          });
+        } else {
+          formattedProducts = orderSummary.replace(`[Order Received: ${itemCount} items]\n`, '').trim();
+        }
+
         // Check if there is an active predefined system chatbot for Order Confirmation
         const systemBot = await this.prisma.chatbot.findFirst({
           where: { organizationId, systemEvent: 'ORDER_CONFIRMATION', status: 'ACTIVE' }
         });
 
         if (systemBot) {
+          const sym = currency === 'INR' ? '₹' : (currency === 'USD' ? '$' : currency + ' ');
           const initialVars = {
             orderId: newOrder.orderUniqueId,
             currency,
-            totalAmount: totalAmount.toFixed(2),
+            totalAmount: sym + totalAmount.toFixed(2),
             checkoutLink,
             itemCount: itemCount.toString(),
-            products: orderSummary.replace(`[Order Received: ${itemCount} items]\n`, '').trim(),
+            products: formattedProducts.trim(),
             tax: '0.00', // Update if catalog order provides tax
             shipping: '0.00' // Update if catalog order provides shipping
           };

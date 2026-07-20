@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Put, Delete, Body, Req, UseGuards, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Req, UseGuards, Param, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { MetaCommerceService } from './meta-commerce.service';
 import { JwtAuthGuard } from '../modules/auth/guards/jwt-auth.guard';
 
@@ -43,9 +44,48 @@ export class MetaCommerceController {
     return this.metaCommerceService.updateSettings(organizationId, data);
   }
 
+  @Get('catalogs/:catalogId/settings')
+  async getCatalogSettings(@Param('catalogId') catalogId: string, @Req() req: any) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.getCartAndPaymentSettings(organizationId, catalogId);
+  }
+
+  @Put('catalogs/:catalogId/settings')
+  async updateCatalogSettings(
+    @Param('catalogId') catalogId: string,
+    @Body() data: any,
+    @Req() req: any
+  ) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.updateCartAndPaymentSettings(organizationId, catalogId, data);
+  }
+
   @Get('oauth/url')
   getOAuthUrl() {
     return this.metaCommerceService.generateOAuthUrl();
+  }
+
+  @Post('upload-image')
+  @UseInterceptors(FileInterceptor('image'))
+  async uploadImage(@UploadedFile() file: any, @Req() req: any) {
+    if (!file) {
+      throw new BadRequestException('No image file provided');
+    }
+    
+    // Validate file type (Meta allows JPEG and PNG)
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Invalid file type. Only JPEG and PNG are allowed.');
+    }
+    
+    // Validate file size (Meta max limit is typically 8MB)
+    const maxSize = 8 * 1024 * 1024; // 8MB
+    if (file.size > maxSize) {
+      throw new BadRequestException('File is too large. Maximum size is 8MB.');
+    }
+
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.uploadImage(organizationId, file);
   }
 
   @Post('oauth/callback')
@@ -105,6 +145,17 @@ export class MetaCommerceController {
   ) {
     const organizationId = req.user?.orgId;
     return this.metaCommerceService.deleteProduct(catalogId, organizationId, retailerId);
+  }
+
+  @Patch('catalogs/:catalogId/products/:retailerId/visibility')
+  async toggleProductVisibility(
+    @Param('catalogId') catalogId: string,
+    @Param('retailerId') retailerId: string,
+    @Body('isHidden') isHidden: boolean,
+    @Req() req: any
+  ) {
+    const organizationId = req.user?.orgId;
+    return this.metaCommerceService.toggleProductVisibility(catalogId, organizationId, retailerId, isHidden);
   }
 
   // --- Product Sets (Collections) ---
