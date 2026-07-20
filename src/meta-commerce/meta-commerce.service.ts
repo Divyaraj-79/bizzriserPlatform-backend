@@ -10,7 +10,7 @@ export class MetaCommerceService {
   private get redirectUri() { return process.env.META_OAUTH_REDIRECT_URI || 'http://localhost:3000/commerce/meta-setup'; }
   private readonly graphApiVersion = 'v19.0';
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   generateOAuthUrl() {
     const scopes = ['catalog_management', 'business_management'];
@@ -86,12 +86,12 @@ export class MetaCommerceService {
     if (data.outOfStockBehavior !== undefined) {
       updateData.outOfStockBehavior = data.outOfStockBehavior;
     }
-    
-    const conn = Object.keys(updateData).length > 0 
+
+    const conn = Object.keys(updateData).length > 0
       ? await this.prisma.metaCommerceConnection.update({
-          where: { organizationId },
-          data: updateData
-        })
+        where: { organizationId },
+        data: updateData
+      })
       : await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
 
     if (data.paymentSettings || data.cartSettings) {
@@ -101,7 +101,7 @@ export class MetaCommerceService {
         const newSettings = { ...currentSettings };
         if (data.paymentSettings) newSettings.paymentSettings = data.paymentSettings;
         if (data.cartSettings) newSettings.cartSettings = data.cartSettings;
-        
+
         await this.prisma.metaCatalog.update({
           where: { id: catalog.id },
           data: { settings: newSettings }
@@ -118,7 +118,7 @@ export class MetaCommerceService {
       orderBy: { updatedAt: 'desc' }
     });
     const settings = (catalog?.settings as any) || {};
-    
+
     return {
       outOfStockBehavior: connection?.outOfStockBehavior,
       paymentSettings: settings.paymentSettings || {},
@@ -129,7 +129,7 @@ export class MetaCommerceService {
   async getCatalogs(organizationId: string) {
     const connection = await this.prisma.metaCommerceConnection.findUnique({ where: { organizationId } });
     if (!connection) throw new Error('Meta account not connected');
-    
+
     if (!connection.businessId) {
       // Return a specific error structure that the frontend can catch
       throw new InternalServerErrorException('BUSINESS_MANAGER_NOT_SELECTED');
@@ -137,22 +137,22 @@ export class MetaCommerceService {
 
     try {
       const bRes = await axios.get(`https://graph.facebook.com/${this.graphApiVersion}/${connection.businessId}`, {
-        params: { 
+        params: {
           access_token: connection.accessToken,
           fields: 'owned_product_catalogs,client_product_catalogs'
         },
       });
       const b = bRes.data;
-      
+
       let allCatalogs: any[] = [];
-      
+
       if (b.owned_product_catalogs?.data) {
         allCatalogs.push(...b.owned_product_catalogs.data);
       }
       if (b.client_product_catalogs?.data) {
         allCatalogs.push(...b.client_product_catalogs.data);
       }
-      
+
       return allCatalogs;
     } catch (error: any) {
       const fbError = error.response?.data?.error?.message || error.message;
@@ -167,7 +167,7 @@ export class MetaCommerceService {
 
     try {
       const response = await axios.get(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/products`, {
-        params: { 
+        params: {
           access_token: connection.accessToken,
           fields: 'id,name,description,price,currency,image_url,availability,retailer_id,product_group,brand,condition,link'
         },
@@ -262,16 +262,16 @@ export class MetaCommerceService {
           }
         ]
       };
-      
+
       const response = await axios.post(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/items_batch`, payload, {
         params: { access_token: connection.accessToken },
       });
-      
+
       const validationStatus = response.data?.validation_status?.[0];
       if (validationStatus?.errors?.length > 0) {
         throw new Error(`Meta Validation Error: ${validationStatus.errors[0].message}`);
       }
-      
+
       await this.prisma.metaProduct.create({
         data: {
           organizationId,
@@ -291,7 +291,7 @@ export class MetaCommerceService {
           salePrice: data.sale_price
         }
       });
-      
+
       return response.data;
     } catch (error: any) {
       const fbError = error.response?.data?.error?.message || error.message;
@@ -373,7 +373,7 @@ export class MetaCommerceService {
             }
           });
         });
-        
+
         await Promise.all(dbOperations);
       }
       return { success: true, count: products.length };
@@ -395,20 +395,20 @@ export class MetaCommerceService {
           {
             method: 'UPDATE',
             retailer_id: retailerId,
-            data: data 
+            data: data
           }
         ]
       };
-      
+
       const response = await axios.post(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/items_batch`, payload, {
         params: { access_token: connection.accessToken },
       });
-      
+
       const validationStatus = response.data?.validation_status?.[0];
       if (validationStatus?.errors?.length > 0) {
         throw new Error(`Meta Validation Error: ${validationStatus.errors[0].message}`);
       }
-      
+
       await this.prisma.metaProduct.updateMany({
         where: {
           metaCatalogId: catalogId,
@@ -430,7 +430,7 @@ export class MetaCommerceService {
           salePrice: data.sale_price
         }
       });
-      
+
       return response.data;
     } catch (error: any) {
       const fbError = error.response?.data?.error?.message || error.message;
@@ -454,16 +454,16 @@ export class MetaCommerceService {
           }
         ]
       };
-      
+
       const response = await axios.post(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/items_batch`, payload, {
         params: { access_token: connection.accessToken },
       });
-      
+
       const validationStatus = response.data?.validation_status?.[0];
       if (validationStatus?.errors?.length > 0) {
         throw new Error(`Meta Validation Error: ${validationStatus.errors[0].message}`);
       }
-      
+
       await this.prisma.metaProduct.deleteMany({
         where: {
           metaCatalogId: catalogId,
@@ -471,7 +471,7 @@ export class MetaCommerceService {
           organizationId: organizationId
         }
       });
-      
+
       return response.data;
     } catch (error: any) {
       const fbError = error.response?.data?.error?.message || error.message;
@@ -482,7 +482,7 @@ export class MetaCommerceService {
 
   async syncCatalog(catalogId: string, organizationId: string) {
     const products = await this.fetchProductsFromMeta(catalogId, organizationId);
-    
+
     let catalog = await this.prisma.metaCatalog.findFirst({
       where: { organizationId, metaCatalogId: catalogId }
     });
@@ -506,16 +506,16 @@ export class MetaCommerceService {
         }
       });
     }
-    
+
     const metaIds = [];
-    
+
     for (const product of products) {
       const retailerId = String(product.retailer_id || product.id);
       metaIds.push(retailerId);
-      
+
       const cat = product.category || product.product_group;
       const categoryStr = cat ? (typeof cat === 'object' ? (cat.name || JSON.stringify(cat)) : String(cat)) : null;
-      
+
       await this.prisma.metaProduct.upsert({
         where: {
           organizationId_metaCatalogId_retailerId: {
@@ -578,7 +578,7 @@ export class MetaCommerceService {
         }
       });
     }
-    
+
     return { success: true, count: products.length };
   }
 
@@ -594,7 +594,7 @@ export class MetaCommerceService {
       where: { id: orderId, organizationId }
     });
     if (!order) throw new NotFoundException('Order not found');
-    
+
     return this.prisma.catalogOrder.update({
       where: { id: orderId },
       data: { status }
@@ -606,7 +606,7 @@ export class MetaCommerceService {
       where: { metaCatalogId: catalogId, organizationId }
     });
     if (!catalog) return [];
-    
+
     return this.prisma.catalogCoupon.findMany({
       where: { catalogId: catalog.id, organizationId },
       orderBy: { createdAt: 'desc' }
@@ -617,15 +617,15 @@ export class MetaCommerceService {
     let catalog = await this.prisma.metaCatalog.findFirst({
       where: { metaCatalogId: catalogId, organizationId }
     });
-    
+
     if (!catalog) {
-       catalog = await this.prisma.metaCatalog.create({
-         data: {
-           organizationId,
-           metaCatalogId: catalogId,
-           name: 'Catalog ' + catalogId
-         }
-       });
+      catalog = await this.prisma.metaCatalog.create({
+        data: {
+          organizationId,
+          metaCatalogId: catalogId,
+          name: 'Catalog ' + catalogId
+        }
+      });
     }
 
     return this.prisma.catalogCoupon.create({
@@ -696,7 +696,7 @@ export class MetaCommerceService {
       const formData = new URLSearchParams();
       formData.append('name', name);
       formData.append('filter', typeof filter === 'string' ? filter : JSON.stringify(filter));
-      
+
       const response = await axios.post(
         `https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/product_sets`,
         formData,
@@ -750,7 +750,7 @@ export class MetaCommerceService {
 
     const additionalInfo = JSON.parse(order.metadata as string || '{}');
     const subtotal = additionalInfo.subtotal || 0;
-    
+
     let discount = 0;
     if (coupon.type === 'PERCENTAGE') {
       discount = (subtotal * coupon.value) / 100;
@@ -794,61 +794,61 @@ export class MetaCommerceService {
       });
       if (!catalog) throw new Error('Catalog not found for this order');
 
-    let subtotal = 0;
-    const items = orderData.product_items || [];
-    for (const item of items) {
-      subtotal += parseFloat(item.item_price || '0') * parseInt(item.quantity || '0');
-    }
-    
-    const currency = items.length > 0 ? items[0].currency : 'USD';
-
-    const settings: any = catalog.settings || {};
-    const cartSettings = settings.cartSettings || {};
-    
-    const taxPercent = parseFloat(cartSettings.taxPercent || '0');
-    const shippingCharge = parseFloat(cartSettings.shippingCharge || '0');
-    const freeShippingThreshold = parseFloat(cartSettings.freeShippingThreshold || '0');
-    const serviceFee = parseFloat(cartSettings.serviceFee || '0');
-    
-    let finalShipping = shippingCharge;
-    if (freeShippingThreshold > 0 && subtotal >= freeShippingThreshold) {
-      finalShipping = 0;
-    }
-
-    const taxAmount = (subtotal * taxPercent) / 100;
-    const totalAmount = subtotal + taxAmount + finalShipping + serviceFee;
-
-    const generateOrderId = () => {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let result = '';
-      for (let i = 0; i < 6; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      let subtotal = 0;
+      const items = orderData.product_items || [];
+      for (const item of items) {
+        subtotal += parseFloat(item.item_price || '0') * parseInt(item.quantity || '0');
       }
-      return `ORD-${result}`;
-    };
-    const orderUniqueId = generateOrderId();
 
-    const newOrder = await this.prisma.catalogOrder.create({
-      data: {
-        organizationId,
-        catalogId: catalog.metaCatalogId,
-        orderUniqueId,
-        buyerPhone: fromPhone,
-        buyerName: 'WhatsApp Customer',
-        amount: totalAmount,
-        currency,
-        status: 'PENDING',
-        metadata: {
-          subtotal,
-          taxAmount,
-          shippingCharge: finalShipping,
-          serviceFee,
-          items
+      const currency = items.length > 0 ? items[0].currency : 'USD';
+
+      const settings: any = catalog.settings || {};
+      const cartSettings = settings.cartSettings || {};
+
+      const taxPercent = parseFloat(cartSettings.taxPercent || '0');
+      const shippingCharge = parseFloat(cartSettings.shippingCharge || '0');
+      const freeShippingThreshold = parseFloat(cartSettings.freeShippingThreshold || '0');
+      const serviceFee = parseFloat(cartSettings.serviceFee || '0');
+
+      let finalShipping = shippingCharge;
+      if (freeShippingThreshold > 0 && subtotal >= freeShippingThreshold) {
+        finalShipping = 0;
+      }
+
+      const taxAmount = (subtotal * taxPercent) / 100;
+      const totalAmount = subtotal + taxAmount + finalShipping + serviceFee;
+
+      const generateOrderId = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let result = '';
+        for (let i = 0; i < 6; i++) {
+          result += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-      }
-    });
+        return `ORD-${result}`;
+      };
+      const orderUniqueId = generateOrderId();
 
-      const frontendUrl = process.env.FRONTEND_PUBLIC_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
+      const newOrder = await this.prisma.catalogOrder.create({
+        data: {
+          organizationId,
+          catalogId: catalog.metaCatalogId,
+          orderUniqueId,
+          buyerPhone: fromPhone,
+          buyerName: 'WhatsApp Customer',
+          amount: totalAmount,
+          currency,
+          status: 'PENDING',
+          metadata: {
+            subtotal,
+            taxAmount,
+            shippingCharge: finalShipping,
+            serviceFee,
+            items
+          }
+        }
+      });
+
+      const frontendUrl = process.env.FRONTEND_PUBLIC_URL || process.env.FRONTEND_URL || 'https://bizzriser-platform-frontend-yw8n-sand.vercel.app/';
       const checkoutLink = `${frontendUrl}/checkout/${newOrder.id}`;
       this.logger.log(`Generated checkout link: ${checkoutLink}`);
       require('fs').appendFileSync('order-log.txt', 'SUCCESS\\n');
