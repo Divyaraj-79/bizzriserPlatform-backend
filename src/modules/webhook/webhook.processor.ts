@@ -214,7 +214,11 @@ export class WebhookProcessor {
             orderId: newOrder.orderUniqueId,
             currency,
             totalAmount: totalAmount.toFixed(2),
-            checkoutLink
+            checkoutLink,
+            itemCount: itemCount.toString(),
+            products: orderSummary.replace(`[Order Received: ${itemCount} items]\n`, '').trim(),
+            tax: '0.00', // Update if catalog order provides tax
+            shipping: '0.00' // Update if catalog order provides shipping
           };
           // We must pass messageData as a fallback object if needed, it can be the order payload
           await this.flowExecutor.startSession(organizationId, accountId, systemBot, contact, messageData, initialVars);

@@ -2653,6 +2653,9 @@ export class FlowExecutorService {
     const customFields = ((contact as any).customFields as Record<string, any>) || {};
 
     return template.replace(/\{\{([a-zA-Z0-9_.]+)\}\}/g, (match, key) => {
+      // Direct session variable match (for system event vars like orderId)
+      if (sessionVars[key] !== undefined) return String(sessionVars[key]);
+
       // {{var.VARNAME}}
       if (key.startsWith('var.')) return String(sessionVars[key.slice(4)] ?? match);
       // {{custom.FIELDNAME}}
