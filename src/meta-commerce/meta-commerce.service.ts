@@ -188,7 +188,8 @@ export class MetaCommerceService {
       const response = await axios.get(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/products`, {
         params: {
           access_token: connection.accessToken,
-          fields: 'id,name,description,price,currency,image_url,availability,retailer_id,product_group,brand,condition,link,visibility'
+          fields: 'id,name,description,price,image_url,url,brand,availability,condition,category,retailer_id,additional_image_link',
+          limit: 1000
         },
       });
       return response.data.data;
@@ -300,6 +301,7 @@ export class MetaCommerceService {
           description: data.description,
           price: data.price,
           image_url: data.image_link,
+          additional_image_urls: data.additional_image_link ? (Array.isArray(data.additional_image_link) ? data.additional_image_link : [data.additional_image_link]) : [],
           url: data.link,
           brand: data.brand,
           availability: data.availability,
@@ -365,6 +367,7 @@ export class MetaCommerceService {
               description: data.description,
               price: data.price,
               image_url: data.image_link,
+              additional_image_urls: data.additional_image_link ? (Array.isArray(data.additional_image_link) ? data.additional_image_link : [data.additional_image_link]) : [],
               url: data.link,
               brand: data.brand,
               availability: data.availability,
@@ -382,6 +385,7 @@ export class MetaCommerceService {
               description: data.description,
               price: data.price,
               image_url: data.image_link,
+              additional_image_urls: data.additional_image_link ? (Array.isArray(data.additional_image_link) ? data.additional_image_link : [data.additional_image_link]) : [],
               url: data.link,
               brand: data.brand,
               availability: data.availability,

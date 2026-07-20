@@ -1150,6 +1150,7 @@ model MetaProduct {
   price           String?
   currency        String?
   image_url       String?
+  additional_image_urls String[] @default([])
   url             String?
   brand           String?
   availability    String?
