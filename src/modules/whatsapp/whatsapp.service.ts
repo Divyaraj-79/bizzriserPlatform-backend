@@ -54,8 +54,8 @@ export class WhatsappService {
   /**
    * Connects a new WhatsApp Business Account using the code from Embedded Signup.
    */
-  async connectAccount(orgId: string, data: { code?: string; accessToken?: string; wabaId?: string; phoneNumberId?: string }) {
-    const { code, accessToken: providedToken, wabaId: providedWabaId, phoneNumberId: providedPhoneId } = data;
+  async connectAccount(orgId: string, data: { code?: string; accessToken?: string; wabaId?: string; phoneNumberId?: string; fbUserId?: string; fbUserName?: string }) {
+    const { code, accessToken: providedToken, wabaId: providedWabaId, phoneNumberId: providedPhoneId, fbUserId: providedFbUserId, fbUserName: providedFbUserName } = data;
     const appId = this.configService.get<string>('whatsapp.appId');
     const appSecret = this.configService.get<string>('whatsapp.appSecret');
     const systemAccessToken = this.configService.get<string>('whatsapp.accessToken');
@@ -111,19 +111,10 @@ export class WhatsappService {
       }
     }
 
-    let fbUserId = 'Unknown';
-    let fbUserName = 'Unknown';
-    if (accessToken) {
-      try {
-        const meRes = await axios.get(`${this.graphBaseUrl}/${this.apiVersion}/me`, {
-          params: { fields: 'id,name', access_token: accessToken },
-        });
-        fbUserId = meRes.data.id || 'Unknown';
-        fbUserName = meRes.data.name || 'Unknown';
-        this.logger.log(`Fetched connected Facebook User: ${fbUserName} (${fbUserId})`);
-      } catch (meErr: any) {
-        this.logger.warn(`Could not fetch Facebook user info: ${meErr.message}`);
-      }
+    let fbUserId = providedFbUserId || 'Unknown';
+    let fbUserName = providedFbUserName || 'Unknown';
+    if (fbUserId !== 'Unknown') {
+      this.logger.log(`Received connected Facebook User from frontend: ${fbUserName} (${fbUserId})`);
     }
 
     // 3. Final Discovery Fallback: Safe Webhook Lookup (No-Migration needed)
