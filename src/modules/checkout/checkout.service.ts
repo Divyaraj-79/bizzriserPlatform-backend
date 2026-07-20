@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { FlowExecutorService } from '../chatbots/executor/flow-executor.service';
 import * as crypto from 'crypto';
 import Stripe from 'stripe';
 import Razorpay from 'razorpay';
@@ -10,6 +11,7 @@ export class CheckoutService {
   constructor(
     private prisma: PrismaService,
     private whatsappService: WhatsappService,
+    private flowExecutor: FlowExecutorService,
   ) {}
 
   async getOrderDetails(orderId: string) {
@@ -228,17 +230,43 @@ export class CheckoutService {
   private async markOrderAsPaid(orderId: string, organizationId: string, catalogSettings: any) {
     const order = await this.prisma.catalogOrder.update({
       where: { id: orderId },
-      data: { status: 'PAID' }
+      data: { status: 'CONFIRMED' }
     });
 
-    const cartSettings = catalogSettings?.cartSettings || {};
-    if (cartSettings.checkoutSuccess && cartSettings.checkoutSuccess !== '') {
-      // Find the account to send from. Usually organizations have one or multiple connected whatsapp accounts.
-      const account = await this.prisma.whatsAppAccount.findFirst({
-        where: { organizationId }
+    const account = await this.prisma.whatsAppAccount.findFirst({
+      where: { organizationId }
+    });
+
+    if (account && order.buyerPhone) {
+      // Find the predefined ORDER_CONFIRMED chatbot
+      const systemBot = await this.prisma.chatbot.findFirst({
+        where: { organizationId, systemEvent: 'ORDER_CONFIRMED', status: 'ACTIVE' }
       });
 
-      if (account && order.buyerPhone) {
+      if (systemBot) {
+        // Trigger the flow
+        const contact = await this.prisma.contact.findFirst({
+          where: { organizationId, phone: order.buyerPhone }
+        });
+        
+        if (contact) {
+          const initialVars = {
+            orderId: order.orderUniqueId,
+            currency: order.currency,
+            totalAmount: order.amount?.toString() || '0'
+          };
+          
+          await this.flowExecutor.startSession(
+            organizationId, 
+            account.id, 
+            systemBot, 
+            contact, 
+            { text: { body: '' } }, // Dummy message data
+            initialVars
+          );
+        }
+      } else {
+        // Fallback simple message if bot not found or active
         const msg = `Hi ${order.buyerName || 'there'},\n\nWe have successfully received your payment of ${order.currency} ${order.amount} for Order ${order.orderUniqueId}!\n\nThank you for shopping with us!`;
         try {
           await this.whatsappService.sendTextMessage(organizationId, account.id, order.buyerPhone, msg);

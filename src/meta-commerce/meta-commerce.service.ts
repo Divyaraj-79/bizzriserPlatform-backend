@@ -1,5 +1,6 @@
 import { Injectable, InternalServerErrorException, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { FlowExecutorService } from '../modules/chatbots/executor/flow-executor.service';
 import axios from 'axios';
 
 @Injectable()
@@ -10,7 +11,10 @@ export class MetaCommerceService {
   private get redirectUri() { return process.env.META_OAUTH_REDIRECT_URI || 'http://localhost:3000/commerce/meta-setup'; }
   private readonly graphApiVersion = 'v19.0';
 
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly flowExecutor: FlowExecutorService
+  ) { }
 
   generateOAuthUrl() {
     const scopes = ['catalog_management', 'business_management'];
@@ -595,10 +599,51 @@ export class MetaCommerceService {
     });
     if (!order) throw new NotFoundException('Order not found');
 
-    return this.prisma.catalogOrder.update({
+    const updated = await this.prisma.catalogOrder.update({
       where: { id: orderId },
       data: { status }
     });
+
+    const systemEventMap: Record<string, string> = {
+      'APPROVED': 'ORDER_APPROVED',
+      'REJECTED': 'ORDER_REJECTED',
+      'SHIPPED': 'ORDER_SHIPPED',
+      'DELIVERED': 'ORDER_DELIVERED',
+      'COMPLETED': 'ORDER_COMPLETED',
+      'REFUNDED': 'ORDER_REFUNDED',
+    };
+
+    const sysEventStr = systemEventMap[status];
+    if (sysEventStr && order.buyerPhone) {
+      const systemBot = await this.prisma.chatbot.findFirst({
+        where: { organizationId, systemEvent: sysEventStr, status: 'ACTIVE' }
+      });
+      if (systemBot) {
+        const account = await this.prisma.whatsAppAccount.findFirst({
+          where: { organizationId }
+        });
+        const contact = await this.prisma.contact.findFirst({
+          where: { organizationId, phone: order.buyerPhone }
+        });
+        if (account && contact) {
+          const initialVars = {
+            orderId: order.orderUniqueId,
+            currency: order.currency,
+            totalAmount: order.amount?.toString() || '0'
+          };
+          await this.flowExecutor.startSession(
+            organizationId, 
+            account.id, 
+            systemBot, 
+            contact, 
+            { text: { body: '' } },
+            initialVars
+          );
+        }
+      }
+    }
+
+    return updated;
   }
 
   async getCoupons(catalogId: string, organizationId: string) {
@@ -848,7 +893,7 @@ export class MetaCommerceService {
         }
       });
 
-      const frontendUrl = process.env.FRONTEND_PUBLIC_URL || process.env.FRONTEND_URL || 'https://bizzriser-platform-frontend-yw8n-sand.vercel.app/';
+      const frontendUrl = process.env.FRONTEND_PUBLIC_URL || process.env.FRONTEND_URL || 'https://bizzriser-platform-frontend-yw8n-sand.vercel.app';
       const checkoutLink = `${frontendUrl}/checkout/${newOrder.id}`;
       this.logger.log(`Generated checkout link: ${checkoutLink}`);
       require('fs').appendFileSync('order-log.txt', 'SUCCESS\\n');

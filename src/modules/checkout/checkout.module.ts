@@ -3,9 +3,10 @@ import { CheckoutController } from './checkout.controller';
 import { CheckoutService } from './checkout.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { ChatbotsModule } from '../chatbots/chatbots.module';
 
 @Module({
-  imports: [PrismaModule, WhatsappModule],
+  imports: [PrismaModule, WhatsappModule, ChatbotsModule],
   controllers: [CheckoutController],
   providers: [CheckoutService]
 })

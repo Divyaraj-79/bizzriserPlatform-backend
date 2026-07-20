@@ -38,8 +38,48 @@ export class ChatbotsService {
     const requiredSystemEvents = [
       {
         event: 'ORDER_CONFIRMATION',
-        name: 'Order Confirmation',
+        name: 'Order Placed (Pending)',
         description: 'Sent automatically when a customer places an order via the WhatsApp catalog.',
+      },
+      {
+        event: 'ORDER_CONFIRMED',
+        name: 'Order Confirmed (Paid)',
+        description: 'Sent automatically when an order payment is completed and status is Confirmed.',
+      },
+      {
+        event: 'ORDER_APPROVED',
+        name: 'Order Approved',
+        description: 'Sent automatically when an order is approved.',
+      },
+      {
+        event: 'ORDER_REJECTED',
+        name: 'Order Rejected',
+        description: 'Sent automatically when an order is rejected.',
+      },
+      {
+        event: 'ORDER_SHIPPED',
+        name: 'Order Shipped',
+        description: 'Sent automatically when an order is shipped.',
+      },
+      {
+        event: 'ORDER_DELIVERED',
+        name: 'Order Delivered',
+        description: 'Sent automatically when an order is delivered.',
+      },
+      {
+        event: 'ORDER_COMPLETED',
+        name: 'Order Completed',
+        description: 'Sent automatically when an order is marked as completed.',
+      },
+      {
+        event: 'ORDER_REFUNDED',
+        name: 'Order Refunded',
+        description: 'Sent automatically when an order is refunded.',
+      },
+      {
+        event: 'ABANDONED_CART',
+        name: 'Abandoned Cart Reminder',
+        description: 'Sent automatically to remind customers of their pending order.',
       },
     ];
 
