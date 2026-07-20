@@ -850,6 +850,7 @@ export class MetaCommerceService {
 
       const frontendUrl = process.env.FRONTEND_PUBLIC_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
       const checkoutLink = `${frontendUrl}/checkout/${newOrder.id}`;
+      this.logger.log(`Generated checkout link: ${checkoutLink}`);
       require('fs').appendFileSync('order-log.txt', 'SUCCESS\\n');
       return { order: newOrder, checkoutLink, totalAmount, currency };
     } catch (e: any) {
