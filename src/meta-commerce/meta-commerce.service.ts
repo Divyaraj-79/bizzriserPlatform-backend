@@ -839,16 +839,33 @@ export class MetaCommerceService {
       });
       if (!catalog) throw new Error('Catalog not found for this order');
 
-      let subtotal = 0;
-      const items = orderData.product_items || [];
-      for (const item of items) {
-        subtotal += parseFloat(item.item_price || '0') * parseInt(item.quantity || '0');
-      }
-
-      const currency = items.length > 0 ? items[0].currency : 'USD';
-
       const settings: any = catalog.settings || {};
       const cartSettings = settings.cartSettings || {};
+      const items = orderData.product_items || [];
+      const baseCurrency = cartSettings.baseCurrency || (items.length > 0 ? items[0].currency : 'USD');
+
+      let subtotal = 0;
+      for (const item of items) {
+        let price = parseFloat(item.item_price || '0');
+        const itemCurrency = item.currency || baseCurrency;
+
+        if (itemCurrency !== baseCurrency) {
+          try {
+            const response = await axios.get(`https://api.frankfurter.app/latest?from=${itemCurrency}&to=${baseCurrency}`);
+            const rate = response.data.rates[baseCurrency];
+            if (rate) {
+              price = price * rate;
+            } else {
+              this.logger.warn(`Exchange rate not found for ${itemCurrency} to ${baseCurrency}`);
+            }
+          } catch (error) {
+            this.logger.error(`Failed to fetch exchange rate from ${itemCurrency} to ${baseCurrency}`, error);
+          }
+        }
+        subtotal += price * parseInt(item.quantity || '0');
+      }
+
+      const currency = baseCurrency;
 
       const taxPercent = parseFloat(cartSettings.taxPercent || '0');
       const shippingCharge = parseFloat(cartSettings.shippingCharge || '0');
