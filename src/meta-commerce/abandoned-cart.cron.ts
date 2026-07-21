@@ -45,44 +45,47 @@ export class AbandonedCartCron {
       const orderAgeMinutes = (new Date().getTime() - order.createdAt.getTime()) / (1000 * 60);
       
       if (orderAgeMinutes >= reminderMinutes) {
-        // Time to send reminder!
-        this.logger.log(`Sending abandoned cart reminder for order ${order.orderUniqueId}`);
-
-        const systemBot = await this.prisma.chatbot.findFirst({
-          where: { organizationId: order.organizationId, systemEvent: 'ABANDONED_CART', status: 'ACTIVE' }
-        });
-
-        if (systemBot) {
-          const account = await this.prisma.whatsAppAccount.findFirst({
-            where: { organizationId: order.organizationId }
-          });
-          
-          const contact = await this.prisma.contact.findFirst({
-            where: { organizationId: order.organizationId, phone: order.buyerPhone }
+        try {
+          const systemBot = await this.prisma.chatbot.findFirst({
+            where: { organizationId: order.organizationId, systemEvent: 'ABANDONED_CART', status: 'ACTIVE' }
           });
 
-          if (account && contact) {
-            const initialVars = {
-              orderId: order.orderUniqueId,
-              currency: order.currency,
-              totalAmount: order.amount?.toString() || '0'
-            };
-
-            await this.flowExecutor.startSession(
-              order.organizationId, 
-              account.id, 
-              systemBot, 
-              contact, 
-              { text: { body: '' } },
-              initialVars
-            );
-
-            // Mark reminder as sent
-            await this.prisma.catalogOrder.update({
-              where: { id: order.id },
-              data: { reminderSentAt: new Date() }
+          if (systemBot) {
+            const account = await this.prisma.whatsAppAccount.findFirst({
+              where: { organizationId: order.organizationId }
             });
+            
+            const contact = await this.prisma.contact.findFirst({
+              where: { organizationId: order.organizationId, phone: order.buyerPhone }
+            });
+
+            if (account && contact) {
+              this.logger.log(`Sending abandoned cart reminder for order ${order.orderUniqueId}`);
+              
+              const initialVars = {
+                orderId: order.orderUniqueId,
+                currency: order.currency,
+                totalAmount: order.amount?.toString() || '0'
+              };
+
+              await this.flowExecutor.startSession(
+                order.organizationId, 
+                account.id, 
+                systemBot, 
+                contact, 
+                { text: { body: '' } },
+                initialVars
+              );
+            }
           }
+        } catch (error) {
+          this.logger.error(`Failed to send abandoned cart reminder for ${order.orderUniqueId}`, error);
+        } finally {
+          // Always mark as checked so we don't infinitely retry it every 5 minutes
+          await this.prisma.catalogOrder.update({
+            where: { id: order.id },
+            data: { reminderSentAt: new Date() }
+          });
         }
       }
     }
