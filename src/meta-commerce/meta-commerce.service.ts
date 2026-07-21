@@ -472,6 +472,10 @@ export class MetaCommerceService {
     if (!connection) throw new Error('Meta account not connected');
 
     try {
+      const product = await this.prisma.metaProduct.findFirst({
+        where: { metaCatalogId: catalogId, retailerId: retailerId, organizationId: organizationId }
+      });
+
       const payload = {
         item_type: 'PRODUCT_ITEM',
         requests: [
@@ -479,7 +483,8 @@ export class MetaCommerceService {
             method: 'UPDATE',
             data: { 
               id: retailerId,
-              visibility: isHidden ? 'staging' : 'published' 
+              visibility: isHidden ? 'staging' : 'published',
+              availability: isHidden ? 'out of stock' : (product?.availability || 'in stock')
             }
           }
         ]
@@ -605,7 +610,7 @@ export class MetaCommerceService {
           image_url: product.image_url,
           url: product.link || product.url,
           brand: product.brand,
-          availability: product.availability,
+          availability: product.visibility === 'staging' ? undefined : product.availability,
           condition: product.condition,
           category: categoryStr,
           itemGroupId: product.item_group_id || null,
