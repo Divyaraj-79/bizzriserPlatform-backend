@@ -62,10 +62,19 @@ export class AbandonedCartCron {
             if (account && contact) {
               this.logger.log(`Sending abandoned cart reminder for order ${order.orderUniqueId}`);
               
+              let formattedProducts = '';
+              if (order.metadata && (order.metadata as any).items) {
+                (order.metadata as any).items.forEach((item: any) => {
+                  const sym = item.currency === 'INR' ? '₹' : (item.currency === 'USD' ? '$' : item.currency + ' ');
+                  formattedProducts += `- ${item.quantity}x ${item.product_retailer_id} (Price: ${sym}${item.item_price})\n`;
+                });
+              }
+
               const initialVars = {
                 orderId: order.orderUniqueId,
                 currency: order.currency,
-                totalAmount: order.amount?.toString() || '0'
+                totalAmount: order.amount?.toString() || '0',
+                products: formattedProducts.trim()
               };
 
               await this.flowExecutor.startSession(

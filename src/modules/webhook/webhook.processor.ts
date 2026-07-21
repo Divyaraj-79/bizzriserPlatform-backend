@@ -9,6 +9,7 @@ import { FlowExecutorService } from '../chatbots/executor/flow-executor.service'
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { MetaCommerceService } from '../../meta-commerce/meta-commerce.service';
+import { ShopifyService } from '../../shopify/shopify.service';
 
 @Processor('webhooks')
 export class WebhookProcessor {
@@ -22,6 +23,7 @@ export class WebhookProcessor {
     private readonly whatsappService: WhatsappService,
     private readonly realtimeGateway: RealtimeGateway,
     private readonly metaCommerceService: MetaCommerceService,
+    private readonly shopifyService: ShopifyService,
   ) {}
 
   @Process('process-message')
@@ -202,16 +204,85 @@ export class WebhookProcessor {
       // Process the catalog order for inventory sync
       try {
         await this.whatsappService.processCatalogOrder(organizationId, accountId, contact, order);
-        const { order: newOrder, checkoutLink, totalAmount, currency } = await this.metaCommerceService.processIncomingOrder(organizationId, accountId, contact.phone, order);
-        // Generate products string from the converted items saved in the order
+        
+        let newOrder: any;
+        let checkoutLink = '';
+        let totalAmount = 0;
+        let currency = 'USD';
         let formattedProducts = '';
-        if (newOrder.metadata && (newOrder.metadata as any).items) {
-          (newOrder.metadata as any).items.forEach((item: any) => {
-            const sym = item.currency === 'INR' ? '₹' : (item.currency === 'USD' ? '$' : item.currency + ' ');
-            formattedProducts += `- ${item.quantity}x ${item.product_retailer_id} (Price: ${sym}${item.item_price})\n`;
-          });
+        
+        // --- SHOPIFY DETECTION ---
+        // Check if the first product belongs to Shopify
+        let isShopifyOrder = false;
+        const firstRetailerId = order.product_items?.[0]?.product_retailer_id;
+        if (firstRetailerId) {
+           const shopifyProduct = await this.prisma.shopifyProduct.findFirst({
+             where: { 
+               organizationId,
+               OR: [
+                 { shopifyProductId: firstRetailerId },
+                 { shopifyVariantId: firstRetailerId },
+                 { sku: firstRetailerId }
+               ]
+             }
+           });
+           if (shopifyProduct) isShopifyOrder = true;
+        }
+
+        if (isShopifyOrder) {
+           // Handle via Shopify Draft Orders
+           const cartItems = await Promise.all((order.product_items || []).map(async (item: any) => {
+             const prod = await this.prisma.shopifyProduct.findFirst({
+               where: {
+                 organizationId,
+                 OR: [
+                   { shopifyProductId: item.product_retailer_id },
+                   { shopifyVariantId: item.product_retailer_id },
+                   { sku: item.product_retailer_id }
+                 ]
+               }
+             });
+             return {
+               productId: prod?.id || '',
+               shopifyProductId: prod?.shopifyProductId || item.product_retailer_id,
+               variantId: prod?.shopifyVariantId || '',
+               title: prod?.title || 'Shopify Product',
+               quantity: parseInt(item.quantity || '1'),
+               price: item.item_price
+             };
+           }));
+           
+           const draftResult = await this.shopifyService.createDraftOrder(organizationId, cartItems, {
+             phone: contact.phone,
+             name: contact.firstName + ' ' + (contact.lastName || '')
+           });
+           
+           newOrder = { orderUniqueId: draftResult.shopifyDraftOrderId };
+           checkoutLink = draftResult.invoiceUrl;
+           totalAmount = parseFloat(draftResult.totalPrice);
+           currency = draftResult.currency;
+           
+           cartItems.forEach(item => {
+             const sym = currency === 'INR' ? '₹' : (currency === 'USD' ? '$' : currency + ' ');
+             formattedProducts += `- ${item.quantity}x ${item.title} (Price: ${sym}${item.price})\n`;
+           });
+           
         } else {
-          formattedProducts = orderSummary.replace(`[Order Received: ${itemCount} items]\n`, '').trim();
+           // Handle via Meta Manual Catalog
+           const result = await this.metaCommerceService.processIncomingOrder(organizationId, accountId, contact.phone, order);
+           newOrder = result.order;
+           checkoutLink = result.checkoutLink;
+           totalAmount = result.totalAmount;
+           currency = result.currency;
+           
+           if (newOrder.metadata && (newOrder.metadata as any).items) {
+             (newOrder.metadata as any).items.forEach((item: any) => {
+               const sym = item.currency === 'INR' ? '₹' : (item.currency === 'USD' ? '$' : item.currency + ' ');
+               formattedProducts += `- ${item.quantity}x ${item.product_retailer_id} (Price: ${sym}${item.item_price})\n`;
+             });
+           } else {
+             formattedProducts = orderSummary.replace(`[Order Received: ${itemCount} items]\n`, '').trim();
+           }
         }
 
         // Check if there is an active predefined system chatbot for Order Confirmation
@@ -417,7 +488,7 @@ export class WebhookProcessor {
 
       // 5. Check for matching chatbot trigger (NEW session)
       const activeBots = await this.prisma.chatbot.findMany({
-        where: { organizationId, status: 'ACTIVE', channel: 'WHATSAPP' }
+        where: { organizationId, status: 'ACTIVE', channel: 'WHATSAPP', systemEvent: null }
       });
 
       let matched = null;

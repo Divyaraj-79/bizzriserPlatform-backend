@@ -260,6 +260,9 @@ model Organization {
   catalogOrders           CatalogOrder[]
   manualPayments          ManualPayment[]
   catalogCoupons          CatalogCoupon[]
+  shopifyConnection       ShopifyConnection?
+  shopifyProducts         ShopifyProduct[]
+  shopifyOrders           ShopifyOrder[]
 
   // New Subscription / Trial fields
   orgCode             String?             @unique
@@ -1168,4 +1171,88 @@ model MetaProduct {
   @@unique([organizationId, metaCatalogId, retailerId])
   @@index([organizationId, metaCatalogId])
   @@map("meta_products")
+}
+
+// ─── Shopify Integration ──────────────────────────────────────────────────────
+
+model ShopifyConnection {
+  id              String   @id @default(uuid())
+  organizationId  String   @unique
+  shopDomain      String                // e.g. "mystore.myshopify.com"
+  accessToken     String                // Shopify Admin API Access Token
+  scope           String?               // Granted OAuth scopes
+  webhookSecret   String?               // HMAC secret for webhook verification
+  apiVersion      String   @default("2025-01")  // Shopify API version
+  syncEnabled     Boolean  @default(true)
+  lastSyncedAt    DateTime?
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("shopify_connections")
+}
+
+model ShopifyProduct {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  shopifyProductId    String               // Shopify's product ID (numeric string)
+  shopifyVariantId    String?              // Default variant ID
+  title               String
+  description         String?  @db.Text
+  handle              String?              // Shopify URL handle (slug)
+  productType         String?
+  vendor              String?
+  status              String   @default("active")  // active | draft | archived
+  imageUrl            String?
+  additionalImages    String[] @default([])
+  price               String?              // Default variant price
+  compareAtPrice      String?
+  currency            String   @default("INR")
+  inventory           Int?                 // Tracked inventory quantity
+  sku                 String?              // Default variant SKU
+  tags                String[] @default([])
+  shopifyProductUrl   String?              // Full Shopify storefront URL
+  isHidden            Boolean  @default(false)  // BizzRiser-level hide (not Shopify)
+  variantsJson        Json     @default("[]")    // Full variants data
+  metadata            Json     @default("{}")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, shopifyProductId])
+  @@index([organizationId])
+  @@map("shopify_products")
+}
+
+model ShopifyOrder {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  shopifyOrderId      String               // Shopify's order ID
+  shopifyOrderNumber  String?              // e.g. "#1001"
+  draftOrderId        String?              // Shopify Draft Order ID (pre-payment)
+  buyerPhone          String?
+  buyerEmail          String?
+  buyerName           String?
+  totalPrice          String?
+  currency            String?
+  financialStatus     String?              // paid | pending | refunded | voided
+  fulfillmentStatus   String?              // fulfilled | null | partial | restocked
+  status              String   @default("PENDING")  // BizzRiser status
+  source              String   @default("WHATSAPP") // WHATSAPP | SHOPIFY_NATIVE
+  reminderSentAt      DateTime?
+  lineItems           Json     @default("[]")       // Snapshot of order items
+  shippingAddress     Json     @default("{}")
+  checkoutUrl         String?              // Shopify invoice URL for payment
+  shopifyCheckoutUrl  String?              // Native Shopify checkout URL
+  metadata            Json     @default("{}")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, shopifyOrderId])
+  @@index([organizationId])
+  @@index([organizationId, buyerPhone])
+  @@map("shopify_orders")
 }

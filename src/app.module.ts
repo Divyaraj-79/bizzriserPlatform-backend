@@ -29,6 +29,7 @@ import { AppVersionsModule } from './modules/app-versions/app-versions.module';
 import { RazorpayModule } from './modules/razorpay/razorpay.module';
 import { OfferCodesModule } from './modules/offer-codes/offer-codes.module';
 import { CheckoutModule } from './modules/checkout/checkout.module';
+import { ShopifyModule } from './shopify/shopify.module';
 
 @Module({
   imports: [
@@ -105,6 +106,7 @@ import { CheckoutModule } from './modules/checkout/checkout.module';
     RazorpayModule,
     OfferCodesModule,
     CheckoutModule,
+    ShopifyModule,
   ],
 })
 export class AppModule { }

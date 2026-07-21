@@ -35,4 +35,8 @@ export const validationSchema = Joi.object({
 
   // CORS
   CORS_ORIGINS: Joi.string().default('http://localhost:3000'),
+
+  // Shopify
+  SHOPIFY_CLIENT_ID: Joi.string().optional(),
+  SHOPIFY_CLIENT_SECRET: Joi.string().optional(),
 });

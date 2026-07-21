@@ -318,7 +318,7 @@ export class NotificationsService {
 
     const lowCreditOrgs = await this.prisma.organization.findMany({
       where: {
-        credits: { lte: threshold },
+        credits: { lte: threshold, gte: 0 },
         status: 'ACTIVE'
       }
     });
