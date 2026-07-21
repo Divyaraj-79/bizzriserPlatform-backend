@@ -477,15 +477,22 @@ export class MetaCommerceService {
         requests: [
           {
             method: 'UPDATE',
-            retailer_id: retailerId,
-            data: { visibility: isHidden ? 'staging' : 'published' }
+            data: { 
+              id: retailerId,
+              visibility: isHidden ? 'staging' : 'published' 
+            }
           }
         ]
       };
 
-      await axios.post(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/items_batch`, payload, {
+      const response = await axios.post(`https://graph.facebook.com/${this.graphApiVersion}/${catalogId}/items_batch`, payload, {
         params: { access_token: connection.accessToken },
       });
+
+      const validationStatus = response.data?.validation_status?.[0];
+      if (validationStatus?.errors?.length > 0) {
+        throw new Error(`Meta Validation Error: ${validationStatus.errors[0].message}`);
+      }
 
       await this.prisma.metaProduct.updateMany({
         where: {
