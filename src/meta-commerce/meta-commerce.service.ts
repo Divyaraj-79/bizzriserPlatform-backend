@@ -121,18 +121,30 @@ export class MetaCommerceService {
   }
 
   async getCartAndPaymentSettings(organizationId: string, catalogId: string) {
-    const catalog = await this.prisma.metaCatalog.findFirst({
-      where: { organizationId, id: catalogId }
+    let catalog = await this.prisma.metaCatalog.findFirst({
+      where: { organizationId, metaCatalogId: catalogId }
     });
-    if (!catalog) throw new Error('Catalog not found');
+    if (!catalog) {
+      return {};
+    }
     return catalog.settings || {};
   }
 
   async updateCartAndPaymentSettings(organizationId: string, catalogId: string, data: any) {
-    const catalog = await this.prisma.metaCatalog.findFirst({
-      where: { organizationId, id: catalogId }
+    let catalog = await this.prisma.metaCatalog.findFirst({
+      where: { organizationId, metaCatalogId: catalogId }
     });
-    if (!catalog) throw new Error('Catalog not found');
+
+    if (!catalog) {
+      catalog = await this.prisma.metaCatalog.create({
+        data: {
+          organizationId,
+          metaCatalogId: catalogId,
+          name: 'Meta Catalog',
+          settings: {}
+        }
+      });
+    }
 
     const currentSettings = (catalog.settings as any) || {};
     const newSettings = { ...currentSettings };
