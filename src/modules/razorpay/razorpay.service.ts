@@ -65,7 +65,40 @@ export class RazorpayService {
       throw new BadRequestException(`Unsupported billing cycle: ${billingCycle}`);
     }
 
-    if (!razorpayPlanId) throw new BadRequestException(`Razorpay Plan ID not configured for ${billingCycle} billing`);
+    // Auto-create plan on Razorpay if not configured
+    if (!razorpayPlanId) {
+      if (price <= 0) {
+        throw new BadRequestException(`Invalid price for ${billingCycle} billing`);
+      }
+      
+      try {
+        const rzpPlan = await this.razorpay.plans.create({
+          period: billingCycle === 'QUARTERLY' ? 'monthly' : 'yearly',
+          interval: billingCycle === 'QUARTERLY' ? 3 : 1,
+          item: {
+            name: `BizzRiser ${plan.name} ${billingCycle}`,
+            amount: price * 100, // paise
+            currency: 'INR',
+            description: `${plan.name} Plan - ${billingCycle} Subscription`
+          }
+        });
+        
+        razorpayPlanId = rzpPlan.id;
+        
+        // Save back to DB
+        await this.prisma.package.update({
+          where: { id: planId },
+          data: {
+            ...(billingCycle === 'QUARTERLY' ? { razorpayQuarterlyPlanId: razorpayPlanId } : {}),
+            ...(billingCycle === 'YEARLY' ? { razorpayYearlyPlanId: razorpayPlanId } : {})
+          }
+        });
+        this.logger.log(`Auto-created Razorpay plan ${razorpayPlanId} for ${plan.name} (${billingCycle})`);
+      } catch (err: any) {
+        this.logger.error('Failed to auto-create Razorpay plan', err);
+        throw new BadRequestException(`Failed to auto-create Razorpay plan: ${err.message || 'Unknown error'}`);
+      }
+    }
 
     let offer;
     if (offerCodeStr) {
