@@ -38,6 +38,21 @@ export class RazorpayService {
     }
   }
 
+  async getMySubscriptions(orgId: string, page: number = 1, limit: number = 10) {
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.prisma.razorpaySubscription.findMany({
+        where: { organizationId: orgId },
+        include: { package: { select: { name: true, description: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.razorpaySubscription.count({ where: { organizationId: orgId } })
+    ]);
+    return { data, total, page, limit };
+  }
+
   async createSubscription(orgId: string, planId: string, billingCycle: 'MONTHLY' | 'QUARTERLY' | 'YEARLY', offerCodeStr?: string) {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },

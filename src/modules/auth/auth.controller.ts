@@ -61,6 +61,22 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Req() req: any) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    return this.authService.logout(req.user.sub, ip);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('revoke-sessions')
+  @HttpCode(HttpStatus.OK)
+  async revokeSessions(@Req() req: any) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    return this.authService.revokeSessions(req.user.sub, ip);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('permissions/:accountId')
   async getPermissions(@Req() req: any, @Param('accountId') accountId: string) {
     const permissions = await this.authService.getAccountPermissions(req.user.sub, accountId);

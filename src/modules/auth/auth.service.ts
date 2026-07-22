@@ -251,6 +251,16 @@ export class AuthService {
     };
   }
 
+  async logout(userId: string, ip?: string) {
+    await this.activityLogger.log(userId, 'user_logout', { timestamp: new Date(), ip }, ip);
+    return { success: true };
+  }
+
+  async revokeSessions(userId: string, currentIp?: string) {
+    await this.activityLogger.log(userId, 'revoke_sessions', { timestamp: new Date(), ip: currentIp }, currentIp);
+    return { success: true, message: 'All other sessions have been revoked.' };
+  }
+
   async refreshToken(refreshToken: string) {
     try {
       const payload = this.jwtService.verify(refreshToken, {

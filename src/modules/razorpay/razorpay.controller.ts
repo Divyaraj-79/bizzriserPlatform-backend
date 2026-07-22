@@ -44,4 +44,14 @@ export class RazorpayController {
       data.razorpaySignature
     );
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('my-subscriptions')
+  async getMySubscriptions(
+    @Req() req: any,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+  ) {
+    return this.razorpayService.getMySubscriptions(req.user.orgId, parseInt(page, 10), parseInt(limit, 10));
+  }
 }

@@ -24,4 +24,28 @@ export class ActivityLogsController {
       userId,
     });
   }
+
+  @Get('my-activity')
+  async findMyActivity(
+    @Req() req: any,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+  ) {
+    return this.activityLoggerService.findMyActivity(req.user.sub, {
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+    });
+  }
+
+  @Get('my-sessions')
+  async findMySessions(@Req() req: any) {
+    const sessions = await this.activityLoggerService.findMySessions(req.user.sub);
+    const currentIp = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const currentAgent = req.headers['user-agent'];
+
+    return sessions.map(session => ({
+      ...session,
+      isCurrent: session.ip === currentIp && session.userAgent === currentAgent
+    }));
+  }
 }

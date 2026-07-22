@@ -60,11 +60,41 @@ export class OrganizationsService {
           lastName: adminData.lastName,
           passwordHash,
           role: UserRole.ORG_ADMIN,
+          status: 'ACTIVE',
         },
       });
 
       return { org, admin };
     });
+  }
+
+  async getMe(orgId: string) {
+    return this.prisma.organization.findUnique({ where: { id: orgId } });
+  }
+
+  async updateMe(orgId: string, data: any) {
+    // Only allow specific fields
+    return this.prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        name: data.name,
+        address: data.address,
+        whatsappNumber: data.whatsappNumber,
+        timezone: data.timezone,
+        website: data.website,
+        logoUrl: data.logoUrl,
+      },
+    });
+  }
+
+  async getPlatformConfig() {
+    return {
+      whatsappWebhookUrl: process.env.API_URL ? `${process.env.API_URL}/api/v1/webhook/whatsapp` : 'Not Configured',
+      whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN,
+      whatsappApiVersion: process.env.WHATSAPP_API_VERSION,
+      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+      environment: process.env.NODE_ENV,
+    };
   }
 
   async findById(id: string): Promise<Organization> {

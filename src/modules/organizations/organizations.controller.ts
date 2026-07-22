@@ -25,6 +25,33 @@ export class OrganizationsController {
     return this.orgsService.createWithAdmin(orgData, adminData);
   }
 
+  @Get('me')
+  async getMe(@Req() req: any) {
+    let orgId = req.user.orgId;
+    if (!orgId && req.user.sub) {
+      const user = await this.orgsService['prisma'].user.findUnique({ where: { id: req.user.sub } });
+      orgId = user?.organizationId;
+    }
+    return this.orgsService.getMe(orgId);
+  }
+
+  @Patch('me')
+  @Roles(UserRole.ORG_ADMIN, UserRole.SUPER_ADMIN)
+  async updateMe(@Req() req: any, @Body() updateData: any) {
+    let orgId = req.user.orgId;
+    if (!orgId && req.user.sub) {
+      const user = await this.orgsService['prisma'].user.findUnique({ where: { id: req.user.sub } });
+      orgId = user?.organizationId;
+    }
+    return this.orgsService.updateMe(orgId, updateData);
+  }
+
+  @Get('platform-config')
+  @Roles(UserRole.SUPER_ADMIN)
+  async getPlatformConfig() {
+    return this.orgsService.getPlatformConfig();
+  }
+
   @Get('me/usage')
   async getMyUsage(@Req() req: any) {
     let orgId = req.user.orgId;

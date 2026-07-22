@@ -61,4 +61,58 @@ export class ActivityLoggerService {
       limit,
     };
   }
+
+  async findMyActivity(userId: string, options: { page?: number; limit?: number } = {}) {
+    const { page = 1, limit = 20 } = options;
+    const skip = (page - 1) * limit;
+
+    const where = {
+      userId,
+      action: { in: ['user_login', 'user_logout', 'user_login_2fa'] }
+    };
+
+    const [logs, total] = await Promise.all([
+      this.prisma.activityLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.activityLog.count({ where }),
+    ]);
+
+    return {
+      data: logs,
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async findMySessions(userId: string) {
+    // Basic session extraction from recent login activity
+    const recentLogins = await this.prisma.activityLog.findMany({
+      where: {
+        userId,
+        action: { in: ['user_login', 'user_login_2fa'] },
+        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // last 30 days
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const sessionsMap = new Map();
+    recentLogins.forEach(log => {
+      const key = `${log.ip}-${log.userAgent}`;
+      if (!sessionsMap.has(key)) {
+        sessionsMap.set(key, {
+          ip: log.ip,
+          userAgent: log.userAgent,
+          lastActive: log.createdAt,
+          isCurrent: false, // We'll flag current in the controller
+        });
+      }
+    });
+
+    return Array.from(sessionsMap.values());
+  }
 }
