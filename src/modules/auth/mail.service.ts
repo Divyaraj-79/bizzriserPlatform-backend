@@ -365,18 +365,20 @@ export class MailService {
                     <h2 class="heading" style="color: #1a1a1a; font-size: 20px; font-weight: 600; margin-top: 0; margin-bottom: 20px; text-align: left;">Welcome aboard, ${firstName}!</h2>
                     <div class="text" style="color: #4a5568; font-size: 15px; line-height: 1.6; margin-bottom: 24px; text-align: left;">
                       Your BizzRiser organization has been successfully created. Here is your unique Organization Code:<br><br>
-                      
-                      <div class="otp-box" style="background-color: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px;">
-                        <div style="color: #25D366; font-size: 32px; font-weight: 700; letter-spacing: 2px; margin: 0; text-align: center;">${orgCode}</div>
-                      </div>
-                      
+                    </div>
+                    
+                    <div class="otp-box" style="background-color: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px;">
+                      <div style="color: #25D366; font-size: 32px; font-weight: 700; letter-spacing: 2px; margin: 0; text-align: center;">${orgCode}</div>
+                    </div>
+                    
+                    <div class="text" style="color: #4a5568; font-size: 15px; line-height: 1.6; text-align: left;">
                       You can now log in to your dashboard and start configuring your WhatsApp business account.
                     </div>
                     
-                    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 24px;">
+                    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 32px; margin-bottom: 32px;">
                       <tr>
                         <td align="left">
-                          <a href="${loginUrl}" style="display: inline-block; background-color: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Log In Now</a>
+                          <a href="${loginUrl}" style="background-color: #25D366; color: #ffffff; display: inline-block; padding: 14px 28px; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px; text-align: center;">Log In Now</a>
                         </td>
                       </tr>
                     </table>
