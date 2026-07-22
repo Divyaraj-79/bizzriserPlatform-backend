@@ -64,6 +64,9 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Enable graceful shutdown to cleanly close Prisma connections and prevent pool exhaustion
+  app.enableShutdownHooks();
+
   await app.listen(port, '0.0.0.0');
   logger.log(`Application is running on: http://localhost:${port}/api/v1`);
 }
