@@ -40,7 +40,7 @@ export class AuthService {
     return null;
   }
 
-  async login(user: any, ip?: string) {
+  async login(user: any, ip?: string, userAgent?: string) {
     // Fetch fresh user data to get twoFactorEnabled status
     const freshUser = await this.prisma.user.findUnique({
       where: { id: user.id },
@@ -66,7 +66,7 @@ export class AuthService {
           lastIp: ip,
           lastLoginAt: new Date()
         });
-        await this.activityLogger.log(user.id, 'user_login', { ip, timestamp: new Date() }, ip);
+        await this.activityLogger.log(user.id, 'user_login', { ip, timestamp: new Date() }, ip, userAgent);
       } catch (err) {
         console.error('[Auth Service] Failed to update login audit:', err);
       }
@@ -114,7 +114,7 @@ export class AuthService {
     };
   }
 
-  async complete2FALogin(preAuthToken: string, totpToken: string, ip?: string) {
+  async complete2FALogin(preAuthToken: string, totpToken: string, ip?: string, userAgent?: string) {
     // Verify the pre-auth token
     let payload: any;
     try {
@@ -152,7 +152,7 @@ export class AuthService {
     if (ip) {
       try {
         await this.usersService.update(user.id, { lastIp: ip, lastLoginAt: new Date() });
-        await this.activityLogger.log(user.id, 'user_login_2fa', { ip, timestamp: new Date() }, ip);
+        await this.activityLogger.log(user.id, 'user_login_2fa', { ip, timestamp: new Date() }, ip, userAgent);
       } catch (err) {
         console.error('[Auth Service] Failed to update 2FA login audit:', err);
       }

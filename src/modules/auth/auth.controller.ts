@@ -32,9 +32,11 @@ export class AuthController {
       if (!user) {
         throw new UnauthorizedException('Invalid credentials');
       }
-      const ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+      let ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+      if (typeof ip === 'string') ip = ip.split(',')[0].trim();
+      const userAgent = req.headers['user-agent'];
       console.log(`[Auth] Attempting login for ${loginDto.email} from IP: ${ip}`);
-      return await this.authService.login(user, ip);
+      return await this.authService.login(user, ip, userAgent);
     } catch (error) {
       console.error('[Auth Error]', error);
       throw error;
@@ -112,8 +114,10 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async complete2FALogin(@Req() req: any, @Body('pre_auth_token') preAuthToken: string, @Body('token') token: string) {
     if (!preAuthToken || !token) throw new UnauthorizedException('pre_auth_token and token are required');
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
-    return this.authService.complete2FALogin(preAuthToken, token, ip);
+    let ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    if (typeof ip === 'string') ip = ip.split(',')[0].trim();
+    const userAgent = req.headers['user-agent'];
+    return this.authService.complete2FALogin(preAuthToken, token, ip, userAgent);
   }
 
   // --- End 2FA Endpoints ---
@@ -124,7 +128,8 @@ export class AuthController {
     if (!email) {
       throw new UnauthorizedException('Email is required');
     }
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'UNKNOWN';
+    let ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'UNKNOWN';
+    if (typeof ip === 'string') ip = ip.split(',')[0].trim();
     return this.authService.forgotPassword(email, ip);
   }
 
