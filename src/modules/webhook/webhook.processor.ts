@@ -77,7 +77,8 @@ export class WebhookProcessor {
       status = MessageStatus.FAILED;
       const error = statusData.errors?.[0];
       if (error) {
-        failureReason = `WEBHOOK_V2: ${error.message || error.title}${error.code ? ` (Code: ${error.code})` : ''}`;
+        const details = error.error_data?.details || error.message || error.title;
+        failureReason = `BizzRiser: ${details}${error.code ? ` (Code: ${error.code})` : ''}`;
       }
     }
 
