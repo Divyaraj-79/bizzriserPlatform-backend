@@ -1403,13 +1403,9 @@ export class WhatsappService {
         },
       });
 
-      // If the account is still not verified, trigger a smart registration attempt
+      // If the account is still not verified, log it. Registration is manual via the Register button.
       if (phoneInfo.code_verification_status !== 'VERIFIED') {
-        this.logger.log(`[SYNC] Account ${accountId} is not VERIFIED (Status: ${phoneInfo.code_verification_status}). Triggering smart registration...`);
-        // Use force=true during manual sync to bypass the 12-hour cooldown
-        this.registerPhoneNumber(orgId, accountId, true).catch(err => {
-          this.logger.error(`[SYNC] Auto-registration failed during sync: ${err.message}`);
-        });
+        this.logger.log(`[SYNC] Account ${accountId} is not VERIFIED (Status: ${phoneInfo.code_verification_status}). Registration must be triggered manually.`);
       }
 
       this.logger.log(`[SYNC SUCCESS] Account ${accountId} updated. Status: ${updatedAccount.status}`);
