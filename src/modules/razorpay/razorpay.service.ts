@@ -77,7 +77,7 @@ export class RazorpayService {
           interval: billingCycle === 'QUARTERLY' ? 3 : 1,
           item: {
             name: `BizzRiser ${plan.name} ${billingCycle}`,
-            amount: price * 100, // paise
+            amount: (billingCycle === 'QUARTERLY' ? price * 3 : price * 12) * 100, // paise
             currency: 'INR',
             description: `${plan.name} Plan - ${billingCycle} Subscription`
           }
