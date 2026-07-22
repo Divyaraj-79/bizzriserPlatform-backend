@@ -19,6 +19,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       userId: payload.sub,    // Backwards compatibility alias
       email: payload.email,
       orgId: payload.orgId,
+      sessionId: payload.sessionId,
       role: payload.role,
       originalOrgId: payload.originalOrgId,
       originalUserId: payload.originalUserId,

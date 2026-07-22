@@ -84,9 +84,19 @@ export class AuthService {
       }
     }
 
+    const session = await this.prisma.session.create({
+      data: {
+        userId: user.id,
+        ip,
+        userAgent,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      }
+    });
+
     const accessTokenPayload = {
       email: user.email,
       sub: user.id,
+      sessionId: session.id,
       orgId: user.organizationId,
       role: user.role,
       firstName: user.firstName,
@@ -95,7 +105,7 @@ export class AuthService {
       permissions: user.permissions || {}
     };
 
-    const refreshTokenPayload = { sub: user.id };
+    const refreshTokenPayload = { sub: user.id, sessionId: session.id };
 
     return {
       access_token: this.jwtService.sign(accessTokenPayload),
@@ -168,9 +178,19 @@ export class AuthService {
       } catch (err) {}
     }
 
+    const session = await this.prisma.session.create({
+      data: {
+        userId: user.id,
+        ip,
+        userAgent,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      }
+    });
+
     const accessTokenPayload = {
       email: user.email,
       sub: user.id,
+      sessionId: session.id,
       orgId: user.organizationId,
       role: user.role,
       firstName: user.firstName,
@@ -181,7 +201,7 @@ export class AuthService {
 
     return {
       access_token: this.jwtService.sign(accessTokenPayload),
-      refresh_token: this.jwtService.sign({ sub: user.id }, {
+      refresh_token: this.jwtService.sign({ sub: user.id, sessionId: session.id }, {
         secret: this.configService.get<string>('jwt.refreshSecret'),
         expiresIn: this.configService.get<string>('jwt.refreshExpiresIn') as any,
       }),
@@ -237,10 +257,11 @@ export class AuthService {
       lastName: targetLastName,
       originalUserId: user.originalUserId || user.sub,
       originalOrgId: user.originalOrgId || user.orgId,
+      sessionId: user.sessionId,
       isImpersonating: !isReturning
     };
 
-    const refreshTokenPayload = { sub: targetSub };
+    const refreshTokenPayload = { sub: targetSub, sessionId: user.sessionId };
 
     return {
       access_token: this.jwtService.sign(accessTokenPayload),
@@ -251,14 +272,32 @@ export class AuthService {
     };
   }
 
-  async logout(userId: string, ip?: string) {
+  async logout(userId: string, sessionId?: string, ip?: string) {
+    if (sessionId) {
+      await this.prisma.session.delete({ where: { id: sessionId } }).catch(() => {});
+    }
     await this.activityLogger.log(userId, 'user_logout', { timestamp: new Date(), ip }, ip);
     return { success: true };
   }
 
-  async revokeSessions(userId: string, currentIp?: string) {
+  async revokeSessions(userId: string, currentSessionId?: string, currentIp?: string) {
+    if (currentSessionId) {
+      await this.prisma.session.deleteMany({
+        where: { userId, id: { not: currentSessionId } }
+      });
+    } else {
+      await this.prisma.session.deleteMany({ where: { userId } });
+    }
     await this.activityLogger.log(userId, 'revoke_sessions', { timestamp: new Date(), ip: currentIp }, currentIp);
     return { success: true, message: 'All other sessions have been revoked.' };
+  }
+
+  async revokeSession(userId: string, targetSessionId: string, currentIp?: string) {
+    await this.prisma.session.deleteMany({
+      where: { id: targetSessionId, userId } // Ensure it belongs to the user
+    });
+    await this.activityLogger.log(userId, 'revoke_specific_session', { timestamp: new Date(), targetSessionId, ip: currentIp }, currentIp);
+    return { success: true, message: 'Session revoked successfully.' };
   }
 
   async refreshToken(refreshToken: string) {
@@ -267,12 +306,22 @@ export class AuthService {
         secret: this.configService.get<string>('jwt.refreshSecret'),
       });
 
+      if (payload.sessionId) {
+        const session = await this.prisma.session.findUnique({ where: { id: payload.sessionId } });
+        if (!session) throw new UnauthorizedException('Session revoked');
+        await this.prisma.session.update({
+          where: { id: payload.sessionId },
+          data: { lastActive: new Date() }
+        });
+      }
+
       const user = await this.usersService.findOne(payload.sub);
       if (!user) throw new UnauthorizedException('User not found');
 
       const accessTokenPayload = {
         email: user.email,
         sub: user.id,
+        sessionId: payload.sessionId,
         orgId: user.organizationId,
         role: user.role,
         firstName: user.firstName,
@@ -280,7 +329,7 @@ export class AuthService {
         originalOrgId: user.organizationId
       };
 
-      const refreshTokenPayload = { sub: user.id };
+      const refreshTokenPayload = { sub: user.id, sessionId: payload.sessionId };
 
       return {
         access_token: this.jwtService.sign(accessTokenPayload),

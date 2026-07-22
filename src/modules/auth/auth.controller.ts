@@ -66,16 +66,27 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Req() req: any) {
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
-    return this.authService.logout(req.user.sub, ip);
+    let ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    if (typeof ip === 'string') ip = ip.split(',')[0].trim();
+    return this.authService.logout(req.user.sub, req.user.sessionId, ip);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('revoke-sessions')
   @HttpCode(HttpStatus.OK)
   async revokeSessions(@Req() req: any) {
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
-    return this.authService.revokeSessions(req.user.sub, ip);
+    let ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    if (typeof ip === 'string') ip = ip.split(',')[0].trim();
+    return this.authService.revokeSessions(req.user.sub, req.user.sessionId, ip);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('revoke-session/:id')
+  @HttpCode(HttpStatus.OK)
+  async revokeSession(@Req() req: any, @Param('id') targetSessionId: string) {
+    let ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    if (typeof ip === 'string') ip = ip.split(',')[0].trim();
+    return this.authService.revokeSession(req.user.sub, targetSessionId, ip);
   }
 
   @UseGuards(JwtAuthGuard)

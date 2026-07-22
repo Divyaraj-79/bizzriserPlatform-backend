@@ -40,13 +40,11 @@ export class ActivityLogsController {
   @Get('my-sessions')
   async findMySessions(@Req() req: any) {
     const sessions = await this.activityLoggerService.findMySessions(req.user.sub);
-    let currentIp = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
-    if (typeof currentIp === 'string') currentIp = currentIp.split(',')[0].trim();
-    const currentAgent = req.headers['user-agent'];
+    const currentSessionId = req.user.sessionId;
 
-    return sessions.map(session => ({
+    return sessions.map((session: any) => ({
       ...session,
-      isCurrent: session.ip === currentIp && session.userAgent === currentAgent
+      isCurrent: session.id === currentSessionId
     }));
   }
 }

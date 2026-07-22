@@ -90,29 +90,16 @@ export class ActivityLoggerService {
   }
 
   async findMySessions(userId: string) {
-    // Basic session extraction from recent login activity
-    const recentLogins = await this.prisma.activityLog.findMany({
-      where: {
-        userId,
-        action: { in: ['user_login', 'user_login_2fa'] },
-        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // last 30 days
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const sessionsMap = new Map();
-    recentLogins.forEach(log => {
-      const key = `${log.ip}-${log.userAgent}`;
-      if (!sessionsMap.has(key)) {
-        sessionsMap.set(key, {
-          ip: log.ip,
-          userAgent: log.userAgent,
-          lastActive: log.createdAt,
-          isCurrent: false, // We'll flag current in the controller
-        });
+    return this.prisma.session.findMany({
+      where: { userId },
+      orderBy: { lastActive: 'desc' },
+      select: {
+        id: true,
+        ip: true,
+        userAgent: true,
+        lastActive: true,
+        createdAt: true,
       }
     });
-
-    return Array.from(sessionsMap.values());
   }
 }

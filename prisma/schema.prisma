@@ -308,10 +308,26 @@ model User {
   googleCredentials GoogleCredential[]
   contactNotes   ContactNote[]
   notificationReads NotificationRead[]
+  sessions       Session[]
 
   @@index([organizationId])
   @@index([email])
   @@map("users")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  ip           String?
+  userAgent    String?
+  lastActive   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
 }
 
 model ClientInvitation {
