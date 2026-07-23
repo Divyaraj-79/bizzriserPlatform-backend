@@ -536,13 +536,18 @@ export class AuthService {
       }
     }
 
+    // The frontend sends the plaintext password under the key passwordHash.
+    // We MUST bcrypt it before storing it in staging, because finalizeSignup 
+    // bypasses UsersService.create (which normally handles hashing).
+    const hashedPassword = await bcrypt.hash(data.passwordHash, 10);
+
     // Store staging data on the invitation record
     await this.prisma.clientInvitation.update({
       where: { email: data.email },
       data: {
         status: 'PENDING_PAYMENT',
         stagingOrgName: data.orgName,
-        stagingPasswordHash: data.passwordHash,
+        stagingPasswordHash: hashedPassword,
         stagingPlanId: data.planId,
         stagingBillingCycle: data.billingCycle,
         pendingRazorpaySubId: null, // will be filled by create-subscription
