@@ -149,6 +149,7 @@ export class ClientsService {
     if (!org) throw new NotFoundException(`Organization with ID ${id} not found`);
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.razorpaySubscription.deleteMany({ where: { organizationId: id } });
       await tx.clientInvitation.deleteMany({ where: { organizationId: id } });
       await tx.user.deleteMany({ where: { organizationId: id } });
       return tx.organization.delete({ where: { id } });
