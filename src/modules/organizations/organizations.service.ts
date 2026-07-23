@@ -150,8 +150,14 @@ export class OrganizationsService {
   }
 
   async delete(id: string) {
-    return this.prisma.organization.delete({
-      where: { id }
+    return this.prisma.$transaction(async (tx) => {
+      // Manually delete relations that lack onDelete: Cascade in the schema
+      await tx.razorpaySubscription.deleteMany({ where: { organizationId: id } });
+      await tx.clientInvitation.deleteMany({ where: { organizationId: id } });
+      await tx.user.deleteMany({ where: { organizationId: id } });
+      return tx.organization.delete({
+        where: { id }
+      });
     });
   }
 
