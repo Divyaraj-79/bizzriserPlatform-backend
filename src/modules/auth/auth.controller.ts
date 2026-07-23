@@ -18,11 +18,19 @@ export class AuthController {
     return this.authService.verifySignupEmail(email);
   }
 
+  @Post('initiate-signup')
+  @HttpCode(HttpStatus.OK)
+  async initiateSignup(@Body() data: { email: string; passwordHash: string; orgName: string; planId: string; billingCycle: string }) {
+    return this.authService.initiateSignup(data);
+  }
+
+  // Kept for any legacy callers; new flow uses initiate-signup
   @Post('complete-signup')
   @HttpCode(HttpStatus.OK)
   async completeSignup(@Body() data: { email: string; passwordHash: string; orgName: string; planId: string; offerCode?: string }) {
-    return this.authService.completeSignup(data);
+    return this.authService.initiateSignup({ ...data, billingCycle: 'YEARLY' });
   }
+
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

@@ -164,11 +164,14 @@ enum SubscriptionStatus {
   PAST_DUE
   CANCELLED
   EXPIRED
+  PAYMENT_FAILED
+  CREATED
 }
 
 enum InvitationStatus {
   PENDING
   REGISTERED
+  PENDING_PAYMENT
   ACTIVE
 }
 
@@ -331,43 +334,51 @@ model Session {
 }
 
 model ClientInvitation {
-  id              String           @id @default(uuid())
-  email           String           @unique
-  firstName       String
-  lastName        String
-  status          InvitationStatus @default(PENDING)
-  tempPasswordHash String?
-  organizationId  String?          @unique
-  organization    Organization?    @relation(fields: [organizationId], references: [id])
-  preRegisteredBy String?
-  ipAddress       String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id                    String           @id @default(uuid())
+  email                 String           @unique
+  firstName             String
+  lastName              String
+  status                InvitationStatus @default(PENDING)
+  tempPasswordHash      String?
+  organizationId        String?          @unique
+  organization          Organization?    @relation(fields: [organizationId], references: [id])
+  preRegisteredBy       String?
+  ipAddress             String?
+  // Staging fields for two-phase onboarding (populated at initiate-signup, consumed at finalize-signup)
+  stagingOrgName        String?
+  stagingPasswordHash   String?
+  stagingPlanId         String?
+  stagingBillingCycle   String?
+  pendingRazorpaySubId  String?          // Razorpay subscription ID created before org exists
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
   @@map("client_invitations")
 }
 
 model RazorpaySubscription {
-  id                    String             @id @default(uuid())
-  organizationId        String
-  razorpaySubscriptionId String            @unique
-  razorpayCustomerId    String?
-  razorpayPaymentId     String?
-  packageId             String
-  package               Package            @relation(fields: [packageId], references: [id])
-  billingCycle          BillingCycle
-  currency              String             @default("INR")
-  amount                Int
-  status                SubscriptionStatus
-  currentPeriodStart    DateTime?
-  currentPeriodEnd      DateTime?
-  offerCodeId           String?
-  discountAmount        Int                @default(0)
-  webhookVerified       Boolean            @default(false)
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
+  id                     String             @id @default(uuid())
+  organizationId         String?
+  razorpaySubscriptionId String             @unique
+  razorpayCustomerId     String?
+  razorpayPaymentId      String?
+  lastPaymentId          String?            // For idempotency: stores last processed Razorpay payment_id
+  invitationEmail        String?            // Set before org is created (pre-org phase)
+  packageId              String
+  package                Package            @relation(fields: [packageId], references: [id])
+  billingCycle           BillingCycle
+  currency               String             @default("INR")
+  amount                 Int
+  status                 SubscriptionStatus
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  offerCodeId            String?
+  discountAmount         Int                @default(0)
+  webhookVerified        Boolean            @default(false)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
-  organization          Organization       @relation(fields: [organizationId], references: [id])
+  organization           Organization?      @relation(fields: [organizationId], references: [id])
 
   @@map("razorpay_subscriptions")
 }

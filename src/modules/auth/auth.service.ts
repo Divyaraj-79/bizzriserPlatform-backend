@@ -503,56 +503,137 @@ export class AuthService {
     return { message: 'Email verified successfully.', firstName: invitation.firstName, lastName: invitation.lastName };
   }
 
-  async completeSignup(data: { email: string; passwordHash: string; orgName: string; planId: string; offerCode?: string }) {
+  /**
+   * PHASE 1 of two-phase onboarding:
+   * Validates the invitation, stores staging data (orgName, passwordHash, planId),
+   * marks invitation as PENDING_PAYMENT, and returns a staging JWT.
+   * No Organization or User is created here.
+   */
+  async initiateSignup(data: { email: string; passwordHash: string; orgName: string; planId: string; billingCycle: string }) {
     const invitation = await this.prisma.clientInvitation.findUnique({
       where: { email: data.email }
     });
 
-    if (!invitation || invitation.status === 'ACTIVE') {
-      throw new BadRequestException('Invalid or expired invitation.');
+    if (!invitation) {
+      throw new BadRequestException('No invitation found for this email.');
     }
 
-    const orgCode = generateOrgCode(data.orgName);
-    const slug = data.orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') + '-' + Date.now().toString().slice(-4);
-    
-    // Set 3 days trial
-    const trialEndsAt = new Date();
-    trialEndsAt.setDate(trialEndsAt.getDate() + 3);
+    if (invitation.status === 'ACTIVE') {
+      throw new BadRequestException('An account already exists for this email. Please sign in.');
+    }
+
+    // If already PENDING_PAYMENT, check if the pending subscription still exists/not activated
+    // to allow retries after a failed payment
+    if (invitation.status === 'PENDING_PAYMENT') {
+      const existingActiveSub = await this.prisma.razorpaySubscription.findFirst({
+        where: {
+          invitationEmail: data.email,
+          status: { in: ['ACTIVE'] },
+        },
+      });
+      if (existingActiveSub) {
+        throw new BadRequestException('An active subscription already exists for this email. Please sign in.');
+      }
+    }
+
+    // Store staging data on the invitation record
+    await this.prisma.clientInvitation.update({
+      where: { email: data.email },
+      data: {
+        status: 'PENDING_PAYMENT',
+        stagingOrgName: data.orgName,
+        stagingPasswordHash: data.passwordHash,
+        stagingPlanId: data.planId,
+        stagingBillingCycle: data.billingCycle,
+        pendingRazorpaySubId: null, // will be filled by create-subscription
+      },
+    });
+
+    // Return a short-lived staging JWT (no orgId, no user yet)
+    const stagingPayload = {
+      email: data.email,
+      firstName: invitation.firstName,
+      stage: 'PAYMENT_PENDING',
+    };
+    const stagingToken = this.jwtService.sign(stagingPayload, { expiresIn: '2h' });
+
+    return { stagingToken, firstName: invitation.firstName };
+  }
+
+  /**
+   * PHASE 2 of two-phase onboarding:
+   * Called ONLY by the Razorpay webhook after payment is confirmed.
+   * Creates the Organization, User, and links the subscription.
+   * Idempotent: safe to call multiple times.
+   */
+  async finalizeSignup(email: string, razorpaySubscriptionId: string): Promise<void> {
+    const invitation = await this.prisma.clientInvitation.findUnique({
+      where: { email }
+    });
+
+    if (!invitation) {
+      this.logger.error(`[finalizeSignup] No invitation found for email: ${email}`);
+      return;
+    }
+
+    // Already finalized — idempotent guard
+    if (invitation.status === 'ACTIVE' && invitation.organizationId) {
+      this.logger.log(`[finalizeSignup] Already finalized for email: ${email}. Skipping.`);
+      return;
+    }
+
+    if (!invitation.stagingOrgName || !invitation.stagingPasswordHash || !invitation.stagingPlanId) {
+      this.logger.error(`[finalizeSignup] Missing staging data for email: ${email}`);
+      return;
+    }
+
+    const orgName = invitation.stagingOrgName;
+    const orgCode = generateOrgCode(orgName);
+    const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') + '-' + Date.now().toString().slice(-4);
 
     const result = await this.prisma.$transaction(async (tx) => {
-      // 1. Create Organization
+      // 1. Create Organization (NO trial — they just paid)
       const org = await tx.organization.create({
         data: {
-          name: data.orgName,
+          name: orgName,
           slug,
           orgCode,
-          subscriptionStatus: 'TRIAL',
-          trialEndsAt,
-          packageId: data.planId,
+          subscriptionStatus: 'ACTIVE',
+          packageId: invitation.stagingPlanId,
           status: 'ACTIVE',
-          credits: 50
+          credits: 50, // Starter credits; full plan credits added by webhook
         }
       });
 
       // 2. Create User
       const user = await tx.user.create({
         data: {
-          email: data.email,
-          passwordHash: data.passwordHash,
+          email,
+          passwordHash: invitation.stagingPasswordHash!,
           firstName: invitation.firstName,
           lastName: invitation.lastName,
           role: 'ORG_ADMIN',
-          organizationId: org.id
+          organizationId: org.id,
         }
       });
 
-      // 3. Mark Invitation ACTIVE
+      // 3. Link the RazorpaySubscription to the new org
+      await tx.razorpaySubscription.updateMany({
+        where: { razorpaySubscriptionId },
+        data: { organizationId: org.id },
+      });
+
+      // 4. Mark Invitation ACTIVE and clear staging data
       await tx.clientInvitation.update({
-        where: { id: invitation.id },
+        where: { email },
         data: {
           status: 'ACTIVE',
           organizationId: org.id,
-          tempPasswordHash: null // clear if any
+          stagingOrgName: null,
+          stagingPasswordHash: null,
+          stagingPlanId: null,
+          stagingBillingCycle: null,
+          pendingRazorpaySubId: null,
         }
       });
 
@@ -561,10 +642,11 @@ export class AuthService {
 
     const frontendUrl = this.configService.get<string>('FRONTEND_PUBLIC_URL') || 'http://localhost:3000';
     const loginUrl = `${frontendUrl}/login`;
-    await this.mailService.sendOnboardingCompleteEmail(data.email, invitation.firstName, orgCode, loginUrl);
+    this.mailService.sendOnboardingCompleteEmail(email, invitation.firstName, orgCode, loginUrl).catch(err => {
+      this.logger.error(`[finalizeSignup] Failed to send welcome email: ${err.message}`);
+    });
 
-    // Return tokens so they are immediately logged in
-    return this.login(result.user);
+    this.logger.log(`[finalizeSignup] Successfully created Org(${result.org.id}) and User(${result.user.id}) for ${email}`);
   }
 
   // --- 2FA METHODS ---
